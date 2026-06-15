@@ -1,0 +1,28 @@
+# === Secrets / private ===
+.env
+.env.*
+!.env.example
+/Anleitung/
+
+# === macOS ===
+.DS_Store
+
+# === Xcode ===
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcscmblueprint
+*.xccheckout
+.swiftpm/
+
+# === Node / web (added when web app lands) ===
+node_modules/
+.next/
+out/
+
+# === Python / backend (added when backend lands) ===
+__pycache__/
+*.pyc
+.venv/
+venv/
