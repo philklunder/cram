@@ -1,0 +1,12 @@
+# Cram docs
+
+- [PRODUCT-SPEC.md](PRODUCT-SPEC.md) — what we're building and why (start here).
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system design and how the clients/backend/AI fit together.
+- [SETUP.md](SETUP.md) — how to build and run each component locally (no secrets).
+- [adr/](adr/) — Architecture Decision Records (one short file per notable decision):
+  - [0001](adr/0001-stack-and-project-format.md) — Stack & iOS project format (Accepted).
+  - [0002](adr/0002-srs-algorithm.md) — SRS algorithm: SM-2 with exam-date compression (Accepted).
+  - [0003](adr/0003-v1-generation-location.md) — Where AI generation runs for the local-only v1
+    (Accepted).
+  - [0004](adr/0004-exam-date-compression.md) — Exam-date compression of the SM-2 schedule
+    (Accepted).
