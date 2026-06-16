@@ -6,8 +6,9 @@ struct SubjectDetailView: View {
     @Environment(\.modelContext) private var context
     @Bindable var subject: Subject
 
-    /// The generation boundary (ADR 0003) — a stub today, a backend client later.
-    private let generator: GenerationService = StubGenerationService()
+    /// The generation boundary (ADR 0003) — `StubGenerationService` until a backend URL is
+    /// configured, then `RemoteGenerationService`, chosen by the factory with no call-site change.
+    private let generator: GenerationService = GenerationServiceFactory.make()
 
     @State private var isGenerating = false
     @State private var generationError: String?
@@ -107,7 +108,8 @@ struct SubjectDetailView: View {
                 let request = GenerationRequest(
                     kind: captured.kind,
                     title: captured.title,
-                    subjectName: subject.name)
+                    subjectName: subject.name,
+                    fileURLs: captured.fileNames.map { SourceStore.shared.url(for: $0) })
                 let deck = try await generator.generate(request)
                 DeckIngest.ingest(deck,
                                   kind: captured.kind,
