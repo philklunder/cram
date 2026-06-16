@@ -105,8 +105,11 @@ disagree (acing flashcards but bombed the exam), that's the most useful signal o
 
 ## 8. AI pipeline (backend + Claude)
 
-Runs server-side (the Claude key never lives in a client). For the local-only iOS v1, generation
-may be stubbed or call Claude directly during development; the production path is backend-owned.
+Runs server-side (the Claude key never lives in a client). The local-only iOS v1 runs against a
+`StubGenerationService` by default; a **minimal backend generation endpoint now exists**
+(`POST /v1/generate` — one Claude vision call → structured deck JSON, see ADR 0005), which the iOS
+`RemoteGenerationService` targets when configured. The full production backend (persistence, auth)
+is still ahead.
 
 1. **Extract** — source material (PDF text / image) → Claude identifies key concepts per topic.
 2. **Generate** — Claude writes flashcards and quiz questions, tagged by topic and difficulty,
