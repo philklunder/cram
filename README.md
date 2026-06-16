@@ -21,17 +21,17 @@ knowledge actually sticks — peaking on the day of your exam.
 
 | Component  | Stack                          | Status |
 |------------|--------------------------------|--------|
-| iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop on stubbed generation (local-only) |
-| Backend    | FastAPI (Python) + Supabase    | ⚪️ Not started (Windows) |
-| Web        | Next.js + React                | ⚪️ Not started (Windows) |
-| AI         | Claude API                     | ⚪️ Server-side only; v1 stubbed (see ADR 0003) |
+| iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop + real PDF/photo capture; remote-generation client ready (local-only) |
+| Backend    | FastAPI (Python) + Supabase    | 🟢 v0.3 generation endpoint live (`POST /v1/generate`); persistence + auth not started |
+| Web        | Next.js + React                | ⚪️ Not started |
+| AI         | Claude API                     | 🟢 Server-side only; real generation via Claude Sonnet 4.6 (ADR 0005) |
 
 ## Repository layout
 
 ```
 cram/
 ├── ios/          # SwiftUI app (Xcode) — the native client (built first)
-├── backend/      # FastAPI API (added on Windows)
+├── backend/      # FastAPI generation API (v0.3 — POST /v1/generate)
 ├── web/          # Next.js dashboard (added on Windows)
 └── docs/         # Product spec, architecture, setup, and decision records
 ```
