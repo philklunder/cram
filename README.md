@@ -21,7 +21,7 @@ knowledge actually sticks — peaking on the day of your exam.
 
 | Component  | Stack                          | Status |
 |------------|--------------------------------|--------|
-| iOS app    | Swift + SwiftUI + SwiftData    | ⚪️ Spec'd — building first |
+| iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop on stubbed generation (local-only) |
 | Backend    | FastAPI (Python) + Supabase    | ⚪️ Not started (Windows) |
 | Web        | Next.js + React                | ⚪️ Not started (Windows) |
 | AI         | Claude API                     | ⚪️ Server-side only; v1 stubbed (see ADR 0003) |
