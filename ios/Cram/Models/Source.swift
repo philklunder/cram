@@ -8,6 +8,9 @@ final class Source {
     var kindRaw: String
     var title: String
     var addedAt: Date
+    /// Relative filenames of the captured raw material, stored on disk by `SourceStore`.
+    /// A PDF is a single entry; photo notes may span several pages. Empty for fixture-only sources.
+    var fileNames: [String]
     var subject: Subject?
 
     var kind: SourceKind {
@@ -15,11 +18,15 @@ final class Source {
         set { kindRaw = newValue.rawValue }
     }
 
-    init(kind: SourceKind, title: String, subject: Subject? = nil) {
+    init(kind: SourceKind, title: String, fileNames: [String] = [], subject: Subject? = nil) {
         self.id = UUID()
         self.kindRaw = kind.rawValue
         self.title = title
         self.addedAt = .now
+        self.fileNames = fileNames
         self.subject = subject
     }
+
+    /// On-disk URLs of the captured files, resolved against the source store.
+    var fileURLs: [URL] { fileNames.map { SourceStore.shared.url(for: $0) } }
 }
