@@ -1,0 +1,7 @@
+# Floors chosen for known-good, security-patched releases. For reproducible
+# deploys, generate a lockfile: `pip freeze > requirements.lock`.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+anthropic>=0.69
+python-multipart>=0.0.18   # >=0.0.18 fixes CVE-2024-53981 (multipart parsing DoS)
+python-dotenv>=1.0
