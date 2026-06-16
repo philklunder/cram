@@ -8,9 +8,14 @@ enum DeckIngest {
     @discardableResult
     static func ingest(_ deck: GeneratedDeck,
                        kind: SourceKind,
+                       title: String? = nil,
+                       fileNames: [String] = [],
                        into subject: Subject,
                        context: ModelContext) -> Source {
-        let source = Source(kind: kind, title: deck.sourceTitle, subject: subject)
+        let source = Source(kind: kind,
+                            title: title ?? deck.sourceTitle,
+                            fileNames: fileNames,
+                            subject: subject)
         context.insert(source)
 
         for c in deck.cards {

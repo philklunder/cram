@@ -11,6 +11,7 @@ struct SubjectDetailView: View {
 
     @State private var isGenerating = false
     @State private var generationError: String?
+    @State private var showingAddMaterial = false
 
     private var dueCards: [Card] { subject.cards.filter { $0.isDue() } }
 
@@ -53,17 +54,24 @@ struct SubjectDetailView: View {
                     Text("No material yet.").foregroundStyle(.secondary)
                 } else {
                     ForEach(subject.sources) { source in
-                        Label(source.title, systemImage: icon(for: source.kind))
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.title)
+                                Text(subtitle(for: source))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: icon(for: source.kind))
+                        }
                     }
                 }
-                ForEach(SourceKind.v1Cases) { kind in
-                    Button {
-                        generate(kind: kind)
-                    } label: {
-                        Label("Add \(kind.label)", systemImage: "plus")
-                    }
-                    .disabled(isGenerating)
+                Button {
+                    showingAddMaterial = true
+                } label: {
+                    Label("Add material", systemImage: "plus")
                 }
+                .disabled(isGenerating)
                 if isGenerating {
                     HStack {
                         ProgressView()
@@ -78,6 +86,9 @@ struct SubjectDetailView: View {
             }
         }
         .navigationTitle(subject.name)
+        .sheet(isPresented: $showingAddMaterial) {
+            AddMaterialView { captured in ingest(captured) }
+        }
         .alert("Couldn't generate", isPresented: .constant(generationError != nil)) {
             Button("OK") { generationError = nil }
         } message: {
@@ -85,21 +96,36 @@ struct SubjectDetailView: View {
         }
     }
 
-    private func generate(kind: SourceKind) {
+    /// Run the (stubbed) generation for freshly captured material and persist the resulting deck,
+    /// carrying the real title and stored filenames onto the `Source`. The generation call site is
+    /// unchanged — `RemoteGenerationService` swaps in here later (v0.3) with no UI change.
+    private func ingest(_ captured: CapturedMaterial) {
         isGenerating = true
         Task {
             defer { isGenerating = false }
             do {
                 let request = GenerationRequest(
-                    kind: kind,
-                    title: "\(subject.name) — \(kind.label)",
+                    kind: captured.kind,
+                    title: captured.title,
                     subjectName: subject.name)
                 let deck = try await generator.generate(request)
-                DeckIngest.ingest(deck, kind: kind, into: subject, context: context)
+                DeckIngest.ingest(deck,
+                                  kind: captured.kind,
+                                  title: captured.title,
+                                  fileNames: captured.fileNames,
+                                  into: subject,
+                                  context: context)
             } catch {
                 generationError = error.localizedDescription
             }
         }
+    }
+
+    private func subtitle(for source: Source) -> String {
+        let when = source.addedAt.formatted(.relative(presentation: .named))
+        guard !source.fileNames.isEmpty else { return "\(source.kind.label) · added \(when)" }
+        let n = source.fileNames.count
+        return "\(n) file\(n == 1 ? "" : "s") · \(source.kind.label) · added \(when)"
     }
 
     private func icon(for kind: SourceKind) -> String {
