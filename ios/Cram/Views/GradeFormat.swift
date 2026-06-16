@@ -4,7 +4,7 @@ import Foundation
 enum GradeFormat {
     static func string(_ value: Double, scale: GradingScale) -> String {
         switch scale {
-        case .german, .gpa:
+        case .german, .swiss, .gpa:
             return String(format: "%.1f", value)
         case .percentage:
             return "\(Int(value.rounded()))%"

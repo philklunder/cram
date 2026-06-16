@@ -61,7 +61,8 @@ enum GradeKind: String, Codable, CaseIterable, Identifiable {
 
 /// The scale used to interpret grade scores. Defaults to the German 1.0–6.0 scale.
 enum GradingScale: String, Codable, CaseIterable, Identifiable {
-    case german      // 1.0 (best) … 6.0 (worst)
+    case german      // 1.0 (best) … 6.0 (worst); pass ≤ 4.0
+    case swiss       // 6.0 (best) … 1.0 (worst); pass ≥ 4.0 — the inverse of the German scale
     case percentage  // 0 … 100 (higher is better)
     case letter      // A … F (stored as a numeric GPA-like value)
     case gpa         // 0.0 … 4.0 (higher is better)
@@ -71,22 +72,38 @@ enum GradingScale: String, Codable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .german: "German (1.0–6.0)"
+        case .swiss: "Swiss (6.0–1.0)"
         case .percentage: "Percentage"
         case .letter: "Letter (A–F)"
         case .gpa: "GPA (0–4)"
         }
     }
 
-    /// Whether a *lower* numeric score is better (true for the German scale).
+    /// Whether a *lower* numeric score is better (true only for the German scale).
     var lowerIsBetter: Bool { self == .german }
 
     /// The valid numeric range for entered scores on this scale.
     var range: ClosedRange<Double> {
         switch self {
-        case .german: 1.0...6.0
+        case .german, .swiss: 1.0...6.0
         case .percentage: 0...100
         case .letter, .gpa: 0...4.0
         }
+    }
+
+    /// The minimum score that counts as a pass (compared via `lowerIsBetter`).
+    /// Swiss: 4.0 ("genügend") and above passes. German: 4.0 ("ausreichend") and below passes.
+    var passMark: Double {
+        switch self {
+        case .german, .swiss: 4.0
+        case .percentage: 50
+        case .letter, .gpa: 1.0   // a D (1.0) or better is a pass
+        }
+    }
+
+    /// Whether a given score is a passing grade on this scale.
+    func isPassing(_ score: Double) -> Bool {
+        lowerIsBetter ? score <= passMark : score >= passMark
     }
 
     /// Normalize a score to 0…1 where 1 = best. Used to compare across subjects.

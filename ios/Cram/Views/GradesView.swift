@@ -10,10 +10,17 @@ struct GradesView: View {
     var body: some View {
         List {
             Section {
-                LabeledContent("Current",
-                               value: subject.currentGrade.map {
-                                   GradeFormat.string($0, scale: subject.gradingScale)
-                               } ?? "—")
+                LabeledContent("Current") {
+                    if let grade = subject.currentGrade {
+                        HStack(spacing: 8) {
+                            PassFailTag(score: grade, scale: subject.gradingScale)
+                            Text(GradeFormat.string(grade, scale: subject.gradingScale))
+                                .monospacedDigit()
+                        }
+                    } else {
+                        Text("—")
+                    }
+                }
                 if let target = subject.targetGrade {
                     LabeledContent("Target",
                                    value: GradeFormat.string(target, scale: subject.gradingScale))
@@ -31,6 +38,7 @@ struct GradesView: View {
                             HStack {
                                 Text(entry.title).font(.headline)
                                 Spacer()
+                                PassFailTag(score: entry.score, scale: subject.gradingScale)
                                 Text(GradeFormat.string(entry.score, scale: subject.gradingScale))
                                     .font(.body.monospacedDigit())
                             }
@@ -123,6 +131,22 @@ private struct AddGradeView: View {
                                subject: subject)
         context.insert(entry)
         dismiss()
+    }
+}
+
+/// A small "Pass" / "Fail" capsule for a score on a given grading scale.
+private struct PassFailTag: View {
+    let score: Double
+    let scale: GradingScale
+
+    var body: some View {
+        let passing = scale.isPassing(score)
+        Text(passing ? "Pass" : "Fail")
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background((passing ? Color.green : Color.red).opacity(0.15), in: Capsule())
+            .foregroundStyle(passing ? Color.green : Color.red)
     }
 }
 
