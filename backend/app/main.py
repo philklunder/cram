@@ -1,24 +1,26 @@
-"""Cram v0.3 generation backend — FastAPI app.
+"""Cram backend — FastAPI app.
 
-A single endpoint, POST /v1/generate, exactly per docs/adr/0005-generation-api-contract.md:
-multipart material in -> deck JSON out. No database yet (ADR 0003 amendment); access is
-gated by a shared secret (or loopback-only when no secret is set). Revisit auth at v0.5.
+Endpoints: POST /v1/generate (multipart material -> deck JSON, ADR 0005) and POST
+/v1/grade (short-answer -> score + feedback, ADR 0006). As of v0.5 both are gated by
+Supabase JWT auth (ADR 0007 §2) — see app/auth.py. Persistence + per-user data endpoints
+land in Phase 3.
 """
 
 from __future__ import annotations
 
 import logging
 import mimetypes
-import secrets
 
 from dotenv import load_dotenv
 
 load_dotenv()  # load .env before reading settings
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
+from .auth import CurrentUser, get_current_user  # noqa: E402
 from .config import load_settings  # noqa: E402
+from .db import db_status  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
 from .schemas import GradeRequest  # noqa: E402
@@ -26,20 +28,17 @@ from .schemas import GradeRequest  # noqa: E402
 logging.basicConfig(level=logging.INFO)
 settings = load_settings()
 
-# Fail closed in production (H1): the loopback-only access fallback trusts the socket
-# peer, which a same-host reverse proxy makes always read as 127.0.0.1 — silently
-# opening the endpoint. So in production a shared secret is mandatory; refuse to start
-# without one rather than serve unauthenticated traffic.
-if settings.is_production and not settings.shared_secret:
+# Fail closed in production (ADR 0007 §2/§3): without configured JWT auth the only gate
+# is the dev loopback fallback, which is unsafe behind a same-host reverse proxy. So in
+# production Supabase JWT auth is mandatory; refuse to start without it.
+if settings.is_production and not settings.auth_configured:
     raise RuntimeError(
-        "CRAM_SHARED_SECRET must be set when CRAM_ENV=prod. The loopback-only fallback "
-        "is dev-only and fails open behind a reverse proxy. Generate one with: "
-        'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+        "Supabase JWT auth must be configured when CRAM_ENV=prod: set SUPABASE_JWKS_URL "
+        "(preferred) or SUPABASE_JWT_SECRET. The dev loopback fallback fails open behind "
+        "a reverse proxy and is refused in production."
     )
 
-app = FastAPI(title="Cram generation backend", version="0.3")
-
-_LOOPBACK = {"127.0.0.1", "::1"}
+app = FastAPI(title="Cram backend", version="0.5")
 
 
 @app.middleware("http")
@@ -62,31 +61,13 @@ async def limit_body_size(request: Request, call_next):
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"ok": True, "model": settings.model, "key_configured": bool(settings.anthropic_api_key)}
-
-
-def require_access(request: Request, x_cram_secret: str = Header(default="")) -> None:
-    """Gate the endpoint (H1).
-
-    - If CRAM_SHARED_SECRET is set, every request must present it in X-Cram-Secret.
-    - If it is not set, only loopback clients are served — so the endpoint is never
-      reachable unauthenticated from the LAN/internet. Set the secret before exposing
-      it to a device or deploying.
-
-    The loopback fallback is a DEV convenience only: it trusts the socket peer, which a
-    same-host reverse proxy reads as 127.0.0.1. Production therefore requires the secret,
-    enforced by the startup guard above (this branch is unreachable when CRAM_ENV=prod).
-    """
-    if settings.shared_secret:
-        if not secrets.compare_digest(x_cram_secret, settings.shared_secret):
-            raise HTTPException(status_code=401, detail="Unauthorized.")
-        return
-    client_host = request.client.host if request.client else ""
-    if client_host not in _LOOPBACK:
-        raise HTTPException(
-            status_code=401,
-            detail="Set CRAM_SHARED_SECRET on the server to allow non-loopback access.",
-        )
+    # "db": "ok" | "unreachable" | "not_configured" (Phase 0 — see app/db.py).
+    return {
+        "ok": True,
+        "model": settings.model,
+        "key_configured": bool(settings.anthropic_api_key),
+        "db": db_status(),
+    }
 
 
 def _resolve_content_type(file: UploadFile) -> str:
@@ -97,13 +78,15 @@ def _resolve_content_type(file: UploadFile) -> str:
     return guessed or "application/octet-stream"
 
 
-@app.post("/v1/generate", dependencies=[Depends(require_access)])
+@app.post("/v1/generate")
 async def generate(
     subject_name: str = Form(...),
     title: str = Form(...),
     kind: str = Form(...),
     files: list[UploadFile] = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
+    # current_user authorizes the call; the generated deck becomes owned by it in Phase 3.
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")
 
@@ -146,11 +129,15 @@ async def generate(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
-@app.post("/v1/grade", dependencies=[Depends(require_access)])
-async def grade(body: GradeRequest) -> dict:
+@app.post("/v1/grade")
+async def grade(
+    body: GradeRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict:
     """Grade one short-answer response against its model answer (ADR 0006).
 
     JSON in, JSON out — no files. Multiple-choice is graded on-device and never sent here.
+    The recorded attempt becomes owned by current_user in Phase 3.
     """
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")

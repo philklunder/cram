@@ -5,3 +5,10 @@ uvicorn[standard]>=0.30
 anthropic>=0.69
 python-multipart>=0.0.18   # >=0.0.18 fixes CVE-2024-53981 (multipart parsing DoS)
 python-dotenv>=1.0
+
+# v0.5 persistence + auth (ADR 0007). psycopg (v3) is the driver SQLAlchemy uses via the
+# postgresql+psycopg:// URL scheme; pyjwt[crypto] verifies Supabase JWTs in Phase 2.
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg[binary]>=3.2
+pyjwt[crypto]>=2.9
