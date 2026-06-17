@@ -79,3 +79,45 @@ DECK_JSON_SCHEMA: dict = {
     },
     "required": ["source_title", "cards", "questions"],
 }
+
+
+# --- Grading (POST /v1/grade), ADR 0006 -------------------------------------------------
+
+# Pass threshold: score at/above this counts as correct. Derived server-side (not asked of
+# the model) so the boundary is deterministic and tunable without re-prompting.
+GRADE_PASS_THRESHOLD = 0.6
+
+
+class GradeRequest(BaseModel):
+    """Inbound JSON body for short-answer grading. Field-length caps are enforced in the
+    handler (against the configured limit), consistent with /v1/generate."""
+
+    prompt: str
+    model_answer: str
+    # The student's answer. May be blank ("" grades to 0.0) — required key, not optional.
+    response: str
+    topic: str = ""
+
+
+class GradeResult(BaseModel):
+    """What the client receives. ``is_correct`` is set server-side from ``score`` (ADR 0006);
+    the model only returns ``score`` and ``feedback``."""
+
+    score: float = Field(ge=0.0, le=1.0)
+    feedback: str
+    is_correct: bool = False
+
+
+# Schema handed to Claude for grading. The model returns only score + feedback; the server
+# derives is_correct. additionalProperties:false and an explicit required list, as with the
+# deck schema. (Structured outputs reject numeric range constraints, so score is a bare number
+# and the 0..1 range is re-validated by GradeResult / clamped server-side.)
+GRADE_JSON_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "score": {"type": "number"},
+        "feedback": {"type": "string"},
+    },
+    "required": ["score", "feedback"],
+}

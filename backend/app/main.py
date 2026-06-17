@@ -20,6 +20,8 @@ from fastapi.responses import JSONResponse  # noqa: E402
 
 from .config import load_settings  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
+from .grading import grade_answer  # noqa: E402
+from .schemas import GradeRequest  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 settings = load_settings()
@@ -140,5 +142,35 @@ async def generate(
 
     try:
         return generate_deck(settings, subject_name, title, kind, uploads)
+    except GenerationError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/v1/grade", dependencies=[Depends(require_access)])
+async def grade(body: GradeRequest) -> dict:
+    """Grade one short-answer response against its model answer (ADR 0006).
+
+    JSON in, JSON out — no files. Multiple-choice is graded on-device and never sent here.
+    """
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")
+
+    # Cap free-text fields (same rationale as /v1/generate: form text becomes tokens too).
+    # The student's `response` is untrusted; an empty response is allowed (grades to 0).
+    for name, value in (
+        ("prompt", body.prompt),
+        ("model_answer", body.model_answer),
+        ("response", body.response),
+        ("topic", body.topic),
+    ):
+        if len(value) > settings.max_field_chars:
+            raise HTTPException(status_code=413, detail=f"Field '{name}' is too long.")
+    if not body.prompt.strip() or not body.model_answer.strip():
+        raise HTTPException(
+            status_code=422, detail="Fields 'prompt' and 'model_answer' must not be empty."
+        )
+
+    try:
+        return grade_answer(settings, body.prompt, body.model_answer, body.response, body.topic)
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
