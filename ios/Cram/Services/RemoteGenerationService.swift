@@ -9,6 +9,10 @@ import Foundation
 struct RemoteGenerationService: GenerationService {
 
     let baseURL: URL
+    /// Sent in the `X-Cram-Secret` header when present. The backend requires it whenever it is
+    /// exposed beyond loopback; `nil` is valid for a loopback-only backend that gates on the
+    /// client address instead. See `docs/adr/0005-generation-api-contract.md` and the backend README.
+    var sharedSecret: String? = nil
     var session: URLSession = .shared
     /// Generation involves a Claude call over potentially large material — allow generous time.
     var timeout: TimeInterval = 120
@@ -22,6 +26,9 @@ struct RemoteGenerationService: GenerationService {
         let boundary = "CramBoundary-\(UUID().uuidString)"
         urlRequest.setValue("multipart/form-data; boundary=\(boundary)",
                             forHTTPHeaderField: "Content-Type")
+        if let sharedSecret {
+            urlRequest.setValue(sharedSecret, forHTTPHeaderField: "X-Cram-Secret")
+        }
         urlRequest.httpBody = try makeBody(for: request, boundary: boundary)
 
         let data: Data

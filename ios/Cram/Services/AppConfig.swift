@@ -27,4 +27,20 @@ enum AppConfig {
     /// Optional hardcoded backend URL for development. Leave `nil` to keep the app on stubbed
     /// generation until the backend exists (v0.3 lands on Windows).
     static let overrideBaseURL: URL? = nil
+
+    /// Shared secret sent in the `X-Cram-Secret` header on every backend request, or `nil` when
+    /// none is configured. The backend requires this whenever it is exposed beyond loopback
+    /// (`CRAM_SHARED_SECRET` set + `--host 0.0.0.0`); without it, LAN/device requests are rejected.
+    ///
+    /// Resolved from the `CRAM_SHARED_SECRET` environment variable — set it in the Run scheme
+    /// alongside `CRAM_BACKEND_URL`, and keep the value out of source (it is not the Claude key,
+    /// which stays server-side only).
+    static var sharedSecret: String? {
+        guard let raw = ProcessInfo.processInfo.environment["CRAM_SHARED_SECRET"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+        return raw
+    }
 }
