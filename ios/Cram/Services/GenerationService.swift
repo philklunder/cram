@@ -59,7 +59,7 @@ protocol GenerationService {
 enum GenerationServiceFactory {
     static func make() -> GenerationService {
         if let baseURL = AppConfig.backendBaseURL {
-            return RemoteGenerationService(baseURL: baseURL)
+            return RemoteGenerationService(baseURL: baseURL, sharedSecret: AppConfig.sharedSecret)
         }
         return StubGenerationService()
     }

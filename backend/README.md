@@ -35,8 +35,9 @@ iPhone, bind `--host 0.0.0.0` **and set `CRAM_SHARED_SECRET`** (see below). Don'
   unauthenticated from the LAN.
 - **Device / LAN / deploy:** set `CRAM_SHARED_SECRET` (generate one with
   `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Every request must
-  then send it in the `X-Cram-Secret` header. The iOS `RemoteGenerationService` should
-  send this header; keep the value out of source.
+  then send it in the `X-Cram-Secret` header. The iOS `RemoteGenerationService` sends
+  this header from `AppConfig.sharedSecret` (the `CRAM_SHARED_SECRET` env var in the Run
+  scheme); keep the value out of source.
 
 There is still no per-user auth or rate limiting — add a spend cap / rate limit and put
 the service behind a reverse proxy (with a hard body-size cap) before any public deploy.
