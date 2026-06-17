@@ -23,6 +23,18 @@ from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E4
 
 logging.basicConfig(level=logging.INFO)
 settings = load_settings()
+
+# Fail closed in production (H1): the loopback-only access fallback trusts the socket
+# peer, which a same-host reverse proxy makes always read as 127.0.0.1 — silently
+# opening the endpoint. So in production a shared secret is mandatory; refuse to start
+# without one rather than serve unauthenticated traffic.
+if settings.is_production and not settings.shared_secret:
+    raise RuntimeError(
+        "CRAM_SHARED_SECRET must be set when CRAM_ENV=prod. The loopback-only fallback "
+        "is dev-only and fails open behind a reverse proxy. Generate one with: "
+        'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+    )
+
 app = FastAPI(title="Cram generation backend", version="0.3")
 
 _LOOPBACK = {"127.0.0.1", "::1"}
@@ -58,6 +70,10 @@ def require_access(request: Request, x_cram_secret: str = Header(default="")) ->
     - If it is not set, only loopback clients are served — so the endpoint is never
       reachable unauthenticated from the LAN/internet. Set the secret before exposing
       it to a device or deploying.
+
+    The loopback fallback is a DEV convenience only: it trusts the socket peer, which a
+    same-host reverse proxy reads as 127.0.0.1. Production therefore requires the secret,
+    enforced by the startup guard above (this branch is unreachable when CRAM_ENV=prod).
     """
     if settings.shared_secret:
         if not secrets.compare_digest(x_cram_secret, settings.shared_secret):
