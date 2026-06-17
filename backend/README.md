@@ -1,11 +1,14 @@
-# Cram generation backend (v0.3)
+# Cram backend (v0.3 generation + v0.4 grading)
 
-Minimal FastAPI service implementing the generation contract in
-[`../docs/adr/0005-generation-api-contract.md`](../docs/adr/0005-generation-api-contract.md):
-one endpoint, `POST /v1/generate`, that turns uploaded course material (PDF/photos)
-into a flashcard + quiz deck via a single server-side Claude call.
+Minimal FastAPI service with two server-side Claude endpoints:
 
-**No database yet** — this is the minimal endpoint (ADR 0003 amendment). Access is gated
+- **`POST /v1/generate`** — uploaded course material (PDF/photos) → a flashcard + quiz deck
+  ([`../docs/adr/0005-generation-api-contract.md`](../docs/adr/0005-generation-api-contract.md)).
+- **`POST /v1/grade`** — a student's short-answer response → score + feedback
+  ([`../docs/adr/0006-grading-api-contract.md`](../docs/adr/0006-grading-api-contract.md)).
+  Multiple-choice is graded on-device and never sent here.
+
+**No database yet** — these are the minimal endpoints (ADR 0003 amendment). Access is gated
 by a shared secret, or loopback-only when no secret is set (see Access control below). The
 Claude API key is server-side only and lives in a gitignored `.env`.
 
@@ -42,9 +45,9 @@ iPhone, bind `--host 0.0.0.0` **and set `CRAM_SHARED_SECRET`** (see below). Don'
 There is still no per-user auth or rate limiting — add a spend cap / rate limit and put
 the service behind a reverse proxy (with a hard body-size cap) before any public deploy.
 
-## The endpoint
+## The endpoints
 
-`POST /v1/generate`, `multipart/form-data`:
+### `POST /v1/generate` — `multipart/form-data`
 
 | Field          | Type            | Notes                                          |
 |----------------|-----------------|------------------------------------------------|
@@ -59,6 +62,23 @@ surfaces via `GenerationError`.
 
 Supported file types: PDF, JPEG, PNG, GIF, WebP. **HEIC is not supported by the Claude
 API** — convert iOS photos to JPEG client-side, or send PDFs.
+
+### `POST /v1/grade` — `application/json`
+
+Grades one **short-answer** response (the client grades multiple choice locally).
+
+```json
+{
+  "prompt": "Why does adding salt raise water's boiling point?",
+  "model_answer": "Dissolved particles lower the vapor pressure, so a higher temperature is needed to boil (boiling-point elevation).",
+  "response": "the salt makes it harder to boil so it needs more heat",
+  "topic": "Colligative properties"
+}
+```
+
+Returns `200` with `{ "score": 0.0–1.0, "is_correct": bool, "feedback": "…" }`. `is_correct`
+is derived server-side (`score >= 0.6`). A blank `response` is valid and scores `0.0`. Errors
+return a non-2xx `detail` message, same as `/v1/generate`. See the ADR for the full contract.
 
 ## Point the iOS app at it
 
