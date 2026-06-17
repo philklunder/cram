@@ -8,9 +8,10 @@ Minimal FastAPI service with two server-side Claude endpoints:
   ([`../docs/adr/0006-grading-api-contract.md`](../docs/adr/0006-grading-api-contract.md)).
   Multiple-choice is graded on-device and never sent here.
 
-**No database yet** — these are the minimal endpoints (ADR 0003 amendment). Access is gated
-by a shared secret, or loopback-only when no secret is set (see Access control below). The
-Claude API key is server-side only and lives in a gitignored `.env`.
+As of v0.5 both endpoints are gated by **Supabase JWT auth** (ADR 0007 §2); the SQLAlchemy
+data model + per-user data endpoints are being layered in (see
+[`../docs/plans/v0.5-backend-persistence-auth.md`](../docs/plans/v0.5-backend-persistence-auth.md)).
+The Claude API key is server-side only and lives in a gitignored `.env`.
 
 ## Run it (Windows)
 
@@ -28,22 +29,26 @@ Health check: `GET http://localhost:8000/healthz` →
 `{"ok": true, "model": "claude-sonnet-4-6", "key_configured": true}`.
 
 `--host 127.0.0.1` and `--reload` are for local dev. To reach the server from your
-iPhone, bind `--host 0.0.0.0` **and set `CRAM_SHARED_SECRET`** (see below). Don't run
-`--reload` in a deployed config.
+iPhone, bind `--host 0.0.0.0` **and configure Supabase JWT auth** (see Access control
+below) — non-loopback requests are refused otherwise. Don't run `--reload` in a deployed
+config.
 
-## Access control
+## Access control (v0.5 — Supabase JWT)
 
-- **Loopback (default):** with `CRAM_SHARED_SECRET` unset, only `127.0.0.1` is served —
-  local curl/dev works with no secret, and the endpoint is never reachable
-  unauthenticated from the LAN.
-- **Device / LAN / deploy:** set `CRAM_SHARED_SECRET` (generate one with
-  `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Every request must
-  then send it in the `X-Cram-Secret` header. The iOS `RemoteGenerationService` sends
-  this header from `AppConfig.sharedSecret` (the `CRAM_SHARED_SECRET` env var in the Run
-  scheme); keep the value out of source.
+Every request to `/v1/*` carries `Authorization: Bearer <supabase_jwt>`. The backend
+verifies it (ADR 0007 §2, [`app/auth.py`](app/auth.py)) against the Supabase JWKS endpoint
+(`SUPABASE_JWKS_URL`, asymmetric keys, preferred) or the project secret
+(`SUPABASE_JWT_SECRET`, HS256), checking signature, expiry, audience, and issuer.
 
-There is still no per-user auth or rate limiting — add a spend cap / rate limit and put
-the service behind a reverse proxy (with a hard body-size cap) before any public deploy.
+- **Dev (no auth configured):** loopback (`127.0.0.1`) requests are served as a fixed dev
+  user, so local curl/dev needs no Supabase. Non-loopback unauthenticated access is always
+  refused.
+- **Prod (`CRAM_ENV=prod`):** the server refuses to start unless JWT auth is configured —
+  the dev fallback fails open behind a reverse proxy.
+
+The `X-Cram-Secret` shared-secret gate is **retired** (ADR 0007 §3). Rate limiting and an
+Anthropic spend cap are still TODO — add them, set `CRAM_ENV=prod`, and put the service
+behind a reverse proxy with a hard body-size cap before any public deploy (v0.5 Phase 4).
 
 ## The endpoints
 
