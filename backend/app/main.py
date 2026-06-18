@@ -1,9 +1,10 @@
 """Cram backend — FastAPI app.
 
 Endpoints: POST /v1/generate (multipart material -> deck JSON, ADR 0005) and POST
-/v1/grade (short-answer -> score + feedback, ADR 0006). As of v0.5 both are gated by
-Supabase JWT auth (ADR 0007 §2) — see app/auth.py. Persistence + per-user data endpoints
-land in Phase 3.
+/v1/grade (short-answer -> score + feedback, ADR 0006), both gated by Supabase JWT auth
+(ADR 0007 §2) — see app/auth.py — and both persisting their output under the caller (Phase
+3). The per-user CRUD + delta-sync API over the eight owned resources is mounted from
+app/routers.py (install_resource_routers).
 """
 
 from __future__ import annotations
@@ -18,12 +19,15 @@ load_dotenv()  # load .env before reading settings
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
-from .auth import CurrentUser, get_current_user  # noqa: E402
 from .config import get_settings  # noqa: E402
 from .db import db_status  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
+from .persist import persist_attempt, persist_generation  # noqa: E402
+from .repository import OwnedRepository  # noqa: E402
+from .routers import get_repo, install_resource_routers  # noqa: E402
 from .schemas import GradeRequest  # noqa: E402
+from .storage import Storage, get_storage  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
@@ -48,6 +52,15 @@ if settings.is_production and settings.allow_dev_fallback:
 _UPLOAD_CHUNK_BYTES = 1 << 20  # 1 MiB
 
 app = FastAPI(title="Cram backend", version="0.5")
+
+# Mount the Phase 3 CRUD + sync routers and the repository-exception → HTTP handlers.
+install_resource_routers(app)
+
+
+def storage_dependency() -> Storage | None:
+    """Storage backend for /v1/generate, resolved from settings. A FastAPI dependency so
+    tests can override it with a fake (no live Supabase Storage needed)."""
+    return get_storage(settings)
 
 
 @app.middleware("http")
@@ -93,9 +106,10 @@ async def generate(
     title: str = Form(...),
     kind: str = Form(...),
     files: list[UploadFile] = File(...),
-    current_user: CurrentUser = Depends(get_current_user),
+    repo: OwnedRepository = Depends(get_repo),
+    storage: Storage | None = Depends(storage_dependency),
 ) -> dict:
-    # current_user authorizes the call; the generated deck becomes owned by it in Phase 3.
+    # repo carries the authenticated owner; the generated deck is persisted under it.
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")
 
@@ -138,20 +152,30 @@ async def generate(
         )
 
     try:
-        return generate_deck(settings, subject_name, title, kind, uploads)
+        deck = generate_deck(settings, subject_name, title, kind, uploads)
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+    # Persist the source (file → Storage) and the generated deck under the caller, then
+    # commit once so the whole generation lands atomically (ADR 0007 §4/§6).
+    enriched = persist_generation(
+        repo, storage,
+        subject_name=subject_name, title=title, kind=kind, files=uploads, deck=deck,
+    )
+    repo.session.commit()
+    return enriched
 
 
 @app.post("/v1/grade")
 async def grade(
     body: GradeRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    repo: OwnedRepository = Depends(get_repo),
 ) -> dict:
     """Grade one short-answer response against its model answer (ADR 0006).
 
     JSON in, JSON out — no files. Multiple-choice is graded on-device and never sent here.
-    The recorded attempt becomes owned by current_user in Phase 3.
+    When ``question_id`` is set, the graded result is persisted as an append-only attempt
+    owned by the caller (Phase 3).
     """
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")
@@ -172,6 +196,16 @@ async def grade(
         )
 
     try:
-        return grade_answer(settings, body.prompt, body.model_answer, body.response, body.topic)
+        result = grade_answer(
+            settings, body.prompt, body.model_answer, body.response, body.topic
+        )
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+    if body.question_id is not None:
+        attempt_id = persist_attempt(
+            repo, question_id=body.question_id, response=body.response, grade=result
+        )
+        repo.session.commit()
+        result = {**result, "attempt_id": str(attempt_id)}
+    return result
