@@ -50,9 +50,10 @@
 - Add a dedicated non-owner DB role + `FORCE ROW LEVEL SECURITY` so the database enforces ownership
   as a second layer behind the app checks? (Note: this would also break the spend cap's global token
   sum — see cost-controls.md — so revisit both together.)
-- Phase 4 thresholds are now configurable env vars (`CRAM_RATE_LIMIT_PER_MIN`,
-  `CRAM_{USER,GLOBAL}_DAILY_TOKEN_CAP`); the concrete production values still need to be chosen per
-  the real Anthropic budget.
+- ~~Phase 4 thresholds need concrete production values.~~ **Chosen 2026-06-18** ($5/mo budget →
+  35000 global = user daily, rate ~10/min) — see [edge-and-budget-backstops.md](edge-and-budget-backstops.md),
+  which also records the two out-of-app security layers (reverse proxy + Anthropic Console hard cap)
+  the pre-deploy audit confirmed are load-bearing and unenforceable from within the app.
 
 ## Last updated
 2026-06-18
