@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,9 @@ class Settings:
     model: str
     env: str
     shared_secret: str
+    # Dev-only escape hatch (see load_settings): serve unauthenticated loopback requests as
+    # a fixed dev user when no Supabase auth is configured. Off unless explicitly opted in.
+    allow_dev_fallback: bool
     max_files: int
     max_file_bytes: int
     max_total_bytes: int
@@ -64,6 +68,12 @@ def load_settings() -> Settings:
         # (ADR 0007 §3, app/auth.py). Still read so existing .env files don't error, but
         # no longer enforced on any endpoint. Safe to remove once no .env sets it.
         shared_secret=os.environ.get("CRAM_SHARED_SECRET", ""),
+        # Dev-only: when no Supabase auth is configured, serve loopback requests as a fixed
+        # dev user (app/auth.py). OFF by default so a deploy that forgets CRAM_ENV=prod still
+        # fails closed — the H1 same-host-reverse-proxy bypass needs this flag to be opt-in.
+        # Set CRAM_ALLOW_DEV_FALLBACK=1 only for local work without a Supabase project.
+        allow_dev_fallback=os.environ.get("CRAM_ALLOW_DEV_FALLBACK", "").strip().lower()
+        in {"1", "true", "yes", "on"},
         max_files=int(os.environ.get("CRAM_MAX_FILES", "20")),
         max_file_bytes=int(os.environ.get("CRAM_MAX_FILE_BYTES", str(32 * 1024 * 1024))),
         max_total_bytes=int(os.environ.get("CRAM_MAX_TOTAL_BYTES", str(32 * 1024 * 1024))),
@@ -82,3 +92,11 @@ def load_settings() -> Settings:
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
         supabase_storage_bucket=os.environ.get("SUPABASE_STORAGE_BUCKET", "sources").strip(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Process-wide cached settings — the environment is read exactly once. Call this from
+    application code instead of ``load_settings()`` so there is a single source of truth.
+    Tests that mutate the environment can reset it with ``get_settings.cache_clear()``."""
+    return load_settings()

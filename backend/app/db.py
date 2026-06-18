@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from .config import Settings, load_settings
+from .config import Settings, get_settings
+
+# Query params some providers append (Prisma/Supabase) that libpq/psycopg reject as unknown
+# connection options. Stripped by normalize_url so a copy-pasted pooler URL still connects.
+_DROP_QUERY_PARAMS = {"pgbouncer"}
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +35,33 @@ class Base(DeclarativeBase):
     ``Base.metadata`` is empty, so Alembic autogenerate produces an empty migration."""
 
 
+def _strip_unknown_params(url: str) -> str:
+    """Drop query params libpq/psycopg can't consume (e.g. Prisma's ``?pgbouncer=true``),
+    which otherwise raise ``invalid connection option`` at connect time."""
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    kept = [
+        (k, v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if k not in _DROP_QUERY_PARAMS
+    ]
+    return urlunsplit(parts._replace(query=urlencode(kept)))
+
+
 def normalize_url(url: str) -> str:
-    """Force the psycopg (v3) driver. Supabase hands out bare ``postgresql://`` (and
-    sometimes ``postgres://``) URLs, which SQLAlchemy would route to psycopg2 — the
-    driver we don't install. Rewrite the scheme to ``postgresql+psycopg://``."""
-    if url.startswith("postgresql+"):
-        return url  # an explicit driver is already set; leave it alone
-    for prefix in ("postgresql://", "postgres://"):
-        if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix) :]
-    return url
+    """Force the psycopg (v3) driver and drop provider-only query params. Supabase hands out
+    bare ``postgresql://`` (and sometimes ``postgres://``) URLs, which SQLAlchemy would route
+    to psycopg2 — the driver we don't install — so rewrite the scheme to
+    ``postgresql+psycopg://``, then strip params like ``pgbouncer`` that psycopg rejects."""
+    if not url:
+        return url
+    if not url.startswith("postgresql+"):
+        for prefix in ("postgresql://", "postgres://"):
+            if url.startswith(prefix):
+                url = "postgresql+psycopg://" + url[len(prefix) :]
+                break
+    return _strip_unknown_params(url)
 
 
 def _build_engine(settings: Settings) -> Engine | None:
@@ -57,7 +79,7 @@ def _build_engine(settings: Settings) -> Engine | None:
     )
 
 
-_engine: Engine | None = _build_engine(load_settings())
+_engine: Engine | None = _build_engine(get_settings())
 _SessionLocal: sessionmaker[Session] | None = (
     sessionmaker(bind=_engine, autoflush=False, expire_on_commit=False, future=True)
     if _engine is not None
