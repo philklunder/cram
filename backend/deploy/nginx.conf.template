@@ -1,0 +1,55 @@
+# M1 reverse proxy (ADR 0009): hard request-body cap + coarse per-IP limit at the
+# edge, in front of uvicorn. Rendered at boot by entrypoint.sh with the runtime $PORT.
+# Included inside the stock Debian nginx.conf http{} block (via conf.d/*.conf), so the
+# http-context directives below (real_ip / limit_*_zone) are valid here.
+
+# Resolve the true client IP from Railway's edge. The container's immediate peer is
+# Railway's proxy on a PRIVATE address, so trusting only private ranges is non-spoofable
+# (a public client cannot present a private source). Both the per-IP limit below and the
+# app's own rate-limit key (with CRAM_TRUSTED_PROXY=1) then see the real client.
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;
+set_real_ip_from 192.168.0.0/16;
+set_real_ip_from 100.64.0.0/10;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+
+# Coarse pre-auth flood protection. The app's own rate limit is per-authenticated-user
+# and DB-backed; this blunts unauthenticated floods before they reach a worker.
+limit_req_zone  $binary_remote_addr zone=cram_rl:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=cram_conn:10m;
+limit_req_status  429;
+limit_conn_status 429;
+
+# Don't advertise the nginx version in headers/error pages.
+server_tokens off;
+
+server {
+    listen ${PORT};
+    server_name _;
+
+    # M1 hard body cap: just above CRAM_MAX_TOTAL_BYTES (32 MiB) so a legit max-size
+    # upload still reaches the app's friendly 413 JSON, while anything larger — including
+    # a slow/chunked upload that bypasses the in-app Content-Length check — dies here,
+    # before FastAPI spools the body. If you lower CRAM_MAX_TOTAL_BYTES, lower this too.
+    client_max_body_size 36m;
+    client_body_timeout  30s;
+
+    limit_req  zone=cram_rl burst=20 nodelay;
+    limit_conn cram_conn 20;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # OVERWRITE (not append) X-Forwarded-For with the realip-resolved client IP.
+        # The app trusts the FIRST XFF entry (app/limits.py) for its per-IP rate-limit
+        # fallback, so appending to a client-supplied chain ($proxy_add_x_forwarded_for)
+        # would let a client spoof that key. $remote_addr is the true client after realip.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Claude vision calls over a large PDF can take a while — don't sever them.
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}

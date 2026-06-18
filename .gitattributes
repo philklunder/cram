@@ -1,0 +1,5 @@
+# Deploy artifacts run on Linux — force LF so a CRLF checkout can never break the
+# container boot (CRLF in a shell shebang or nginx config fails at runtime).
+*.sh                text eol=lf
+backend/Dockerfile  text eol=lf
+backend/deploy/*    text eol=lf
