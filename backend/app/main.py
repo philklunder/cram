@@ -19,14 +19,14 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import JSONResponse  # noqa: E402
 
 from .auth import CurrentUser, get_current_user  # noqa: E402
-from .config import load_settings  # noqa: E402
+from .config import get_settings  # noqa: E402
 from .db import db_status  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
 from .schemas import GradeRequest  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
-settings = load_settings()
+settings = get_settings()
 
 # Fail closed in production (ADR 0007 §2/§3): without configured JWT auth the only gate
 # is the dev loopback fallback, which is unsafe behind a same-host reverse proxy. So in
@@ -37,6 +37,15 @@ if settings.is_production and not settings.auth_configured:
         "(preferred) or SUPABASE_JWT_SECRET. The dev loopback fallback fails open behind "
         "a reverse proxy and is refused in production."
     )
+# The dev fallback must never be enabled in production — it would bypass auth entirely.
+if settings.is_production and settings.allow_dev_fallback:
+    raise RuntimeError(
+        "CRAM_ALLOW_DEV_FALLBACK must not be set when CRAM_ENV=prod: it serves loopback "
+        "requests as a fixed dev user, bypassing authentication."
+    )
+
+# Upload read granularity for the per-file streaming size check (see /v1/generate).
+_UPLOAD_CHUNK_BYTES = 1 << 20  # 1 MiB
 
 app = FastAPI(title="Cram backend", version="0.5")
 
@@ -103,23 +112,28 @@ async def generate(
     uploads: list[UploadedFile] = []
     total = 0
     for f in files:
-        data = await f.read()
-        total += len(data)
-        if len(data) > settings.max_file_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File '{f.filename}' exceeds the {settings.max_file_bytes} byte limit.",
-            )
-        if total > settings.max_total_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Total upload exceeds the {settings.max_total_bytes} byte limit.",
-            )
+        # Read incrementally and abort as soon as a cap is exceeded, so a chunked-encoding
+        # upload (which bypasses the Content-Length middleware) can't buffer an unbounded
+        # body — memory is bounded to ~max_file_bytes per file (M1 hardening).
+        buf = bytearray()
+        while chunk := await f.read(_UPLOAD_CHUNK_BYTES):
+            buf.extend(chunk)
+            if len(buf) > settings.max_file_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File '{f.filename}' exceeds the {settings.max_file_bytes} byte limit.",
+                )
+            if total + len(buf) > settings.max_total_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Total upload exceeds the {settings.max_total_bytes} byte limit.",
+                )
+        total += len(buf)
         uploads.append(
             UploadedFile(
                 filename=f.filename or "upload",
                 content_type=_resolve_content_type(f),
-                data=data,
+                data=bytes(buf),
             )
         )
 
