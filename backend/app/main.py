@@ -19,10 +19,12 @@ load_dotenv()  # load .env before reading settings
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
-from .config import get_settings  # noqa: E402
+from .config import check_production_config, get_settings  # noqa: E402
 from .db import db_status  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
+from .limits import enforce_rate_limit, enforce_spend_cap, record_usage  # noqa: E402
+from .models.internal import AiCallKind  # noqa: E402
 from .persist import persist_attempt, persist_generation  # noqa: E402
 from .repository import OwnedRepository  # noqa: E402
 from .routers import get_repo, install_resource_routers  # noqa: E402
@@ -32,21 +34,10 @@ from .storage import Storage, get_storage  # noqa: E402
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 
-# Fail closed in production (ADR 0007 §2/§3): without configured JWT auth the only gate
-# is the dev loopback fallback, which is unsafe behind a same-host reverse proxy. So in
-# production Supabase JWT auth is mandatory; refuse to start without it.
-if settings.is_production and not settings.auth_configured:
-    raise RuntimeError(
-        "Supabase JWT auth must be configured when CRAM_ENV=prod: set SUPABASE_JWKS_URL "
-        "(preferred) or SUPABASE_JWT_SECRET. The dev loopback fallback fails open behind "
-        "a reverse proxy and is refused in production."
-    )
-# The dev fallback must never be enabled in production — it would bypass auth entirely.
-if settings.is_production and settings.allow_dev_fallback:
-    raise RuntimeError(
-        "CRAM_ALLOW_DEV_FALLBACK must not be set when CRAM_ENV=prod: it serves loopback "
-        "requests as a fixed dev user, bypassing authentication."
-    )
+# Fail closed in production (ADR 0007 §2/§3, ADR 0009): refuse to boot a public deploy that
+# is missing auth, leaves the dev fallback on, or lacks the Phase 4 cost controls. The check
+# lives in config.py so it is unit-testable; it is a no-op outside CRAM_ENV=prod.
+check_production_config(settings)
 
 # Upload read granularity for the per-file streaming size check (see /v1/generate).
 _UPLOAD_CHUNK_BYTES = 1 << 20  # 1 MiB
@@ -100,7 +91,7 @@ def _resolve_content_type(file: UploadFile) -> str:
     return guessed or "application/octet-stream"
 
 
-@app.post("/v1/generate")
+@app.post("/v1/generate", dependencies=[Depends(enforce_rate_limit)])
 async def generate(
     subject_name: str = Form(...),
     title: str = Form(...),
@@ -151,13 +142,24 @@ async def generate(
             )
         )
 
+    # Spend cap (ADR 0009): refuse over-budget callers BEFORE spending on a Claude call.
+    enforce_spend_cap(repo.session, repo.user_id, settings)
+
     try:
-        deck = generate_deck(settings, subject_name, title, kind, uploads)
+        deck, usage = generate_deck(settings, subject_name, title, kind, uploads)
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
-    # Persist the source (file → Storage) and the generated deck under the caller, then
-    # commit once so the whole generation lands atomically (ADR 0007 §4/§6).
+    # Meter the spend FIRST and commit it on its own: the call has already cost money, so the
+    # usage row must be durable independent of the (fallible) persistence below — otherwise a
+    # Storage/DB failure after the paid call would discard the meter and let the spend cap be
+    # bypassed (security review 2026-06-18, ADR 0009).
+    record_usage(repo.session, repo.user_id, AiCallKind.generate, usage)
+    repo.session.commit()
+
+    # Persist the source (file → Storage) and the generated deck under the caller, then commit.
+    # If this fails the caller still paid and is still metered (no refund of the meter), which
+    # is the correct posture for a spend cap (ADR 0007 §4/§6, ADR 0009).
     enriched = persist_generation(
         repo, storage,
         subject_name=subject_name, title=title, kind=kind, files=uploads, deck=deck,
@@ -166,7 +168,7 @@ async def generate(
     return enriched
 
 
-@app.post("/v1/grade")
+@app.post("/v1/grade", dependencies=[Depends(enforce_rate_limit)])
 async def grade(
     body: GradeRequest,
     repo: OwnedRepository = Depends(get_repo),
@@ -195,12 +197,23 @@ async def grade(
             status_code=422, detail="Fields 'prompt' and 'model_answer' must not be empty."
         )
 
+    # Spend cap (ADR 0009): refuse over-budget callers BEFORE spending on a Claude call.
+    enforce_spend_cap(repo.session, repo.user_id, settings)
+
     try:
-        result = grade_answer(
+        result, usage = grade_answer(
             settings, body.prompt, body.model_answer, body.response, body.topic
         )
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+    # Meter the spend FIRST and commit it on its own — the call already cost money, so the
+    # usage row must be durable even if the optional attempt persist below fails (e.g. a
+    # foreign/absent question_id raises OwnershipError → 422). Committing usage in the same
+    # transaction as the attempt would let that failure roll back the meter and bypass the
+    # spend cap (security review 2026-06-18, ADR 0009).
+    record_usage(repo.session, repo.user_id, AiCallKind.grade, usage)
+    repo.session.commit()
 
     if body.question_id is not None:
         attempt_id = persist_attempt(

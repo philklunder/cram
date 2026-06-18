@@ -53,6 +53,30 @@ class UploadedFile:
     data: bytes
 
 
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token cost of one Claude call, surfaced so the route can meter it against the spend
+    cap (Phase 4, ADR 0009). Cache tokens are folded into the billed input total."""
+
+    input_tokens: int
+    output_tokens: int
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @classmethod
+    def from_usage(cls, u) -> "TokenUsage":  # noqa: ANN001 — SDK Usage object
+        # cache_creation/​cache_read are billed input tokens too; count them so the cap
+        # reflects real spend (a cache write costs ~1.25x a normal input token).
+        cache_write = getattr(u, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+        return cls(
+            input_tokens=(u.input_tokens or 0) + cache_write + cache_read,
+            output_tokens=u.output_tokens or 0,
+        )
+
+
 def _content_block(file: UploadedFile) -> dict:
     b64 = base64.standard_b64encode(file.data).decode("ascii")
     ct = (file.content_type or "").lower()
@@ -78,7 +102,9 @@ def generate_deck(
     title: str,
     kind: str,
     files: list[UploadedFile],
-) -> dict:
+) -> tuple[dict, TokenUsage]:
+    """Generate a deck and return ``(deck_dict, TokenUsage)`` — the caller meters the token
+    usage against the spend cap (Phase 4) and persists the deck."""
     if not files:
         raise GenerationError("No files supplied.")
 
@@ -136,4 +162,4 @@ def generate_deck(
         log.warning("malformed deck from model: %s", e)
         raise GenerationError("The model returned malformed deck data.") from e
 
-    return deck.model_dump()
+    return deck.model_dump(), TokenUsage.from_usage(u)

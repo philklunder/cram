@@ -25,6 +25,17 @@ class Settings:
     max_file_bytes: int
     max_total_bytes: int
     max_field_chars: int
+    # v0.5 Phase 4 hardening (ADR 0009). All default to "disabled" (0 / off) so local and
+    # dev runs are unaffected; production *requires* them (see check_production_config).
+    # Per-caller request ceiling per minute across all /v1/* routes (0 = no limit).
+    rate_limit_per_min: int
+    # Daily token ceilings for the metered Claude calls (0 = no cap). Token-based (exact from
+    # the SDK usage) rather than cost-based, so there is no per-model price table to maintain.
+    user_daily_token_cap: int
+    global_daily_token_cap: int
+    # Honour X-Forwarded-For for the rate-limit IP fallback only when explicitly behind a
+    # trusted reverse proxy. Off by default: an untrusted client can spoof the header (H1).
+    trust_proxy: bool
     # v0.5 persistence + auth (ADR 0007). All optional in Phase 0 so the app boots
     # before the Supabase project exists; the DB health check reports "not_configured".
     database_url: str
@@ -79,6 +90,13 @@ def load_settings() -> Settings:
         max_total_bytes=int(os.environ.get("CRAM_MAX_TOTAL_BYTES", str(32 * 1024 * 1024))),
         # Cap on each free-text form field (subject_name / title / kind), in characters.
         max_field_chars=int(os.environ.get("CRAM_MAX_FIELD_CHARS", "4096")),
+        # Phase 4 hardening (ADR 0009). Default off so dev/local is unaffected; prod requires
+        # them (check_production_config). A generous 60/min covers an interactive client.
+        rate_limit_per_min=int(os.environ.get("CRAM_RATE_LIMIT_PER_MIN", "60")),
+        user_daily_token_cap=int(os.environ.get("CRAM_USER_DAILY_TOKEN_CAP", "0")),
+        global_daily_token_cap=int(os.environ.get("CRAM_GLOBAL_DAILY_TOKEN_CAP", "0")),
+        trust_proxy=os.environ.get("CRAM_TRUSTED_PROXY", "").strip().lower()
+        in {"1", "true", "yes", "on"},
         # Supabase Postgres (ADR 0007). DATABASE_URL is the app-runtime connection
         # (transaction pooler, port 6543); DATABASE_DIRECT_URL is the direct connection
         # (port 5432) used by Alembic migrations. Both empty until the project exists.
@@ -100,3 +118,45 @@ def get_settings() -> Settings:
     application code instead of ``load_settings()`` so there is a single source of truth.
     Tests that mutate the environment can reset it with ``get_settings.cache_clear()``."""
     return load_settings()
+
+
+def check_production_config(settings: Settings) -> None:
+    """Fail fast (``RuntimeError``) if a ``CRAM_ENV=prod`` boot is missing required config.
+
+    The whole point of v0.5 Phase 4 is to be safe to deploy publicly, so production refuses
+    to start half-configured (the fail-closed posture of ADR 0008, extended in ADR 0009). A
+    no-op outside production. Called once at import in ``app/main.py``; pure and side-effect
+    free so it is unit-testable with a hand-built ``Settings``.
+    """
+    if not settings.is_production:
+        return
+
+    problems: list[str] = []
+    # Auth must be real in prod — the dev loopback fallback fails open behind a same-host
+    # reverse proxy (ADR 0007 §2/§3, H1).
+    if not settings.auth_configured:
+        problems.append(
+            "Supabase JWT auth (set SUPABASE_JWKS_URL — preferred — or SUPABASE_JWT_SECRET)"
+        )
+    if settings.allow_dev_fallback:
+        problems.append("CRAM_ALLOW_DEV_FALLBACK must be OFF (it bypasses authentication)")
+    # The service is useless / unsafe without these.
+    if not settings.anthropic_api_key:
+        problems.append("ANTHROPIC_API_KEY")
+    if not settings.database_url:
+        problems.append("DATABASE_URL")
+    # Cost controls are mandatory before a public deploy (the Phase 4 raison d'être): an
+    # unmetered public endpoint to a paid LLM is an open wallet.
+    if settings.rate_limit_per_min <= 0:
+        problems.append("CRAM_RATE_LIMIT_PER_MIN must be > 0")
+    if settings.user_daily_token_cap <= 0:
+        problems.append("CRAM_USER_DAILY_TOKEN_CAP must be > 0")
+    if settings.global_daily_token_cap <= 0:
+        problems.append("CRAM_GLOBAL_DAILY_TOKEN_CAP must be > 0")
+
+    if problems:
+        raise RuntimeError(
+            "CRAM_ENV=prod is missing required configuration:\n  - "
+            + "\n  - ".join(problems)
+            + "\nSee docs/SETUP.md → Production deploy checklist."
+        )
