@@ -11,6 +11,7 @@ from ..db import Base
 from .card import Card
 from .enums import GradeKind, GradingScale, QuestionKind, SourceKind
 from .grade_entry import GradeEntry
+from .internal import AiCallKind, AiUsageEvent, RateLimitBucket
 from .quiz import Attempt, Question, Quiz
 from .review_log import ReviewLog
 from .source import Source
@@ -30,4 +31,8 @@ __all__ = [
     "QuestionKind",
     "GradeKind",
     "GradingScale",
+    # Backend-internal infra tables (Phase 4, ADR 0009): not synced to iOS.
+    "AiUsageEvent",
+    "RateLimitBucket",
+    "AiCallKind",
 ]
