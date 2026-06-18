@@ -53,7 +53,9 @@
 - Pruning `rate_limit_buckets` / aging out `ai_usage_events` (a scheduled `DELETE` or Supabase cron) —
   currently unbounded growth, fine at current volume.
 - The spend cap's check-then-act window allows a bounded overshoot (in-flight requests); closing it
-  fully (reserve-then-reconcile) isn't worth it for a single-tenant deploy.
+  fully (reserve-then-reconcile) isn't worth it for a single-tenant deploy. At a very small budget the
+  overshoot can equal a month's spend, so the real backstop is an **out-of-app Anthropic Console hard
+  limit** rather than tighter in-app logic — see [edge-and-budget-backstops.md](edge-and-budget-backstops.md).
 
 ## Last updated
 2026-06-18
