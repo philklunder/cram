@@ -21,11 +21,11 @@ from functools import lru_cache
 import jwt
 from fastapi import Header, HTTPException, Request
 
-from .config import Settings, load_settings
+from .config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-_settings = load_settings()
+_settings = get_settings()
 
 _LOOPBACK = {"127.0.0.1", "::1"}
 # Supabase access tokens are issued for the "authenticated" audience.
@@ -67,6 +67,13 @@ def _verify_token(settings: Settings, token: str) -> CurrentUser:
             raise HTTPException(status_code=500, detail="Server auth is not configured.")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired.") from None
+    except jwt.PyJWKClientError as e:
+        # Couldn't resolve a signing key: a token whose `kid` isn't in the JWKS, or a
+        # malformed/unreachable JWKS URL. Log the real reason server-side (it may indicate a
+        # misconfig or a Supabase outage) but return a client-safe 401 — never a 500 with a
+        # stack trace, and never the upstream detail.
+        logger.warning("JWKS key resolution failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid token.") from None
     except jwt.InvalidTokenError:
         # Covers bad signature, wrong audience/issuer, malformed token, etc.
         raise HTTPException(status_code=401, detail="Invalid token.") from None
@@ -89,8 +96,9 @@ def get_current_user(
 ) -> CurrentUser:
     """FastAPI dependency: the authenticated user, or 401.
 
-    Returns the dev fallback user only for loopback requests when auth is unconfigured
-    (dev-only — see the module docstring); every other unauthenticated case is refused.
+    Returns the dev fallback user only when it is explicitly opted in
+    (``CRAM_ALLOW_DEV_FALLBACK``) AND the request is loopback AND auth is unconfigured —
+    a dev-only path (see the module docstring). Every other unauthenticated case is refused.
     """
     token = ""
     if authorization.lower().startswith("bearer "):
@@ -105,10 +113,11 @@ def get_current_user(
             )
         return _verify_token(_settings, token)
 
-    # No auth configured -> dev only (prod refuses to boot without it). Serve loopback as
-    # a fixed dev user; refuse anything else, preserving the non-loopback lockout (H1).
+    # No auth configured. The dev fallback is OFF unless explicitly opted in, so forgetting
+    # CRAM_ENV=prod fails closed rather than open (H1: a same-host reverse proxy makes every
+    # request look like loopback). Only opt-in + loopback is served as the fixed dev user.
     client_host = request.client.host if request.client else ""
-    if client_host in _LOOPBACK:
+    if _settings.allow_dev_fallback and client_host in _LOOPBACK:
         logger.warning("Auth not configured; serving loopback request as the dev fallback user.")
         return CurrentUser(id=DEV_USER_ID, is_dev_fallback=True)
     raise HTTPException(
