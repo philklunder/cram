@@ -48,12 +48,28 @@ verifies it (ADR 0007 §2, [`app/auth.py`](app/auth.py)) against the Supabase JW
 - **Dev (no auth configured):** loopback (`127.0.0.1`) requests are served as a fixed dev
   user, so local curl/dev needs no Supabase. Non-loopback unauthenticated access is always
   refused.
-- **Prod (`CRAM_ENV=prod`):** the server refuses to start unless JWT auth is configured —
-  the dev fallback fails open behind a reverse proxy.
+- **Prod (`CRAM_ENV=prod`):** the server refuses to start unless JWT auth is configured **and**
+  the Phase 4 cost controls are set (ADR 0009) — see [Cost controls](#cost-controls-v05-phase-4)
+  and the [production deploy checklist](../docs/SETUP.md#production-deploy-checklist).
 
-The `X-Cram-Secret` shared-secret gate is **retired** (ADR 0007 §3). Rate limiting and an
-Anthropic spend cap are still TODO — add them, set `CRAM_ENV=prod`, and put the service
-behind a reverse proxy with a hard body-size cap before any public deploy (v0.5 Phase 4).
+The `X-Cram-Secret` shared-secret gate is **retired** (ADR 0007 §3).
+
+## Cost controls (v0.5 Phase 4)
+
+Pre-deploy hardening, all Postgres-backed and **default-off so dev is unaffected** (the prod guard
+requires them — ADR 0009):
+
+- **Per-caller rate limit** on every `/v1/*` route (CRUD + the AI endpoints). Fixed per-minute
+  window keyed per user (per-IP for the dev-fallback identity); over the limit → `429` with
+  `Retry-After`. `CRAM_RATE_LIMIT_PER_MIN` (default 60; 0 disables).
+- **Anthropic spend cap** — token-based, daily (resets 00:00 UTC), enforced **per user and
+  globally**. Over budget, `/v1/generate` and `/v1/grade` return `429` **before** the Claude call.
+  `CRAM_USER_DAILY_TOKEN_CAP` / `CRAM_GLOBAL_DAILY_TOKEN_CAP` (default 0 = no cap). Usage is metered
+  the instant a paid call returns, independent of whether the request's persistence then succeeds.
+- **Reverse-proxy body cap** — a hard cap in front of the in-app caps; see
+  [`deploy/reverse-proxy.example.conf`](deploy/reverse-proxy.example.conf).
+- `CRAM_TRUSTED_PROXY` — enable only behind a trusted proxy (gates `X-Forwarded-For` trust for the
+  rate-limit IP fallback).
 
 ## The endpoints
 

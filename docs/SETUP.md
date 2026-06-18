@@ -1,7 +1,7 @@
 # Setup
 
-No secrets live in this repo. API keys go in a local `.env` (gitignored); a `.env.example` with
-blank placeholders will be added alongside the backend.
+No secrets live in this repo. API keys go in a local `.env` (gitignored); copy
+[`backend/.env.example`](../backend/.env.example) (blank placeholders) and fill it in.
 
 ## iOS app
 
@@ -74,6 +74,47 @@ set TEST_DATABASE_URL=postgresql://postgres:pw@localhost:55432/postgres   # Powe
 
 The suite builds the schema from `Base.metadata` (not Alembic), so it omits the Supabase
 `auth.users` FKs/RLS that need the `auth` schema, and stubs the Claude calls and Storage.
+
+### Production deploy checklist
+
+Before any public deploy, set `CRAM_ENV=prod`. The app then **refuses to boot** unless every item
+below is configured — `check_production_config` (in [`app/config.py`](../backend/app/config.py))
+fails fast with the exact missing keys (ADR 0009). This is deliberate: an unmetered public endpoint
+to a paid LLM is an open wallet.
+
+| Env var | Requirement in prod |
+|---------|---------------------|
+| `SUPABASE_JWKS_URL` (or `SUPABASE_JWT_SECRET`) | JWT auth must be configured — the dev fallback fails open behind a reverse proxy. |
+| `CRAM_ALLOW_DEV_FALLBACK` | must be **off** (it bypasses auth). |
+| `ANTHROPIC_API_KEY` | set. |
+| `DATABASE_URL` | set. |
+| `CRAM_RATE_LIMIT_PER_MIN` | **> 0** — per-caller request ceiling per minute over all `/v1/*` (default 60; over the limit → `429` + `Retry-After`). |
+| `CRAM_USER_DAILY_TOKEN_CAP` | **> 0** — per-user daily Anthropic token cap. |
+| `CRAM_GLOBAL_DAILY_TOKEN_CAP` | **> 0** — deployment-wide daily token cap. |
+
+Spend caps are token-based and reset at 00:00 UTC; over budget, `/v1/generate` and `/v1/grade`
+return `429` **before** calling Claude. Set `CRAM_TRUSTED_PROXY=1` only when the app sits behind a
+trusted reverse proxy (it gates `X-Forwarded-For` trust for the rate-limit IP fallback). All these
+vars default to off/0, so local and dev runs are unaffected — they are required only in prod. See
+[`backend/.env.example`](../backend/.env.example) for the full annotated list.
+
+Also before deploying:
+
+- **Apply migration `0003`** to the live Supabase DB the same way Phase 1 was applied
+  (`alembic upgrade head` against `DATABASE_DIRECT_URL`). It adds the `ai_usage_events` (spend-cap
+  ledger) and `rate_limit_buckets` tables; it needs the Supabase `auth` schema, so it can't run on a
+  plain Postgres. The autogenerate drift caveat applies as with `0002` — discard any generated
+  migration that wants to drop the `auth.users` FK.
+- **Reverse-proxy body cap** (below).
+
+### Reverse-proxy body cap
+
+The in-app body caps (`app/main.py`) are defense-in-depth; the authoritative hard cap belongs at the
+edge so an oversized/chunked upload never reaches a worker. Ready-made nginx / Caddy / Traefik
+snippets are in [`backend/deploy/reverse-proxy.example.conf`](../backend/deploy/reverse-proxy.example.conf),
+sized just above `CRAM_MAX_TOTAL_BYTES` (32 MiB → ~`36m`). While you're there, add a **coarse per-IP
+request/connection limit** at the proxy: the app's rate limit is per-authenticated-user, so a
+pre-auth flood is still cheap to mount — the proxy is the right place to blunt it.
 
 ## Web (added on Windows)
 

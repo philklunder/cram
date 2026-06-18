@@ -2,7 +2,8 @@
 
 > Cross-references the canonical ADRs in `docs/adr/` (the repo's numbered decision record).
 > This file is the "why behind the why" for a future session with zero context. Formal
-> contracts live in ADR 0005/0006/0007/0008.
+> contracts live in ADR 0005/0006/0007/0008/0009. The cost-DoS controls deferred here shipped in
+> Phase 4 — see [cost-controls.md](cost-controls.md).
 
 ## Decisions
 - **Auth defaults fail closed.** The dev loopback fallback (serve unauthenticated loopback as a
@@ -14,8 +15,10 @@
   HS256 only on the legacy-secret path), audience (`authenticated`) + issuer + exp enforced.
 - **Ownership is enforced in app code, not the database.** RLS is `ENABLE`d (defense-in-depth for the
   disabled Data API) but the backend connects as the table-owner role and **bypasses** it.
-- **Cost-DoS controls are deferred to Phase 4 on purpose** — a real Anthropic spend cap needs the
-  persistence-backed usage tracking; an in-memory limiter now would be false confidence.
+- **Cost-DoS controls shipped in Phase 4** (were deferred on purpose — a real Anthropic spend cap
+  needs persistence-backed usage tracking, which arrived with Phase 3). Postgres-backed per-caller
+  rate limit + token-based per-user/global daily spend cap + reverse-proxy body cap, all mandatory in
+  prod. See [cost-controls.md](cost-controls.md) and ADR 0009.
 - **Secrets are server-side only and never committed.** `.env` is gitignored; only `.env.example`
   (blank placeholders) ships. The Claude key, Supabase service-role key, and DB creds live in `.env`.
 
@@ -37,15 +40,19 @@
   cross-user isolation tests as an acceptance gate. One missed `WHERE user_id = …` is a cross-user
   leak with no DB backstop. Soft-delete must set `deleted_at` on descendants (a hard ORM cascade
   emits no child tombstones → ghost rows on offline clients).
-- **Phase 4 owns** per-user rate limit + Anthropic spend cap + a hard reverse-proxy body cap before
-  any public deploy.
+- **Phase 4 delivered** the per-caller rate limit + Anthropic spend cap + hard reverse-proxy body
+  cap, plus a prod-config guard that refuses to boot without them — the public-deploy gate is closed
+  (cost-controls.md, ADR 0009).
 - The `SUPABASE_JWKS_URL` must be the JWKS **endpoint URL**, not an API key — a mis-paste there
   silently fails every token (caught this session).
 
 ## Open questions
 - Add a dedicated non-owner DB role + `FORCE ROW LEVEL SECURITY` so the database enforces ownership
-  as a second layer behind the app checks?
-- Concrete Phase 4 thresholds: per-user request rate, daily/monthly token-or-cost ceiling.
+  as a second layer behind the app checks? (Note: this would also break the spend cap's global token
+  sum — see cost-controls.md — so revisit both together.)
+- Phase 4 thresholds are now configurable env vars (`CRAM_RATE_LIMIT_PER_MIN`,
+  `CRAM_{USER,GLOBAL}_DAILY_TOKEN_CAP`); the concrete production values still need to be chosen per
+  the real Anthropic budget.
 
 ## Last updated
 2026-06-18
