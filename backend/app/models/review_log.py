@@ -27,6 +27,8 @@ class ReviewLog(UUIDPkMixin, OwnedMixin, TimestampMixin, Base):
     card_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Distinct from created_at (the server-insert time): reviewed_at is the domain event time
+    # the client reports, which differs for a review done offline and synced up later.
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
