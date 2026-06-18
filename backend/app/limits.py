@@ -161,8 +161,14 @@ def enforce_spend_cap(session: Session, user_id, settings: Settings) -> None:
 
 
 def record_usage(session: Session, user_id, kind: AiCallKind, usage) -> None:
-    """Append a usage row for a *successful* Claude call. Does not commit — the caller commits
-    it atomically with the persisted output, so usage is recorded iff the work landed."""
+    """Append a usage row for a Claude call that has already been made (and therefore already
+    cost money). Does NOT commit — but the caller MUST commit it immediately, on its own, and
+    *before* the fallible persistence that follows. Metering is deliberately decoupled from
+    persistence: if the row were committed atomically with the persisted output, any post-call
+    failure (e.g. a foreign question_id → OwnershipError, a Storage/DB hiccup) would roll the
+    meter back and let the spend cap be bypassed via unmetered paid calls (the High fixed in the
+    2026-06-18 review, ADR 0009). The call cost money, so it is metered even if the request then
+    fails — see the commit ordering in app/main.py."""
     session.add(
         AiUsageEvent(
             user_id=user_id,
