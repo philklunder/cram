@@ -35,6 +35,11 @@ class Subject(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
     # back to the weighted average of grade_entries (PRODUCT-SPEC §6).
     current_grade: Mapped[float | None] = mapped_column(Double, nullable=True)
 
+    # NOTE (sync, ADR 0007 §5): these cascades are HARD deletes (ORM + DB ON DELETE CASCADE)
+    # and are for true row removal only (admin / account deletion). The normal lifecycle is
+    # SOFT delete via SyncMixin.deleted_at, which clients pull as tombstones. Phase 3 delete
+    # logic must set deleted_at on descendants explicitly — a hard cascade leaves offline
+    # clients with ghost rows because no child tombstone is ever emitted.
     sources: Mapped[list["Source"]] = relationship(
         back_populates="subject", cascade="all, delete-orphan", passive_deletes=True
     )

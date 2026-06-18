@@ -71,6 +71,8 @@ class Attempt(UUIDPkMixin, OwnedMixin, TimestampMixin, Base):
     score: Mapped[float] = mapped_column(Double, nullable=False)
     # Grader feedback (ADR 0006); empty for locally-graded multiple choice.
     feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Distinct from created_at (the server-insert time): graded_at is the domain event time
+    # the client reports, which differs for an attempt made offline and synced up later.
     graded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
