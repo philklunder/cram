@@ -54,6 +54,18 @@ are soft (`deleted_at`) and cascade the tombstone to descendants so offline clie
 Generation and grading persist their output through the same owner-scoped layer. Full contract:
 [ADR 0007](adr/0007-backend-persistence-and-auth.md) §5.
 
+## Cost controls (v0.5 Phase 4)
+
+Two Postgres-backed cost limits sit on the request path, so the public API is safe to expose
+([ADR 0009](adr/0009-pre-deploy-hardening.md)). A **per-caller rate limit** (a router-level
+dependency) gates every `/v1/*` route — per authenticated user, fixed per-minute window, `429` over
+the limit. An **Anthropic spend cap** wraps the two Claude calls: before each call the backend sums
+today's token usage (per user and globally) and refuses with `429` if over budget; after a paid call
+it records the usage to a ledger table. The metering is committed the moment the call returns —
+before the deck/attempt is persisted — so a persistence failure can never un-meter a call that
+already cost money. A hard **reverse-proxy body cap** fronts the in-app upload caps. All three are
+mandatory in production, enforced by a fail-fast startup guard.
+
 ## Platform split
 
 - **Windows:** backend, web dashboard, database/auth.
