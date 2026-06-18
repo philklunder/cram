@@ -22,7 +22,7 @@ knowledge actually sticks — peaking on the day of your exam.
 | Component  | Stack                          | Status |
 |------------|--------------------------------|--------|
 | iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop + real PDF/photo capture. ⚠️ remote-generation client uses the retired `X-Cram-Secret`; needs Supabase login (Mac work) to talk to the v0.5 backend |
-| Backend    | FastAPI (Python) + Supabase    | 🟢 v0.4 generate + grade live, now behind Supabase JWT auth. 🟡 v0.5 in progress — data model + Alembic migrations + auth merged; migrations pending first run against the live DB (see [plan](docs/plans/v0.5-backend-persistence-auth.md)) |
+| Backend    | FastAPI (Python) + Supabase    | 🟢 v0.4 generate + grade live behind Supabase JWT auth; v0.5 persistence live — schema migrated to Supabase Postgres, per-user CRUD + delta-sync endpoints, generate/grade now persist their output (see [plan](docs/plans/v0.5-backend-persistence-auth.md)). 🟡 Phase 4 pre-deploy hardening (rate limit + spend cap) pending |
 | Web        | Next.js + React                | ⚪️ Not started |
 | AI         | Claude API                     | 🟢 Server-side only; real generation via Claude Sonnet 4.6 (ADR 0005) |
 
