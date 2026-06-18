@@ -10,3 +10,10 @@
     (Accepted).
   - [0004](adr/0004-exam-date-compression.md) — Exam-date compression of the SM-2 schedule
     (Accepted).
+  - [0005](adr/0005-generation-api-contract.md) — `POST /v1/generate` API contract (Accepted).
+  - [0006](adr/0006-grading-api-contract.md) — `POST /v1/grade` API contract (Accepted).
+  - [0007](adr/0007-backend-persistence-and-auth.md) — Backend persistence + Supabase JWT auth
+    (Accepted).
+  - [0008](adr/0008-fail-closed-auth-defaults.md) — Fail-closed auth defaults (Accepted).
+  - [0009](adr/0009-pre-deploy-hardening.md) — Pre-deploy hardening: rate limit, spend cap, body
+    cap, prod guard (Accepted).
