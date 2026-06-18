@@ -7,6 +7,7 @@ whatever Claude returns before it goes back to the client.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -97,6 +98,10 @@ class GradeRequest(BaseModel):
     # The student's answer. May be blank ("" grades to 0.0) — required key, not optional.
     response: str
     topic: str = ""
+    # When set, the graded result is persisted as an append-only Attempt under this quiz
+    # question (Phase 3, ADR 0007). Omit for ad-hoc grading that records nothing. The
+    # question must be owned by the caller (enforced in the data layer).
+    question_id: uuid.UUID | None = None
 
 
 class GradeResult(BaseModel):

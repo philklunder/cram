@@ -41,6 +41,19 @@ See [`PRODUCT-SPEC.md`](PRODUCT-SPEC.md) §5 for the full model. In short:
 The iOS app models these as SwiftData `@Model` classes in `ios/Cram/Models/`. The backend mirrors
 them in Postgres so both clients converge on the same shape.
 
+## API & sync contract
+
+Clients authenticate with Supabase Auth and call the backend with `Authorization: Bearer <jwt>`;
+the backend verifies the JWT and **enforces per-user ownership in application code** — it connects
+as the table-owner role, which bypasses Postgres RLS, so RLS is defense-in-depth only and every
+query is owner-scoped through one data-access layer (ADR 0008 §3). Each owned resource is exposed
+under `/v1/{resource}` with CRUD plus a delta-sync pair: a `GET …?since=<cursor>` **pull** (returns
+rows changed after the cursor, soft-delete tombstones included) and a `POST …/batch` **push**
+(idempotent upsert keyed by the client-generated UUID; append-only logs are insert-only). Deletes
+are soft (`deleted_at`) and cascade the tombstone to descendants so offline clients converge.
+Generation and grading persist their output through the same owner-scoped layer. Full contract:
+[ADR 0007](adr/0007-backend-persistence-and-auth.md) §5.
+
 ## Platform split
 
 - **Windows:** backend, web dashboard, database/auth.

@@ -1,17 +1,20 @@
-# Cram backend (v0.3 generation + v0.4 grading)
+# Cram backend (v0.5 — persistence + auth)
 
-Minimal FastAPI service with two server-side Claude endpoints:
+FastAPI service. Two server-side Claude endpoints plus a per-user CRUD + delta-sync API
+over Supabase Postgres:
 
 - **`POST /v1/generate`** — uploaded course material (PDF/photos) → a flashcard + quiz deck
   ([`../docs/adr/0005-generation-api-contract.md`](../docs/adr/0005-generation-api-contract.md)).
+  As of v0.5 it **persists** the source (files → Supabase Storage), cards, quiz, and questions
+  under the caller and returns the deck enriched with their row ids.
 - **`POST /v1/grade`** — a student's short-answer response → score + feedback
   ([`../docs/adr/0006-grading-api-contract.md`](../docs/adr/0006-grading-api-contract.md)).
-  Multiple-choice is graded on-device and never sent here.
+  Multiple-choice is graded on-device and never sent here. Pass `question_id` to **persist**
+  the result as an append-only attempt.
+- **`/v1/{resource}`** — CRUD + delta-sync for the eight owned resources (Phase 3, below).
 
-As of v0.5 both endpoints are gated by **Supabase JWT auth** (ADR 0007 §2); the SQLAlchemy
-data model + per-user data endpoints are being layered in (see
-[`../docs/plans/v0.5-backend-persistence-auth.md`](../docs/plans/v0.5-backend-persistence-auth.md)).
-The Claude API key is server-side only and lives in a gitignored `.env`.
+All endpoints are gated by **Supabase JWT auth** (ADR 0007 §2). The Claude API key and all
+Supabase credentials are server-side only and live in a gitignored `.env`.
 
 ## Run it (Windows)
 
@@ -26,7 +29,9 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Health check: `GET http://localhost:8000/healthz` →
-`{"ok": true, "model": "claude-sonnet-4-6", "key_configured": true}`.
+`{"ok": true, "model": "claude-sonnet-4-6", "key_configured": true, "db": "ok"}`
+(`db` is `not_configured` until `DATABASE_URL` is set). Run migrations and tests per
+[`../docs/SETUP.md`](../docs/SETUP.md#backend).
 
 `--host 127.0.0.1` and `--reload` are for local dev. To reach the server from your
 iPhone, bind `--host 0.0.0.0` **and configure Supabase JWT auth** (see Access control
@@ -84,6 +89,29 @@ Grades one **short-answer** response (the client grades multiple choice locally)
 Returns `200` with `{ "score": 0.0–1.0, "is_correct": bool, "feedback": "…" }`. `is_correct`
 is derived server-side (`score >= 0.6`). A blank `response` is valid and scores `0.0`. Errors
 return a non-2xx `detail` message, same as `/v1/generate`. See the ADR for the full contract.
+When `question_id` is supplied, the response also carries the persisted `attempt_id`.
+
+## CRUD + delta-sync API (v0.5 Phase 3)
+
+Per-user REST over the eight owned resources: `subjects`, `sources`, `cards`, `quizzes`,
+`questions`, `grade-entries`, `attempts`, `review-logs`. **Every row is owner-scoped in
+application code** — the backend connects as the table-owner role, which bypasses RLS, so
+ownership is enforced in [`app/repository.py`](app/repository.py), the single data-access
+path (ADR 0008 §3). All routes require a valid JWT and act only on the caller's rows.
+
+| Method & path                | Purpose                                                        |
+|------------------------------|----------------------------------------------------------------|
+| `GET /v1/{resource}?since=`  | **Delta pull** — rows changed after the cursor, tombstones included; returns `{items, next_cursor, has_more}`. |
+| `GET /v1/{resource}/{id}`    | Fetch one owned row (404 if absent or soft-deleted).           |
+| `POST /v1/{resource}`        | Create one (client may supply the UUID `id`).                  |
+| `POST /v1/{resource}/batch`  | **Push** — idempotent upsert by client `id` (insert for append-only logs). |
+| `PATCH /v1/{resource}/{id}`  | Update mutable fields (sync resources only).                   |
+| `DELETE /v1/{resource}/{id}` | **Soft-delete** — sets `deleted_at` and cascades the tombstone to descendants (sync resources only). |
+
+`attempts` and `review-logs` are **append-only** events: create + read only (no PATCH /
+DELETE). The `since` cursor is opaque (a keyset of `updated_at`/`created_at` + `id`); a
+batch upsert shares one timestamp, so the keyset cursor — not a bare timestamp — is what
+makes pagination exact. Sync contract: ADR 0007 §5.
 
 ## Point the iOS app at it
 
