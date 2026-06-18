@@ -1,0 +1,11 @@
+# Keep the image small and secret-free. .env is gitignored too, but exclude it here
+# as defense-in-depth so a stray local copy never lands in a layer.
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.env
+.env.*
+tests
+requirements-dev.txt
