@@ -15,7 +15,7 @@ import logging
 import anthropic
 
 from .config import Settings
-from .generation import GenerationError, _get_client
+from .generation import GenerationError, TokenUsage, _get_client
 from .prompt import GRADING_SYSTEM_PROMPT, build_grading_user_text
 from .schemas import GRADE_JSON_SCHEMA, GRADE_PASS_THRESHOLD, GradeResult
 
@@ -31,9 +31,10 @@ def grade_answer(
     model_answer: str,
     response: str,
     topic: str,
-) -> dict:
-    """Grade one short-answer response. Returns a GradeResult dump (score, feedback,
-    is_correct). Raises GenerationError (client-safe message) on any upstream failure."""
+) -> tuple[dict, TokenUsage]:
+    """Grade one short-answer response. Returns ``(GradeResult dump, TokenUsage)`` — the
+    dump carries score/feedback/is_correct, the usage is metered against the spend cap
+    (Phase 4). Raises GenerationError (client-safe message) on any upstream failure."""
     client = _get_client(settings.anthropic_api_key)
     user_text = build_grading_user_text(prompt, model_answer, response, topic)
 
@@ -80,4 +81,4 @@ def grade_answer(
 
     # is_correct is a server-side decision, not the model's (ADR 0006).
     result.is_correct = result.score >= GRADE_PASS_THRESHOLD
-    return result.model_dump()
+    return result.model_dump(), TokenUsage.from_usage(u)

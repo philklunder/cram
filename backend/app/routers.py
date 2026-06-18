@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from . import api_schemas as s
 from .auth import CurrentUser, get_current_user
 from .db import get_session
+from .limits import enforce_rate_limit
 from .models import (
     Attempt,
     Card,
@@ -71,7 +72,13 @@ def _create_values(payload: BaseModel) -> tuple[dict, uuid.UUID | None]:
 
 
 def build_router(spec: ResourceSpec) -> APIRouter:
-    router = APIRouter(prefix=f"/v1/{spec.name}", tags=[spec.name])
+    # enforce_rate_limit guards every route on this router (Phase 4, ADR 0009): one router-
+    # level dependency so the per-minute ceiling covers all CRUD + sync paths uniformly.
+    router = APIRouter(
+        prefix=f"/v1/{spec.name}",
+        tags=[spec.name],
+        dependencies=[Depends(enforce_rate_limit)],
+    )
     Read = spec.read
 
     @router.get("", response_model=s.DeltaPage[Read])

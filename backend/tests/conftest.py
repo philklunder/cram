@@ -92,7 +92,10 @@ def client(_app_env, current_user, storage, monkeypatch):
     main.app.dependency_overrides[get_current_user] = lambda: current_user["user"]
     main.app.dependency_overrides[main.storage_dependency] = lambda: storage
 
-    # Stub the two Claude calls so tests need no API key / network.
+    # Stub the two Claude calls so tests need no API key / network. Each returns the
+    # (payload, TokenUsage) tuple the real functions now return (Phase 4 metering).
+    from app.generation import TokenUsage
+
     def fake_generate_deck(settings, subject_name, title, kind, files):
         return {
             "source_title": title,
@@ -109,10 +112,12 @@ def client(_app_env, current_user, storage, monkeypatch):
                     "answer_key": "because Y",
                 }
             ],
-        }
+        }, TokenUsage(input_tokens=100, output_tokens=50)
 
     def fake_grade_answer(settings, prompt, model_answer, response, topic):
-        return {"score": 1.0, "feedback": "Correct.", "is_correct": True}
+        return {"score": 1.0, "feedback": "Correct.", "is_correct": True}, TokenUsage(
+            input_tokens=20, output_tokens=10
+        )
 
     monkeypatch.setattr(main, "generate_deck", fake_generate_deck)
     monkeypatch.setattr(main, "grade_answer", fake_grade_answer)
