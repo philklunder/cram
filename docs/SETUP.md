@@ -77,6 +77,11 @@ The suite builds the schema from `Base.metadata` (not Alembic), so it omits the 
 
 ### Production deploy checklist
 
+There are **two classes of gate** below. Class A is machine-enforced; Class B is not, so it is on
+you.
+
+#### Class A — machine-enforced (the app refuses to boot without these)
+
 Before any public deploy, set `CRAM_ENV=prod`. The app then **refuses to boot** unless every item
 below is configured — `check_production_config` (in [`app/config.py`](../backend/app/config.py))
 fails fast with the exact missing keys (ADR 0009). This is deliberate: an unmetered public endpoint
@@ -98,23 +103,30 @@ trusted reverse proxy (it gates `X-Forwarded-For` trust for the rate-limit IP fa
 vars default to off/0, so local and dev runs are unaffected — they are required only in prod. See
 [`backend/.env.example`](../backend/.env.example) for the full annotated list.
 
-Also before deploying:
+#### Class B — NOT machine-enforced (you must verify these by hand)
 
-- **Apply migration `0003`** to the live Supabase DB the same way Phase 1 was applied
+> ⚠️ **`check_production_config` cannot see past its own process.** It validates env vars; it has no
+> way to know whether a reverse proxy actually sits in front of the worker. So the single most
+> important edge control is the one the boot guard will happily start *without*. Treat the two items
+> below as hard, blocking deploy steps — the deploy is not done until both are checked off.
+
+- [ ] **Reverse proxy configured in front of the app — MANDATORY (M1).** A hard body cap (~`36m`) +
+  a coarse per-IP request/connection limit at the edge. **Why this is non-negotiable:** every in-app
+  guard (auth, rate limit, spend cap, per-file/total caps) runs *after* FastAPI has already spooled
+  the multipart body, and the in-app `Content-Length` middleware is bypassable with a chunked upload.
+  Nothing in the application can protect the body-ingestion layer — only the proxy can. The app's
+  rate limit is also per-authenticated-user, so a pre-auth flood stays cheap until the proxy blunts
+  it. Ready-made nginx / Caddy / Traefik snippets, sized just above `CRAM_MAX_TOTAL_BYTES`
+  (32 MiB → ~`36m`), are in
+  [`backend/deploy/reverse-proxy.example.conf`](../backend/deploy/reverse-proxy.example.conf). Set
+  `CRAM_TRUSTED_PROXY=1` once the proxy is in place. The in-app body caps (`app/main.py`) remain as
+  defense-in-depth, not as the authoritative cap.
+- [ ] **Migration `0003` applied** to the live Supabase DB the same way Phase 1 was applied
   (`alembic upgrade head` against `DATABASE_DIRECT_URL`). It adds the `ai_usage_events` (spend-cap
   ledger) and `rate_limit_buckets` tables; it needs the Supabase `auth` schema, so it can't run on a
   plain Postgres. The autogenerate drift caveat applies as with `0002` — discard any generated
-  migration that wants to drop the `auth.users` FK.
-- **Reverse-proxy body cap** (below).
-
-### Reverse-proxy body cap
-
-The in-app body caps (`app/main.py`) are defense-in-depth; the authoritative hard cap belongs at the
-edge so an oversized/chunked upload never reaches a worker. Ready-made nginx / Caddy / Traefik
-snippets are in [`backend/deploy/reverse-proxy.example.conf`](../backend/deploy/reverse-proxy.example.conf),
-sized just above `CRAM_MAX_TOTAL_BYTES` (32 MiB → ~`36m`). While you're there, add a **coarse per-IP
-request/connection limit** at the proxy: the app's rate limit is per-authenticated-user, so a
-pre-auth flood is still cheap to mount — the proxy is the right place to blunt it.
+  migration that wants to drop the `auth.users` FK. *(Already applied as of 2026-06-18 — re-verify
+  the live DB is at head `0003` before deploy.)*
 
 ## Web (added on Windows)
 
