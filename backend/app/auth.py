@@ -48,7 +48,15 @@ def _jwk_client(jwks_url: str) -> jwt.PyJWKClient:
 
 
 def _decode(settings: Settings, token: str, key, algorithms: list[str]) -> dict:
-    kwargs: dict = {"algorithms": algorithms, "audience": _AUDIENCE}
+    # Require the security-critical claims to be *present*, not just valid-if-present:
+    # PyJWT checks `exp` only when it exists, so without `require` a token that simply
+    # omits `exp` would never expire. Supabase always issues exp/iat/sub; this just makes
+    # a token missing any of them fail closed (L2 hardening, 2026-06-19 review).
+    kwargs: dict = {
+        "algorithms": algorithms,
+        "audience": _AUDIENCE,
+        "options": {"require": ["exp", "iat", "sub"]},
+    }
     if settings.supabase_url:
         # Pin the issuer too when we know the project URL (stricter than aud alone).
         kwargs["issuer"] = settings.supabase_url.rstrip("/") + "/auth/v1"
@@ -60,10 +68,16 @@ def _verify_token(settings: Settings, token: str) -> CurrentUser:
         if settings.supabase_jwks_url:
             signing_key = _jwk_client(settings.supabase_jwks_url).get_signing_key_from_jwt(token)
             claims = _decode(settings, token, signing_key.key, ["RS256", "ES256"])
-        elif settings.supabase_jwt_secret:
+        elif settings.supabase_jwt_secret and not settings.is_production:
+            # HS256 with the project's symmetric secret is a DEV-ONLY verifier: a leaked
+            # secret forges any user's token, so production must verify with asymmetric keys
+            # via JWKS. Gating on `not is_production` means a prod deploy that loses its JWKS
+            # URL fails closed here rather than silently downgrading to this weaker path —
+            # and the startup guard (check_production_config) already refuses to boot prod
+            # without JWKS, so this branch is unreachable in production (2026-06-19 review).
             claims = _decode(settings, token, settings.supabase_jwt_secret, ["HS256"])
         else:
-            # Unreachable in production (startup guard); a misconfiguration in dev.
+            # Unreachable in production (startup guard requires JWKS); a misconfiguration in dev.
             raise HTTPException(status_code=500, detail="Server auth is not configured.")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired.") from None

@@ -208,6 +208,9 @@ def test_production_config_complete_boots():
         {"anthropic_api_key": ""},
         {"database_url": ""},
         {"supabase_jwks_url": "", "supabase_jwt_secret": ""},  # no auth
+        # HS256-only is rejected in prod: the symmetric secret is a dev-only verifier, so
+        # production must configure JWKS (2026-06-19 review — see app/auth.py / config.py).
+        {"supabase_jwks_url": "", "supabase_jwt_secret": "a-symmetric-secret"},
         {"allow_dev_fallback": True},
         {"rate_limit_per_min": 0},
         {"user_daily_token_cap": 0},

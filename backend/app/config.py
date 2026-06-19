@@ -133,10 +133,14 @@ def check_production_config(settings: Settings) -> None:
 
     problems: list[str] = []
     # Auth must be real in prod — the dev loopback fallback fails open behind a same-host
-    # reverse proxy (ADR 0007 §2/§3, H1).
-    if not settings.auth_configured:
+    # reverse proxy (ADR 0007 §2/§3, H1). Require JWKS *specifically*: production verifies
+    # tokens with asymmetric keys via the JWKS endpoint, never the HS256 shared secret (a
+    # leaked symmetric secret forges any user's token, so that path is dev-only — see
+    # app/auth.py). Requiring it here means a prod deploy that omits/loses JWKS fails closed
+    # at startup rather than silently downgrading to HS256 at request time (2026-06-19 review).
+    if not settings.supabase_jwks_url:
         problems.append(
-            "Supabase JWT auth (set SUPABASE_JWKS_URL — preferred — or SUPABASE_JWT_SECRET)"
+            "SUPABASE_JWKS_URL (production verifies JWTs via JWKS, not the HS256 secret)"
         )
     if settings.allow_dev_fallback:
         problems.append("CRAM_ALLOW_DEV_FALLBACK must be OFF (it bypasses authentication)")
