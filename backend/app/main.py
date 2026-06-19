@@ -20,7 +20,6 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import JSONResponse  # noqa: E402
 
 from .config import check_production_config, get_settings  # noqa: E402
-from .db import db_status  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
 from .limits import enforce_rate_limit, enforce_spend_cap, record_usage  # noqa: E402
@@ -74,13 +73,10 @@ async def limit_body_size(request: Request, call_next):
 
 @app.get("/healthz")
 def healthz() -> dict:
-    # "db": "ok" | "unreachable" | "not_configured" (Phase 0 — see app/db.py).
-    return {
-        "ok": True,
-        "model": settings.model,
-        "key_configured": bool(settings.anthropic_api_key),
-        "db": db_status(),
-    }
+    # Liveness only. Deliberately minimal: an unauthenticated probe must not disclose the
+    # model name, whether the API key is configured, or DB reachability (L3 hardening,
+    # 2026-06-19 review). Detailed status belongs behind auth / ops tooling, not here.
+    return {"ok": True}
 
 
 def _resolve_content_type(file: UploadFile) -> str:
