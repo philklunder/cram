@@ -22,7 +22,7 @@ knowledge actually sticks — peaking on the day of your exam.
 | Component  | Stack                          | Status |
 |------------|--------------------------------|--------|
 | iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop + real PDF/photo capture. ⚠️ remote-generation client uses the retired `X-Cram-Secret`; needs Supabase login (Mac work) to talk to the v0.5 backend |
-| Backend    | FastAPI (Python) + Supabase    | 🟢 v0.4 generate + grade live behind Supabase JWT auth; v0.5 persistence live — schema migrated to Supabase Postgres, per-user CRUD + delta-sync endpoints, generate/grade persist their output; **Phase 4 pre-deploy hardening in place** — per-caller rate limit, Anthropic spend cap, reverse-proxy body cap, and a fail-fast prod-config guard (ADR 0009, see [plan](docs/plans/v0.5-backend-persistence-auth.md)). Backend is deploy-ready; only the iOS sync client (Phase 5) remains |
+| Backend    | FastAPI (Python) + Supabase    | 🟢 **Deployed live on Railway** ([`/healthz`](https://cram.up.railway.app/healthz)) — v0.5 complete. Generate + grade behind Supabase JWT auth; schema migrated to Supabase Postgres with per-user CRUD + delta-sync endpoints; generate/grade persist their output. **Pre-deploy hardening in place** (ADR 0009, see [plan](docs/plans/v0.5-backend-persistence-auth.md)) — per-caller rate limit, Anthropic spend cap, and a reverse-proxy body cap served by a baked-in nginx proxy, plus a fail-fast prod-config guard. Only the iOS sync client (Phase 5) remains |
 | Web        | Next.js + React                | ⚪️ Not started |
 | AI         | Claude API                     | 🟢 Server-side only; real generation via Claude Sonnet 4.6 (ADR 0005) |
 
@@ -31,7 +31,7 @@ knowledge actually sticks — peaking on the day of your exam.
 ```
 cram/
 ├── ios/          # SwiftUI app (Xcode) — the native client (built first)
-├── backend/      # FastAPI generation API (v0.3 — POST /v1/generate)
+├── backend/      # FastAPI API — live on Railway (generate, grade, per-user CRUD + sync)
 ├── web/          # Next.js dashboard (added on Windows)
 └── docs/         # Product spec, architecture, setup, and decision records
 ```
