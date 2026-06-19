@@ -1,5 +1,10 @@
 # Deployment & hosting
 
+## Status
+- **LIVE since 2026-06-19** at `https://cram.up.railway.app` (`GET /healthz` → `db: ok`,
+  key configured). The first Railway build *was* the real smoke test (see Open questions) and
+  passed after the two boot bugs below were fixed.
+
 ## Decisions
 - **Backend host: Railway (Hobby plan).** The FastAPI backend deploys as a Docker
   container; Supabase (already live) remains DB + Auth + Storage.
@@ -47,6 +52,22 @@
 - **Why lockfile not floors.** Reproducible deploys; the Windows-generated lock is Linux-safe
   (`colorama` is cross-platform; no `pywin32`/`uvloop` pins to break the build).
 
+### Go-live boot bugs (fixed 2026-06-19) — durable Railway/nginx constraints
+- **Railway Variables do NOT strip surrounding quotes.** python-dotenv (the local `.env`) strips
+  them, so a value copied as `DATABASE_URL="postgres://…"` works locally but on Railway the value
+  literally starts with `"` → SQLAlchemy `Could not parse SQLAlchemy URL` and uvicorn crashes on
+  import. **Enter every Railway value RAW:** no wrapping quotes, no `KEY=` prefix, no stray
+  whitespace.
+- **nginx duplicate-directive boot crash (fixed `62aa9b8`).** `deploy/nginx.conf.template` is
+  `include`d inside stock Debian's `nginx.conf` `http{}`, which already sets some directives
+  (it was `server_tokens`). Re-declaring one at `http` level → `[emerg] "…" directive is duplicate`
+  and the container crash-loops to `status: exited`. **Put such directives in the `server{}` block
+  instead.**
+- **Reading container state when a deploy fails:** the entrypoint backgrounds uvicorn (`&`) and
+  `exec`s nginx, so an *exited* container = nginx failed to start; a *running* container serving
+  502 = nginx is up but uvicorn crashed. Cram has no `/` route, so a 404 `{"detail":"Not Found"}`
+  on the bare URL is normal — always smoke-test `GET /healthz` (unauthenticated).
+
 ## Implications
 - A correct deploy is: Railway service root = `backend`, paste the prod env block
   (`docs/SETUP.md` → Production deploy checklist, incl. `CRAM_ENV=prod` and
@@ -62,8 +83,8 @@
 - No container healthcheck wired into `railway.json` yet (relies on `/healthz` manually).
 - If uvicorn crashes, nginx stays up and serves 502 until Railway's restart policy recycles the
   container; a process supervisor (or `wait -n`) would fail faster. Acceptable for a solo app.
-- Build is not yet verified by an actual `docker build` (no Docker on the Windows dev box this
-  session) — first Railway build is the real smoke test.
+- ~~Build not yet verified by an actual `docker build`~~ — **resolved: the Railway build succeeded
+  and the container is live (2026-06-19).**
 
 ## Last updated
-2026-06-18
+2026-06-19
