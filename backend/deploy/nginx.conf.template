@@ -21,12 +21,16 @@ limit_conn_zone $binary_remote_addr zone=cram_conn:10m;
 limit_req_status  429;
 limit_conn_status 429;
 
-# Don't advertise the nginx version in headers/error pages.
-server_tokens off;
-
 server {
     listen ${PORT};
     server_name _;
+
+    # Don't advertise the nginx version in headers/error pages. Set in the server
+    # context (not http) because the stock Debian nginx.conf already declares
+    # server_tokens in http, and a second http-level declaration here — this file is
+    # included inside that http{} block — is rejected as a duplicate (boot [emerg]).
+    # In server context it legitimately overrides the http default instead.
+    server_tokens off;
 
     # M1 hard body cap: just above CRAM_MAX_TOTAL_BYTES (32 MiB) so a legit max-size
     # upload still reaches the app's friendly 413 JSON, while anything larger — including
