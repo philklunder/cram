@@ -9,15 +9,25 @@ import Foundation
 struct RemoteGenerationService: GenerationService {
 
     let baseURL: URL
-    /// Sent in the `X-Cram-Secret` header when present. The backend requires it whenever it is
-    /// exposed beyond loopback; `nil` is valid for a loopback-only backend that gates on the
-    /// client address instead. See `docs/adr/0005-generation-api-contract.md` and the backend README.
-    var sharedSecret: String? = nil
+    /// Supplies a fresh Supabase access token (the SDK refreshes it as needed) sent as
+    /// `Authorization: Bearer <jwt>` — the v0.5 backend verifies it against Supabase's JWKS
+    /// (ADR 0007/0008). Returns `nil` when the user isn't signed in, in which case generation fails
+    /// with `.unauthenticated` before any request is sent. (Replaced the retired `X-Cram-Secret`.)
+    var accessToken: @Sendable () async -> String? = { nil }
     var session: URLSession = .shared
     /// Generation involves a Claude call over potentially large material — allow generous time.
     var timeout: TimeInterval = 120
 
     func generate(_ request: GenerationRequest) async throws -> GeneratedDeck {
+        // Never transmit the bearer token over cleartext (loopback excepted for local dev). ATS
+        // already blocks http by default; this fails closed even if an ATS exception is added.
+        guard Self.isSecureTransport(baseURL) else {
+            throw GenerationError.insecureTransport
+        }
+        guard let token = await accessToken(), !token.isEmpty else {
+            throw GenerationError.unauthenticated
+        }
+
         let endpoint = baseURL.appendingPathComponent("v1/generate")
         var urlRequest = URLRequest(url: endpoint)
         urlRequest.httpMethod = "POST"
@@ -26,9 +36,7 @@ struct RemoteGenerationService: GenerationService {
         let boundary = "CramBoundary-\(UUID().uuidString)"
         urlRequest.setValue("multipart/form-data; boundary=\(boundary)",
                             forHTTPHeaderField: "Content-Type")
-        if let sharedSecret {
-            urlRequest.setValue(sharedSecret, forHTTPHeaderField: "X-Cram-Secret")
-        }
+        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         urlRequest.httpBody = try makeBody(for: request, boundary: boundary)
 
         let data: Data
@@ -41,6 +49,9 @@ struct RemoteGenerationService: GenerationService {
 
         guard let http = response as? HTTPURLResponse else {
             throw GenerationError.invalidResponse
+        }
+        if http.statusCode == 401 {
+            throw GenerationError.unauthenticated
         }
         guard (200..<300).contains(http.statusCode) else {
             throw GenerationError.server(status: http.statusCode,
@@ -90,6 +101,14 @@ struct RemoteGenerationService: GenerationService {
         return body
     }
 
+    /// HTTPS is required for sending the access token; `http` is tolerated only for loopback hosts
+    /// (a developer running the backend locally), never for a remote address.
+    private static func isSecureTransport(_ url: URL) -> Bool {
+        if url.scheme?.lowercased() == "https" { return true }
+        let host = url.host?.lowercased()
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+
     private static func mimeType(for url: URL) -> String {
         switch url.pathExtension.lowercased() {
         case "pdf": "application/pdf"
@@ -117,6 +136,8 @@ struct RemoteGenerationService: GenerationService {
 enum GenerationError: LocalizedError {
     case transport(Error)
     case invalidResponse
+    case unauthenticated
+    case insecureTransport
     case server(status: Int, message: String?)
     case decoding(Error)
     case fileUnreadable(URL, Error)
@@ -127,6 +148,10 @@ enum GenerationError: LocalizedError {
             "Couldn't reach the generation service. Check your connection and the backend address."
         case .invalidResponse:
             "The generation service returned an unexpected response."
+        case .unauthenticated:
+            "Please sign in again to generate cards."
+        case .insecureTransport:
+            "The backend address must use HTTPS. Update the server URL and try again."
         case .server(let status, let message):
             if let message, !message.isEmpty { "Generation failed (\(status)): \(message)" }
             else { "Generation failed with status \(status)." }
