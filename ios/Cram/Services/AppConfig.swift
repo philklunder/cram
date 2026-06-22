@@ -1,19 +1,21 @@
 import Foundation
 
 /// App-wide configuration resolved at runtime. Keeps environment-specific values (like the backend
-/// address) out of the code and off the call sites.
+/// address and the Supabase project handle) out of the code and off the call sites.
 ///
-/// The Claude key is **never** here — it lives server-side only (ADR 0003, ARCHITECTURE.md). This
-/// only holds the backend's *base URL*; the backend is what talks to Claude.
+/// The Claude key is **never** here — it lives server-side only (ADR 0003, ARCHITECTURE.md). The
+/// only auth material the client holds is Supabase's **anon (publishable) key**, which is designed
+/// to ship in clients; the user's access token is obtained at sign-in and stored by the Supabase
+/// SDK in the Keychain (see `AuthManager`).
 enum AppConfig {
 
-    /// Base URL of the Cram backend (the FastAPI generation service), or `nil` when none is
-    /// configured — in which case the app uses the offline `StubGenerationService`.
+    /// Base URL of the Cram backend (the FastAPI service), or `nil` when none is configured — in
+    /// which case the app uses the offline `StubGenerationService`.
     ///
     /// Resolution order:
-    /// 1. The `CRAM_BACKEND_URL` environment variable (set it in the Run scheme during development,
-    ///    e.g. `http://192.168.1.20:8000` pointing at the Windows backend on the LAN).
-    /// 2. `overrideBaseURL` below, for a hardcoded local default.
+    /// 1. The `CRAM_BACKEND_URL` environment variable (set it in the Run scheme to point elsewhere,
+    ///    e.g. a LAN dev backend `http://192.168.1.20:8000`).
+    /// 2. `overrideBaseURL` below — defaults to the live Railway deployment.
     static var backendBaseURL: URL? {
         if let raw = ProcessInfo.processInfo.environment["CRAM_BACKEND_URL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -24,23 +26,40 @@ enum AppConfig {
         return overrideBaseURL
     }
 
-    /// Optional hardcoded backend URL for development. Leave `nil` to keep the app on stubbed
-    /// generation until the backend exists (v0.3 lands on Windows).
-    static let overrideBaseURL: URL? = nil
+    /// Default backend URL: the live v0.5 deployment on Railway (public; already in the README).
+    /// Set `CRAM_BACKEND_URL` to override, or change this to `nil` to force the offline stub path.
+    static let overrideBaseURL: URL? = URL(string: "https://cram.up.railway.app")
 
-    /// Shared secret sent in the `X-Cram-Secret` header on every backend request, or `nil` when
-    /// none is configured. The backend requires this whenever it is exposed beyond loopback
-    /// (`CRAM_SHARED_SECRET` set + `--host 0.0.0.0`); without it, LAN/device requests are rejected.
-    ///
-    /// Resolved from the `CRAM_SHARED_SECRET` environment variable — set it in the Run scheme
-    /// alongside `CRAM_BACKEND_URL`, and keep the value out of source (it is not the Claude key,
-    /// which stays server-side only).
-    static var sharedSecret: String? {
-        guard let raw = ProcessInfo.processInfo.environment["CRAM_SHARED_SECRET"]?
+    // MARK: - Supabase
+
+    /// The Supabase project URL (e.g. `https://abcd.supabase.co`), or `nil` when unconfigured.
+    /// Resolved from the `SUPABASE_URL` environment variable (set it in the Run scheme), with an
+    /// optional hardcoded fallback below. When `nil`, the app runs unauthenticated on the offline
+    /// stub path — no login is shown.
+    static var supabaseURL: URL? {
+        if let raw = ProcessInfo.processInfo.environment["SUPABASE_URL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else {
-            return nil
+           !raw.isEmpty,
+           let url = URL(string: raw) {
+            return url
         }
-        return raw
+        return supabaseURLFallback
     }
+
+    /// The Supabase **anon (publishable) key**, or `nil` when unconfigured. This key is intended to
+    /// ship in clients (it grants only what your RLS policies allow); it is *not* the Claude key and
+    /// *not* the service-role key. Resolved from `SUPABASE_ANON_KEY` with an optional fallback below.
+    static var supabaseAnonKey: String? {
+        if let raw = ProcessInfo.processInfo.environment["SUPABASE_ANON_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            return raw
+        }
+        return supabaseAnonKeyFallback
+    }
+
+    /// Optional hardcoded Supabase config for convenience. Leave `nil` to require the Run-scheme
+    /// env vars. (Both values are non-secret and may be committed if you prefer a zero-setup build.)
+    static let supabaseURLFallback: URL? = nil
+    static let supabaseAnonKeyFallback: String? = nil
 }

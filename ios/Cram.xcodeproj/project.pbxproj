@@ -6,6 +6,10 @@
 	objectVersion = 71;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1000000000000000000000C0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 1000000000000000000000C2 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		1000000000000000000000A4 /* Cram.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cram.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -19,6 +23,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1000000000000000000000C0 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -61,6 +66,7 @@
 			);
 			name = Cram;
 			packageProductDependencies = (
+				1000000000000000000000C2 /* Supabase */,
 			);
 			productName = Cram;
 			productReference = 1000000000000000000000A4 /* Cram.app */;
@@ -91,6 +97,9 @@
 			);
 			mainGroup = 1000000000000000000000A1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1000000000000000000000C1 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = 1000000000000000000000A3 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -322,6 +331,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1000000000000000000000C1 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1000000000000000000000C2 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1000000000000000000000C1 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1000000000000000000000A9 /* Project object */;
 }

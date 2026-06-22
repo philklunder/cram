@@ -4,6 +4,7 @@ import SwiftData
 /// The home tab: your subjects, each showing days-to-exam and current grade.
 struct SubjectsView: View {
     @Environment(\.modelContext) private var context
+    @Environment(AuthManager.self) private var auth
     @Query(sort: \Subject.createdAt) private var subjects: [Subject]
     @State private var showingAddSubject = false
 
@@ -32,6 +33,22 @@ struct SubjectsView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showingAddSubject = true } label: { Image(systemName: "plus") }
+                }
+                if auth.isConfigured {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            if case let .signedIn(email) = auth.state, let email {
+                                Text(email)
+                            }
+                            Button(role: .destructive) {
+                                Task { await auth.signOut() }
+                            } label: {
+                                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                            }
+                        } label: {
+                            Image(systemName: "person.crop.circle")
+                        }
+                    }
                 }
             }
             .sheet(isPresented: $showingAddSubject) {
@@ -79,4 +96,5 @@ private struct SubjectRow: View {
 #Preview {
     SubjectsView()
         .modelContainer(PreviewData.container)
+        .environment(AuthManager.shared)
 }

@@ -53,13 +53,17 @@ protocol GenerationService {
 }
 
 /// Resolves which `GenerationService` the app uses, honoring ADR 0003's "swap behind the protocol"
-/// goal: if a backend URL is configured (`AppConfig.backendBaseURL`), use the real
-/// `RemoteGenerationService`; otherwise fall back to the offline `StubGenerationService`. Call sites
-/// stay identical — only the configured URL decides which path runs.
+/// goal. The real `RemoteGenerationService` is used only when **both** a backend URL is configured
+/// (`AppConfig.backendBaseURL`) **and** Supabase auth is configured (`AuthManager.isConfigured`) —
+/// the v0.5 backend requires a Supabase JWT, so without auth there is nothing useful to call.
+/// Otherwise we fall back to the offline `StubGenerationService`. Call sites stay identical.
+@MainActor
 enum GenerationServiceFactory {
     static func make() -> GenerationService {
-        if let baseURL = AppConfig.backendBaseURL {
-            return RemoteGenerationService(baseURL: baseURL, sharedSecret: AppConfig.sharedSecret)
+        if let baseURL = AppConfig.backendBaseURL, AuthManager.shared.isConfigured {
+            return RemoteGenerationService(
+                baseURL: baseURL,
+                accessToken: { await AuthManager.shared.validAccessToken() })
         }
         return StubGenerationService()
     }
