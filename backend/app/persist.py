@@ -9,13 +9,16 @@ session once, so a generate either persists fully or not at all.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from .generation import UploadedFile
 from .models import Card, Question, Quiz, Source, Subject
 from .models.enums import QuestionKind, SourceKind
 from .repository import OwnedRepository
-from .storage import Storage
+from .storage import Storage, StorageError
+
+log = logging.getLogger("cram.persist")
 
 
 def persist_generation(
@@ -41,7 +44,18 @@ def persist_generation(
     source_id = uuid.uuid4()
     storage_paths: list[str] = []
     if storage is not None and files:
-        storage_paths = storage.upload_source_files(repo.user_id, source_id, files)
+        try:
+            storage_paths = storage.upload_source_files(repo.user_id, source_id, files)
+        except StorageError:
+            # A Storage hiccup must not throw away a generation the caller already paid for:
+            # persist the deck with no stored file (``storage_paths`` stays empty) and return the
+            # cards anyway. The raw bytes are secondary — the generated deck is the product. The
+            # underlying reason is logged in storage.py; this records that we degraded.
+            log.warning(
+                "source %s persisted without stored files after a Storage upload failure",
+                source_id,
+            )
+            storage_paths = []
     source = repo.create(
         Source,
         {
