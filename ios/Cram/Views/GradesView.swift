@@ -70,7 +70,9 @@ struct GradesView: View {
 
     private func deleteEntries(at offsets: IndexSet) {
         let sorted = subject.grades.sorted { $0.date > $1.date }
-        for index in offsets { context.delete(sorted[index]) }
+        // Tombstone so the deletion syncs to the backend rather than vanishing silently.
+        for index in offsets { sorted[index].softDelete() }
+        SyncService.shared.requestSync(context: context)
     }
 }
 
@@ -130,6 +132,7 @@ private struct AddGradeView: View {
                                weight: weightPercent / 100,
                                subject: subject)
         context.insert(entry)
+        SyncService.shared.requestSync(context: context)
         dismiss()
     }
 }

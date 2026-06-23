@@ -10,6 +10,9 @@ final class ReviewLog {
     var ratingRaw: Int
     var card: Card?
 
+    // Sync metadata (v0.5 Phase 5). Append-only — insert + push once, never updated/deleted.
+    var needsSync: Bool = true
+
     var rating: ReviewRating {
         get { ReviewRating(rawValue: ratingRaw) ?? .good }
         set { ratingRaw = newValue.rawValue }
@@ -20,5 +23,6 @@ final class ReviewLog {
         self.ratingRaw = rating.rawValue
         self.date = date
         self.card = card
+        self.needsSync = true
     }
 }

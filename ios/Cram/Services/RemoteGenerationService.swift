@@ -171,16 +171,26 @@ private struct DeckDTO: Decodable {
     let sourceTitle: String
     let cards: [CardDTO]
     let questions: [QuestionDTO]
+    // Server row ids (Phase 3+): present once the backend persists the deck under the caller.
+    let subjectId: UUID?
+    let sourceId: UUID?
+    let quizId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case sourceTitle = "source_title"
         case cards, questions
+        case subjectId = "subject_id"
+        case sourceId = "source_id"
+        case quizId = "quiz_id"
     }
 
     func toDeck() -> GeneratedDeck {
         GeneratedDeck(sourceTitle: sourceTitle,
                       cards: cards.map { $0.toCard() },
-                      questions: questions.map { $0.toQuestion() })
+                      questions: questions.map { $0.toQuestion() },
+                      subjectId: subjectId,
+                      sourceId: sourceId,
+                      quizId: quizId)
     }
 }
 
@@ -189,9 +199,10 @@ private struct CardDTO: Decodable {
     let back: String
     let topic: String
     let difficulty: Int
+    let id: UUID?
 
     func toCard() -> GeneratedCard {
-        GeneratedCard(front: front, back: back, topic: topic, difficulty: difficulty)
+        GeneratedCard(front: front, back: back, topic: topic, difficulty: difficulty, serverId: id)
     }
 }
 
@@ -201,9 +212,10 @@ private struct QuestionDTO: Decodable {
     let topic: String
     let options: [String]
     let answerKey: String
+    let id: UUID?
 
     enum CodingKeys: String, CodingKey {
-        case prompt, kind, topic, options
+        case prompt, kind, topic, options, id
         case answerKey = "answer_key"
     }
 
@@ -215,7 +227,8 @@ private struct QuestionDTO: Decodable {
                                  kind: resolved,
                                  topic: topic,
                                  options: options,
-                                 answerKey: answerKey)
+                                 answerKey: answerKey,
+                                 serverId: id)
     }
 }
 

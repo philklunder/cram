@@ -26,10 +26,18 @@ struct GenerationRequest {
 }
 
 /// Plain (non-persisted) generated content, ready to be ingested into SwiftData.
+///
+/// When generation runs on the backend (`RemoteGenerationService`), the deck is already persisted
+/// server-side and the response carries the **server row ids** (ADR 0007 §6 — "so the client can
+/// sync immediately"). Adopting them in `DeckIngest` prevents the first sync from duplicating the
+/// deck. The offline stub leaves these `nil`, so its rows get fresh local ids and sync as new.
 struct GeneratedDeck {
     var sourceTitle: String
     var cards: [GeneratedCard]
     var questions: [GeneratedQuestion]
+    var subjectId: UUID? = nil
+    var sourceId: UUID? = nil
+    var quizId: UUID? = nil
 }
 
 struct GeneratedCard {
@@ -37,6 +45,7 @@ struct GeneratedCard {
     var back: String
     var topic: String
     var difficulty: Int
+    var serverId: UUID? = nil
 }
 
 struct GeneratedQuestion {
@@ -45,6 +54,7 @@ struct GeneratedQuestion {
     var topic: String
     var options: [String]
     var answerKey: String
+    var serverId: UUID? = nil
 }
 
 /// Turns source material into flashcards and quiz questions.

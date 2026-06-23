@@ -13,6 +13,12 @@ final class Subject {
     var manualCurrentGrade: Double?
     var createdAt: Date
 
+    // Sync metadata (v0.5 Phase 5). Defaults inline so existing stores migrate lightly;
+    // `needsSync = true` means pre-sync local rows are pushed on the first sync.
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
+
     @Relationship(deleteRule: .cascade, inverse: \Source.subject)
     var sources: [Source] = []
 
@@ -41,6 +47,8 @@ final class Subject {
         self.targetGrade = targetGrade
         self.manualCurrentGrade = nil
         self.createdAt = .now
+        self.updatedAt = .now
+        self.needsSync = true
     }
 
     /// Whole days from now until the exam, or nil if no exam date is set.

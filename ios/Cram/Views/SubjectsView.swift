@@ -7,6 +7,8 @@ struct SubjectsView: View {
     @Environment(AuthManager.self) private var auth
     @Query(sort: \Subject.createdAt) private var subjects: [Subject]
     @State private var showingAddSubject = false
+    /// Observed (singleton) so the toolbar reflects sync progress / last-synced time.
+    @State private var sync = SyncService.shared
 
     var body: some View {
         NavigationStack {
@@ -27,12 +29,20 @@ struct SubjectsView: View {
                         }
                         .onDelete(perform: deleteSubjects)
                     }
+                    .refreshable { await sync.sync(context: context) }
                 }
             }
             .navigationTitle("Subjects")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showingAddSubject = true } label: { Image(systemName: "plus") }
+                }
+                if auth.isConfigured {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        SyncStatusBadge(sync: sync) {
+                            Task { await sync.sync(context: context) }
+                        }
+                    }
                 }
                 if auth.isConfigured {
                     ToolbarItem(placement: .topBarLeading) {
@@ -58,7 +68,34 @@ struct SubjectsView: View {
     }
 
     private func deleteSubjects(at offsets: IndexSet) {
-        for index in offsets { context.delete(subjects[index]) }
+        // Tombstone (not hard-delete) so the deletion propagates to the backend on the next sync.
+        for index in offsets { subjects[index].softDelete() }
+        sync.requestSync(context: context)
+    }
+}
+
+/// Compact sync indicator for the toolbar: a spinner while syncing, a warning that retries on tap
+/// when the last sync failed, and a quiet checkmark otherwise.
+private struct SyncStatusBadge: View {
+    let sync: SyncService
+    let retry: () -> Void
+
+    var body: some View {
+        switch sync.state {
+        case .syncing:
+            ProgressView()
+        case .error:
+            Button(action: retry) {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .foregroundStyle(.orange)
+            }
+            .accessibilityLabel("Sync failed — tap to retry")
+        case .idle:
+            Button(action: retry) {
+                Image(systemName: "checkmark.icloud").foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("Synced — tap to sync now")
+        }
     }
 }
 

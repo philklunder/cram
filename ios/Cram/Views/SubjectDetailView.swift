@@ -87,6 +87,9 @@ struct SubjectDetailView: View {
             }
         }
         .navigationTitle(subject.name)
+        // Nudge a sync so this subject is pushed to the backend before any remote generate, which
+        // find-or-creates the subject by name — pushing first makes the server reuse this row's id.
+        .task { SyncService.shared.requestSync(context: context) }
         .sheet(isPresented: $showingAddMaterial) {
             AddMaterialView { captured in ingest(captured) }
         }
@@ -117,6 +120,7 @@ struct SubjectDetailView: View {
                                   fileNames: captured.fileNames,
                                   into: subject,
                                   context: context)
+                SyncService.shared.requestSync(context: context)
             } catch {
                 generationError = error.localizedDescription
             }

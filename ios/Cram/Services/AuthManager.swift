@@ -25,6 +25,9 @@ final class AuthManager {
     }
 
     private(set) var state: State = .loading
+    /// The signed-in user's Supabase id (UUID string), or `nil` when signed out. Used by the sync
+    /// layer to namespace its delta cursors per user (see `SyncCursorStore`).
+    private(set) var currentUserID: String?
     /// Last user-facing error from a sign-in / sign-up attempt, or `nil`.
     private(set) var lastError: String?
     /// True while a sign-in / sign-up call is in flight (drives the button spinner).
@@ -57,9 +60,11 @@ final class AuthManager {
         }
         do {
             let session = try await client.auth.session
+            currentUserID = session.user.id.uuidString
             state = .signedIn(email: session.user.email)
         } catch {
             // No stored session (or it could not be refreshed) — treat as signed out.
+            currentUserID = nil
             state = .signedOut
         }
     }
@@ -76,6 +81,7 @@ final class AuthManager {
             let session = try await client.auth.signIn(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password)
+            currentUserID = session.user.id.uuidString
             state = .signedIn(email: session.user.email)
         } catch {
             lastError = Self.message(for: error)
@@ -97,6 +103,7 @@ final class AuthManager {
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password)
             if let session = response.session {
+                currentUserID = session.user.id.uuidString
                 state = .signedIn(email: session.user.email)
             } else {
                 lastError = "Account created. Check your email to confirm, then sign in."
@@ -120,6 +127,9 @@ final class AuthManager {
             // stored session is cleared and app state can't desync from the Keychain (O3).
             try? await client.auth.signOut(scope: .local)
         }
+        // Drop per-user sync cursors so a later sign-in starts from a clean delta position.
+        SyncCursorStore.resetAll()
+        currentUserID = nil
         state = .signedOut
     }
 

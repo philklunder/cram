@@ -15,6 +15,11 @@ final class GradeEntry {
     var date: Date
     var subject: Subject?
 
+    // Sync metadata (v0.5 Phase 5).
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
+
     var kind: GradeKind {
         get { GradeKind(rawValue: kindRaw) ?? .exam }
         set { kindRaw = newValue.rawValue }
@@ -33,5 +38,7 @@ final class GradeEntry {
         self.weight = weight
         self.date = date
         self.subject = subject
+        self.updatedAt = .now
+        self.needsSync = true
     }
 }

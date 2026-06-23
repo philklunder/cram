@@ -27,6 +27,12 @@ final class Card {
     var subject: Subject?
     var source: Source?
 
+    // Sync metadata (v0.5 Phase 5). The SM-2 state above is what changes on review; bump
+    // `updatedAt` / `needsSync` via `touch()` whenever the scheduler rewrites it.
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
+
     @Relationship(deleteRule: .cascade, inverse: \ReviewLog.card)
     var reviewLogs: [ReviewLog] = []
 
@@ -49,6 +55,8 @@ final class Card {
         self.dueDate = .now        // brand-new cards are due immediately
         self.subject = subject
         self.source = source
+        self.updatedAt = .now
+        self.needsSync = true
     }
 
     /// Whether this card is due for review at the given moment.
