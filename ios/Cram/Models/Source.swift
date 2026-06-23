@@ -13,6 +13,12 @@ final class Source {
     var fileNames: [String]
     var subject: Subject?
 
+    // Sync metadata (v0.5 Phase 5). `fileNames` maps to the wire `storage_paths`; the raw
+    // file bytes themselves are not synced (see plan — Storage upload/download is deferred).
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
+
     var kind: SourceKind {
         get { SourceKind(rawValue: kindRaw) ?? .pdf }
         set { kindRaw = newValue.rawValue }
@@ -25,6 +31,8 @@ final class Source {
         self.addedAt = .now
         self.fileNames = fileNames
         self.subject = subject
+        self.updatedAt = .now
+        self.needsSync = true
     }
 
     /// On-disk URLs of the captured files, resolved against the source store.

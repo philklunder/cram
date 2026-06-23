@@ -60,6 +60,7 @@ struct AddSubjectView: View {
             gradingScale: scale,
             targetGrade: hasTarget ? Double(targetGrade.replacingOccurrences(of: ",", with: ".")) : nil)
         context.insert(subject)
+        SyncService.shared.requestSync(context: context)
         dismiss()
     }
 }
