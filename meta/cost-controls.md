@@ -17,6 +17,15 @@
   row is committed on its own the instant the call returns, before the deck/attempt is persisted.
 - **Cost controls are mandatory in prod.** `check_production_config` refuses to boot `CRAM_ENV=prod`
   unless all three ceilings are `> 0` (alongside auth + secrets). Default-off everywhere else.
+- **The rate limit must be sized for the sync client, not the wallet.** CRUD/sync requests cost zero
+  Claude tokens — the budget is guarded solely by the token spend cap. So `CRAM_RATE_LIMIT_PER_MIN`
+  should be generous (≥120); a too-low value (the early ~10) only throttles free traffic and breaks
+  sync. The iOS client also self-limits (trailing throttle + `Retry-After` backoff) — see
+  [ios-sync-client.md](ios-sync-client.md).
+- **A paid generation is never discarded over a Storage hiccup.** `/v1/generate` persists the deck
+  even if the Supabase Storage upload fails: `persist_generation` catches `StorageError`, logs it,
+  and writes the source with empty `storage_paths`. The cards are the product; the stored file is
+  secondary.
 
 ## Reasoning
 - An in-memory limiter resets on restart and is per-worker, giving false confidence right when the
@@ -32,7 +41,14 @@
 - Token-based over cost-based: the SDK gives exact tokens; a USD figure needs a per-model price
   constant that drifts. The ledger keeps enough to add cost/monthly views later without a migration.
 - Rate-limiting CRUD too (not just AI) because a flood of owned-table writes still hammers the DB; the
-  uniform router dependency means no route can forget it.
+  uniform router dependency means no route can forget it. **But** the limit guards the DB, not the
+  wallet — so it can sit far above what the spend cap allows; conflating the two (a ~10/min limit
+  "to save money") just starves the legitimate sync client, which needs ~16 requests per cycle.
+- **Why degrade instead of fail on a Storage hiccup.** Metering commits before persistence precisely
+  because the call already cost money — so failing the *whole* request after that (and throwing away
+  the generated cards the user paid for) is the wrong posture. Originally a `StorageError` propagated
+  uncaught as a bare `500`; now generate persists the deck without the file. Same principle as the
+  metering rule: don't waste a paid call.
 
 ## Implications
 - Two new backend-internal tables (not synced to iOS). `ai_usage_events` is owned (auth-FK + RLS like
@@ -58,4 +74,4 @@
   limit** rather than tighter in-app logic — see [edge-and-budget-backstops.md](edge-and-budget-backstops.md).
 
 ## Last updated
-2026-06-18
+2026-06-23
