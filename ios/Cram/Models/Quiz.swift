@@ -9,6 +9,11 @@ final class Quiz {
     var createdAt: Date
     var subject: Subject?
 
+    // Sync metadata (v0.5 Phase 5).
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
+
     @Relationship(deleteRule: .cascade, inverse: \Question.quiz)
     var questions: [Question] = []
 
@@ -17,6 +22,8 @@ final class Quiz {
         self.title = title
         self.createdAt = .now
         self.subject = subject
+        self.updatedAt = .now
+        self.needsSync = true
     }
 }
 
@@ -32,6 +39,11 @@ final class Question {
     /// The correct answer (an option, or the model answer for short answer).
     var answerKey: String
     var quiz: Quiz?
+
+    // Sync metadata (v0.5 Phase 5).
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var needsSync: Bool = true
 
     @Relationship(deleteRule: .cascade, inverse: \Attempt.question)
     var attempts: [Attempt] = []
@@ -54,6 +66,8 @@ final class Question {
         self.options = options
         self.answerKey = answerKey
         self.quiz = quiz
+        self.updatedAt = .now
+        self.needsSync = true
     }
 }
 
@@ -65,18 +79,27 @@ final class Attempt {
     var isCorrect: Bool
     /// 0…1 partial-credit score (1 for a correct multiple-choice answer).
     var score: Double
+    /// Short-answer feedback from the grader (ADR 0006). Empty for multiple choice. Matches the
+    /// wire `feedback` field so the model already lines up with the backend before the v0.4 UI.
+    var feedback: String = ""
     var gradedAt: Date
     var question: Question?
+
+    // Sync metadata (v0.5 Phase 5). Attempts are append-only — insert + push once, never updated.
+    var needsSync: Bool = true
 
     init(response: String,
          isCorrect: Bool,
          score: Double,
+         feedback: String = "",
          question: Question? = nil) {
         self.id = UUID()
         self.response = response
         self.isCorrect = isCorrect
         self.score = score
+        self.feedback = feedback
         self.gradedAt = .now
         self.question = question
+        self.needsSync = true
     }
 }

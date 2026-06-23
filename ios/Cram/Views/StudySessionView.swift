@@ -84,8 +84,10 @@ struct StudySessionView: View {
                         to: card,
                         examDate: subject.examDate,
                         subjectStrength: subject.gradeStrength)
+        card.touch()   // SM-2 state changed → mark the card for the next push
         context.insert(ReviewLog(rating: rating, card: card))
         reviewedCount += 1
+        SyncService.shared.requestSync(context: context)
         withAnimation {
             showingBack = false
             index += 1
