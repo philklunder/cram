@@ -45,6 +45,11 @@ class Settings:
     supabase_jwks_url: str
     supabase_service_role_key: str
     supabase_storage_bucket: str
+    # v0.6 web dashboard: browser origins allowed to call the API cross-origin (CORS).
+    # Empty by default so a deploy stays locked down to same-origin/native clients (iOS needs
+    # no CORS) until a web origin is explicitly allow-listed. Comma-separated, exact origins
+    # (scheme://host[:port]), e.g. "http://localhost:3000,https://cram-web.vercel.app".
+    cors_origins: tuple[str, ...]
 
     @property
     def migration_url(self) -> str:
@@ -109,6 +114,13 @@ def load_settings() -> Settings:
         supabase_jwks_url=os.environ.get("SUPABASE_JWKS_URL", "").strip(),
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
         supabase_storage_bucket=os.environ.get("SUPABASE_STORAGE_BUCKET", "sources").strip(),
+        # Exact browser origins allowed for cross-origin API calls (the web dashboard).
+        # Parsed from a comma-separated list; blanks dropped. Empty ⇒ CORS disabled.
+        cors_origins=tuple(
+            o.strip()
+            for o in os.environ.get("CRAM_CORS_ORIGINS", "").split(",")
+            if o.strip()
+        ),
     )
 
 
