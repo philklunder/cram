@@ -1,0 +1,86 @@
+# Web Dashboard (v0.6) — architecture & the CORS it required
+
+The **third client** after the iOS app and the backend's own API. A Next.js "study desk" in
+[`web/`](../web) that authenticates with Supabase and talks to the **same live backend** the iOS
+app uses. Built on the `web` branch so the in-flight iOS work on `main` is never disturbed; merges
+to `main` once both halves are done.
+
+## Decisions
+
+- **Scope = "study desk", not the whole app.** v0.6 web does: Supabase login, browse subjects
+  (exam countdown), browse a subject's sources/cards/quizzes, upload material → `/v1/generate`, and
+  a progress readout. **SRS flashcard review and quiz-taking/grading stay iOS-primary** — the web
+  does not call `/v1/grade` yet and does not mutate SM-2 state.
+- **Direct browser → backend calls with a Supabase Bearer JWT** — the web mirrors the iOS client's
+  model (`Authorization: Bearer <access_token>`), *not* a Next.js BFF/proxy. See
+  [`web/src/lib/api/client.ts`](../web/src/lib/api/client.ts).
+- **This forced a backend CORS change.** Added an env-driven allowlist `CRAM_CORS_ORIGINS`
+  (`backend/app/config.py`) + `CORSMiddleware` (`backend/app/main.py`). Default **empty ⇒ CORS off**;
+  `allow_credentials=False`; methods GET/POST/PATCH/DELETE/OPTIONS; headers Authorization +
+  Content-Type. Added **last** so it is the outermost middleware (handles preflight + stamps headers
+  on errors).
+- **Auth via `@supabase/ssr` cookies + a server-layout gate.** `src/middleware.ts` refreshes the
+  session each request; the `(app)/` route-group server layout calls **`supabase.auth.getUser()`**
+  (server-validates the token, not just a decoded session) and redirects to `/login`.
+- **Client-side fetch + filter, paging the delta endpoints.** The CRUD list routes are not filtered
+  server-side (delta-pull only), so the client `listAll`-pages a resource and filters by
+  subject/quiz in the browser.
+- **Zero runtime dependencies beyond Next/React/Supabase + Tailwind.** A local `cn()` instead of
+  `clsx`; a **system font stack instead of `next/font/google`**; a shared design-system primitives
+  file (`web/src/components/ui.tsx`).
+- **Same Supabase project as iOS**; only the **anon** key ships to the browser (public by design).
+  Backend base URL defaults to the live Railway deploy, overridable via
+  `NEXT_PUBLIC_CRAM_BACKEND_URL`.
+
+## Reasoning
+
+- **Mirror iOS, don't build a BFF.** The backend already speaks Bearer-JWT to a native client; a
+  second client over the same contract keeps one auth model and one API surface. A Next.js proxy
+  would hide the token from browser JS but adds a server hop, duplicates the API in route handlers,
+  and diverges from the iOS shape — not worth it when the token is already browser-resident via
+  Supabase and every `/v1/*` is owner-scoped server-side regardless.
+- **CORS allowlist defaults closed.** iOS/native need no CORS, so an empty default keeps any deploy
+  locked to same-origin/native until a web origin is *explicitly* allow-listed — consistent with the
+  project's fail-closed posture ([auth-security-posture.md](auth-security-posture.md)). It is **not**
+  wired into `check_production_config` (the app boots fine without it; it just disables the web).
+  **Credentials are off** because auth is a Bearer header, not a cookie — so even a worst-case `*`
+  misconfig can't drive a CSRF/ambient-credential attack (no cookie is ever attached cross-origin).
+  CORS is **not** an authz layer; it gates browsers, the JWT gates data.
+- **`getUser()` over `getSession()`** at the gate: `getSession()` trusts the cookie as-is;
+  `getUser()` validates the token with Supabase Auth, so a tampered/expired cookie can't slip past
+  the server gate. Same hardening choice as the iOS client
+  ([ios-auth-client.md](ios-auth-client.md)).
+- **Client-side filtering is fine at single-user scale.** The list endpoints return only the
+  caller's rows; paging + in-browser filtering avoids adding server-side query params now. Revisit if
+  a user ever accrues thousands of rows.
+- **No `next/font` / zero deps** because the build runs where a build-time Google Fonts fetch can't
+  be relied on, and a portfolio app doesn't need the extra supply-chain surface. A system stack is
+  instant and dependency-free; a real typeface is a later, online refinement.
+
+## Implications
+
+- **Going live needs `CRAM_CORS_ORIGINS` set in Railway** (raw, no quotes — Railway doesn't strip
+  them, see [deployment.md](deployment.md)) to include `http://localhost:3000` and the Vercel URL,
+  **and a backend redeploy**. Until then every browser `/v1/*` call fails as a CORS error. This is
+  the one cross-cutting coupling between the web client and the deployed backend.
+- **Open sign-up is exposed** (`signUp` in the login form). Blast radius is bounded by the existing
+  per-user/global daily token caps + rate limit ([cost-controls.md](cost-controls.md)) and the
+  Anthropic Console hard cap ([edge-and-budget-backstops.md](edge-and-budget-backstops.md)) — worst
+  case is feature-DoS within budget, not a cost blowout. Decide at deploy: disable public sign-up in
+  Supabase, or rely on the caps.
+- **Web is read-mostly today.** Generate writes (server-persisted); nothing else mutates. When the
+  web later does review/grade, it must adopt the same sync semantics as the iOS client
+  ([ios-sync-client.md](ios-sync-client.md)) to avoid divergence.
+- Deploy target is **Vercel** with root directory `web/`; the backend stays on Railway.
+
+## Open questions
+
+- **No ADR yet for the web client / CORS.** If the Bearer-direct-vs-BFF choice or the CORS contract
+  should be frozen formally, add an ADR (next free number) and cross-ref it here.
+- Server-side filtering (`?subject_id=`) on the list endpoints if client-side paging ever gets heavy.
+- Whether to disable Supabase public sign-up vs. keep it gated only by the spend caps.
+- Live design/QA pass (contrast, spacing, real typeface, tab arrow-key nav) once the app runs.
+
+## Last updated
+
+2026-06-24
