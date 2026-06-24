@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()  # load .env before reading settings
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 from .config import check_production_config, get_settings  # noqa: E402
@@ -69,6 +70,21 @@ async def limit_body_size(request: Request, call_next):
         except ValueError:
             return JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)
     return await call_next(request)
+
+
+# CORS for the v0.6 web dashboard (browser cross-origin calls). Added last so it is the
+# OUTERMOST middleware — it answers preflight OPTIONS and stamps Access-Control headers on
+# every response, including errors. No-op when CRAM_CORS_ORIGINS is unset, so native/iOS
+# deployments stay locked down. Credentials are off: the web client authenticates with a
+# Bearer JWT (not cookies), so it does not need `Access-Control-Allow-Credentials`.
+if settings.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 @app.get("/healthz")
