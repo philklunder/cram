@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-gray-50 font-sans text-gray-900 antialiased;
+  /* A faint brand-tinted glow in the top corner so the canvas isn't a flat gray. */
+  background-image: radial-gradient(48rem 48rem at 100% -8%, rgb(99 102 241 / 0.07), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background-color: rgb(99 102 241 / 0.18);
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight;
+  }
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
