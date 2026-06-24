@@ -22,8 +22,8 @@ knowledge actually sticks — peaking on the day of your exam.
 | Component  | Stack                          | Status |
 |------------|--------------------------------|--------|
 | iOS app    | Swift + SwiftUI + SwiftData    | 🟡 Scaffolded — study loop + real PDF/photo capture. Now authenticates with **Supabase JWT** (login flow + `Authorization: Bearer`; retired `X-Cram-Secret` dropped) via the `supabase-swift` SDK; pending a live end-to-end generate test against Railway (Mac) |
-| Backend    | FastAPI (Python) + Supabase    | 🟢 **Deployed live on Railway** ([`/healthz`](https://cram.up.railway.app/healthz)) — v0.5 complete. Generate + grade behind Supabase JWT auth; schema migrated to Supabase Postgres with per-user CRUD + delta-sync endpoints; generate/grade persist their output. **Pre-deploy hardening in place** (ADR 0009, see [plan](docs/plans/v0.5-backend-persistence-auth.md)) — per-caller rate limit, Anthropic spend cap, and a reverse-proxy body cap served by a baked-in nginx proxy, plus a fail-fast prod-config guard. Only the iOS sync client (Phase 5) remains |
-| Web        | Next.js + React                | ⚪️ Not started |
+| Backend    | FastAPI (Python) + Supabase    | 🟢 **Deployed live on Railway** ([`/healthz`](https://cram.up.railway.app/healthz)) — v0.5 complete. Generate + grade behind Supabase JWT auth; schema migrated to Supabase Postgres with per-user CRUD + delta-sync endpoints; generate/grade persist their output. **Pre-deploy hardening in place** (ADR 0009, see [plan](docs/plans/v0.5-backend-persistence-auth.md)) — per-caller rate limit, Anthropic spend cap, and a reverse-proxy body cap served by a baked-in nginx proxy, plus a fail-fast prod-config guard. An env-driven CORS allowlist (`CRAM_CORS_ORIGINS`, default closed) gates the web client. Only the iOS sync client (Phase 5) remains |
+| Web        | Next.js + React + Tailwind     | 🟡 **v0.6 built** — the "study desk": Supabase login, subjects with an exam countdown, browse sources/cards/quizzes, upload material → generate decks, and a progress overview. Talks to the live backend with a Supabase Bearer JWT (CORS-gated). Pending live verification + a Vercel deploy. See [`web/README.md`](web/README.md) |
 | AI         | Claude API                     | 🟢 Server-side only; real generation via Claude Sonnet 4.6 (ADR 0005) |
 
 ## Repository layout
@@ -32,8 +32,9 @@ knowledge actually sticks — peaking on the day of your exam.
 cram/
 ├── ios/          # SwiftUI app (Xcode) — the native client (built first)
 ├── backend/      # FastAPI API — live on Railway (generate, grade, per-user CRUD + sync)
-├── web/          # Next.js dashboard (added on Windows)
-└── docs/         # Product spec, architecture, setup, and decision records
+├── web/          # Next.js dashboard — the study desk (browse, upload, progress)
+├── docs/         # Product spec, architecture, setup, and decision records
+└── meta/         # Decision reasoning (the *why*), complementing docs/adr/
 ```
 
 ## Docs
@@ -41,7 +42,8 @@ cram/
 - [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md) — what we're building and why (start here).
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the clients, backend, and AI fit together.
 - [`docs/SETUP.md`](docs/SETUP.md) — how to build and run each component locally.
-- [`docs/adr/`](docs/adr/) — Architecture Decision Records.
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records (the frozen contracts).
+- [`meta/`](meta/) — the reasoning behind the build (the *why*), complementing the ADRs.
 
 ## License
 
