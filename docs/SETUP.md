@@ -103,6 +103,13 @@ trusted reverse proxy (it gates `X-Forwarded-For` trust for the rate-limit IP fa
 vars default to off/0, so local and dev runs are unaffected — they are required only in prod. See
 [`backend/.env.example`](../backend/.env.example) for the full annotated list.
 
+**Web client (CORS).** The web dashboard is a browser app on a different origin, so the backend
+must allow it explicitly: set `CRAM_CORS_ORIGINS` to a comma-separated list of exact origins
+(`scheme://host[:port]`, no trailing slash), e.g. `https://<your-app>.vercel.app`. It is **not**
+boot-enforced (empty just disables CORS, keeping iOS/native unaffected), but the live web app
+cannot call the backend until it is set. On Railway, enter the value **raw** — no surrounding
+quotes (Railway does not strip them).
+
 #### Class B — NOT machine-enforced (you must verify these by hand)
 
 > ⚠️ **`check_production_config` cannot see past its own process.** It validates env vars; it has no
@@ -130,4 +137,17 @@ vars default to off/0, so local and dev runs are unaffected — they are require
 
 ## Web (added on Windows)
 
-Next.js. Will document `npm install` / `npm run dev` when it lands.
+Next.js (App Router) + TypeScript + Tailwind, in [`web/`](../web). It authenticates with Supabase
+(same project as iOS) and calls the live backend with a Bearer JWT. Full setup, env vars, and the
+Vercel deploy notes live in [`web/README.md`](../web/README.md). Quick start:
+
+```sh
+cd web
+npm install
+cp .env.example .env.local   # set NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY
+npm run dev                  # http://localhost:3000
+```
+
+For local dev against the **deployed** backend, add `http://localhost:3000` to the backend's
+`CRAM_CORS_ORIGINS` (above). Against a **local** backend, point `NEXT_PUBLIC_CRAM_BACKEND_URL` at it
+and set its `CRAM_CORS_ORIGINS=http://localhost:3000`.
