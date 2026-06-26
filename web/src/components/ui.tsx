@@ -11,14 +11,19 @@ export function cn(...parts: Array<string | false | null | undefined>): string {
 // --- Brand mark ------------------------------------------------------------------------
 
 export function BrandMark({ size = 32 }: { size?: number }) {
+  // The Cram app icon (calendar + flashcards). The PNG carries its own squircle shape and
+  // transparent corners, so no background or rounding is applied here.
   return (
-    <span
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/cram-logo.png"
+      alt=""
       aria-hidden
+      width={size}
+      height={size}
+      className="select-none"
       style={{ width: size, height: size }}
-      className="inline-flex items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 font-semibold text-white shadow-sm"
-    >
-      <span style={{ fontSize: size * 0.5 }}>C</span>
-    </span>
+    />
   );
 }
 
@@ -44,11 +49,31 @@ const buttonSizes: Record<ButtonSize, string> = {
 export function Button({
   variant = "primary",
   size = "md",
+  loading = false,
   className,
+  children,
+  disabled,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ButtonSize }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+}) {
   return (
-    <button className={cn(buttonBase, buttonVariants[variant], buttonSizes[size], className)} {...props} />
+    <button
+      className={cn(buttonBase, buttonVariants[variant], buttonSizes[size], className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading ? (
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/40 border-t-current"
+        />
+      ) : null}
+      {children}
+    </button>
   );
 }
 

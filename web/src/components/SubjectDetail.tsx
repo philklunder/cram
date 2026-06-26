@@ -137,7 +137,7 @@ function CardsTab({ cards }: { cards: Card[] }) {
               <Badge tone={difficultyTone(c.difficulty)}>D{c.difficulty}</Badge>
             </div>
             <p className="mt-1 text-sm text-gray-600">{c.back}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-400">
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
               <Badge tone="neutral">{c.topic}</Badge>
               <span>reps {c.repetitions}</span>
               <span aria-hidden>·</span>
@@ -201,7 +201,7 @@ function QuizzesTab({ quizzes, questions }: { quizzes: { id: string; title: stri
                       Model answer: <span className="text-gray-700">{q.answer_key}</span>
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-gray-400">{q.topic}</p>
+                  <p className="mt-2 text-xs text-gray-500">{q.topic}</p>
                 </li>
               ))}
             </ul>
@@ -225,7 +225,7 @@ function SourcesTab({ sources }: { sources: Source[] }) {
               <span className="font-medium text-gray-900">{s.title}</span>
               <Badge tone="neutral">{s.kind}</Badge>
             </div>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-gray-500">
               Added {formatDate(s.added_at)}
               {s.storage_paths.length > 0
                 ? ` · ${s.storage_paths.length} ${s.storage_paths.length === 1 ? "file" : "files"}`
