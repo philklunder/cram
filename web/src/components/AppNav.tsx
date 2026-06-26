@@ -32,12 +32,15 @@ export function AppNav({ email }: { email: string | null }) {
         </Link>
         <div className="flex items-center gap-3">
           {email ? (
-            <span className="hidden text-sm text-gray-500 sm:inline" title={email}>
+            <span
+              className="hidden max-w-[20ch] truncate text-sm text-gray-500 sm:block"
+              title={email}
+            >
               {email}
             </span>
           ) : null}
-          <Button variant="secondary" size="sm" onClick={signOut} disabled={busy}>
-            {busy ? "Signing out…" : "Sign out"}
+          <Button variant="secondary" size="sm" onClick={signOut} loading={busy}>
+            Sign out
           </Button>
         </div>
       </div>
