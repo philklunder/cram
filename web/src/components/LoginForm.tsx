@@ -99,8 +99,8 @@ export function LoginForm() {
           </div>
         ) : null}
 
-        <Button type="submit" disabled={busy} className="w-full">
-          {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+        <Button type="submit" loading={busy} className="w-full">
+          {mode === "signin" ? "Sign in" : "Create account"}
         </Button>
 
         <p className="text-center text-sm text-gray-500">
