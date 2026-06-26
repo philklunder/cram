@@ -57,7 +57,7 @@ export function GenerateMaterialForm({
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="title" className={labelClass}>
-            Title <span className="font-normal text-gray-400">(optional)</span>
+            Title <span className="font-normal text-gray-500">(optional)</span>
           </label>
           <input
             id="title"
@@ -81,7 +81,7 @@ export function GenerateMaterialForm({
             onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             className="mt-1.5 block w-full cursor-pointer rounded-lg border border-gray-300 text-sm text-gray-600 transition file:mr-4 file:cursor-pointer file:border-0 file:border-r file:border-gray-200 file:bg-gray-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           />
-          <p className="mt-1.5 text-xs text-gray-400">
+          <p className="mt-1.5 text-xs text-gray-500">
             PDF or images (JPEG, PNG, GIF, WebP).
             {files.length > 0 ? (
               <span className="font-medium text-gray-600">
@@ -94,7 +94,7 @@ export function GenerateMaterialForm({
 
         {error ? <ErrorBox message={error} /> : null}
 
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           {busy ? "Generating… this can take a moment" : "Generate deck"}
         </Button>
       </form>
@@ -127,7 +127,7 @@ export function GenerateMaterialForm({
                       <Badge tone={difficultyTone(c.difficulty)}>D{c.difficulty}</Badge>
                     </div>
                     <p className="mt-1 text-gray-600">{c.back}</p>
-                    <p className="mt-1 text-xs text-gray-400">{c.topic}</p>
+                    <p className="mt-1 text-xs text-gray-500">{c.topic}</p>
                   </li>
                 ))}
               </ul>
