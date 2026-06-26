@@ -31,6 +31,17 @@ to `main` once both halves are done.
 - **Same Supabase project as iOS**; only the **anon** key ships to the browser (public by design).
   Backend base URL defaults to the live Railway deploy, overridable via
   `NEXT_PUBLIC_CRAM_BACKEND_URL`.
+- **Brand identity (design pass, 2026-06-26).** Ships a real app icon — a calendar + flashcards
+  squircle — at `web/public/cram-logo.png` and `web/src/app/icon.png` (the browser-tab favicon, via
+  App Router file convention). `BrandMark` renders it with a plain `<img>` (deliberately **not**
+  `next/image` — a tiny static logo needs no optimizer/runtime). The supplied art sat on a black
+  canvas; the corners were cut with a **geometric squircle mask** (radius measured off the icon),
+  **not** a luminance/color key, because the icon's gradient darkens to near-black in one corner and
+  a brightness key would punch holes in the icon itself.
+- **Accessibility floor.** Informational text on white is **`text-gray-500` minimum** (≈4.6:1, WCAG
+  AA); `gray-400` is reserved for decorative/placeholder/icon use only. Async actions use a shared
+  `Button` `loading` state (spinner + `aria-busy` + auto-disable) rather than swapping label text, so
+  the layout never shifts mid-action.
 
 ## Reasoning
 
@@ -79,8 +90,10 @@ to `main` once both halves are done.
   should be frozen formally, add an ADR (next free number) and cross-ref it here.
 - Server-side filtering (`?subject_id=`) on the list endpoints if client-side paging ever gets heavy.
 - Whether to disable Supabase public sign-up vs. keep it gated only by the spend caps.
-- Live design/QA pass (contrast, spacing, real typeface, tab arrow-key nav) once the app runs.
+- Design/QA pass **done 2026-06-26** (AA contrast, async-button loading state, app icon + favicon,
+  email truncation). Still open: a real typeface (vs the system stack) and arrow-key tab nav; both
+  want a live signed-in run to verify the authenticated pages.
 
 ## Last updated
 
-2026-06-24
+2026-06-26
