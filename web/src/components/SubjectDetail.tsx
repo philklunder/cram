@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { GenerateMaterialForm } from "@/components/GenerateMaterialForm";
 import { ProgressPanel } from "@/components/ProgressPanel";
+import { QuizRunner } from "@/components/QuizRunner";
 import {
   Badge,
+  Button,
   EmptyState,
   ErrorBox,
   PageLoader,
@@ -15,7 +17,7 @@ import {
   difficultyTone,
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
-import type { Card, Question, Source } from "@/lib/api/types";
+import type { Card, Question, Quiz, Source } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
 
@@ -152,20 +154,45 @@ function CardsTab({ cards }: { cards: Card[] }) {
   );
 }
 
-function QuizzesTab({ quizzes, questions }: { quizzes: { id: string; title: string }[]; questions: Question[] }) {
+function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Question[] }) {
+  const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
+
   if (quizzes.length === 0) {
     return <EmptyState title="No quizzes yet" hint="Generating material also creates a quiz." />;
   }
+
+  const activeQuiz = quizzes.find((q) => q.id === activeQuizId);
+  if (activeQuiz) {
+    return (
+      <QuizRunner
+        title={activeQuiz.title}
+        questions={questions.filter((q) => q.quiz_id === activeQuiz.id)}
+        onClose={() => setActiveQuizId(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5">
       {quizzes.map((quiz) => {
         const qs = questions.filter((q) => q.quiz_id === quiz.id);
         return (
           <Panel key={quiz.id}>
-            <h3 className="text-base font-semibold text-gray-900">{quiz.title}</h3>
-            <p className="mt-0.5 text-sm text-gray-500">
-              {qs.length} {qs.length === 1 ? "question" : "questions"}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">{quiz.title}</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {qs.length} {qs.length === 1 ? "question" : "questions"}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setActiveQuizId(quiz.id)}
+                disabled={qs.length === 0}
+              >
+                Take quiz
+              </Button>
+            </div>
             <ul className="mt-3 space-y-3">
               {qs.map((q) => (
                 <li key={q.id} className="rounded-lg border border-gray-200 p-3">

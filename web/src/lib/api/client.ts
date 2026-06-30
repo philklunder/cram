@@ -9,9 +9,13 @@ import { BACKEND_URL } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 
 import type {
+  Attempt,
+  AttemptCreate,
   Card,
   DeltaPage,
   GeneratedDeck,
+  GradeRequest,
+  GradeResult,
   Question,
   Quiz,
   Source,
@@ -150,4 +154,27 @@ export async function generateDeck({
   for (const f of files) form.append("files", f);
   // Do NOT set Content-Type — the browser sets the multipart boundary.
   return request<GeneratedDeck>("/v1/generate", { method: "POST", body: form });
+}
+
+// --- Quiz-taking -------------------------------------------------------------------------
+
+// Grade one short-answer response (POST /v1/grade — the server-side Claude call, behind the
+// spend cap). Passing `question_id` makes the backend persist the result as an Attempt, so the
+// caller must NOT also POST /v1/attempts for the same answer.
+export async function gradeShortAnswer(body: GradeRequest): Promise<GradeResult> {
+  return request<GradeResult>("/v1/grade", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Persist a locally-graded attempt (POST /v1/attempts). Used for multiple choice, which is
+// graded in the browser against `answer_key` and never touches the paid grading endpoint.
+export async function createAttempt(body: AttemptCreate): Promise<Attempt> {
+  return request<Attempt>("/v1/attempts", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
 }
