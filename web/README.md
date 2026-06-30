@@ -2,13 +2,14 @@
 
 The Cram web dashboard (v0.6). A Next.js app that authenticates with Supabase and reads/writes
 the **live Cram backend** (`https://cram.up.railway.app`). It's the "study desk": sign in, browse
-your subjects and decks, upload material to generate flashcards + quizzes, take a quiz, and track
-exam progress.
+your subjects and decks, upload material to generate flashcards + quizzes, take a quiz, review your
+cards, and track exam progress.
 
 > **Quiz-taking** is live on the web (Quizzes tab → "Take quiz"): multiple-choice is graded in the
-> browser; short-answer is graded by the backend's Claude call. **Spaced-repetition flashcard
-> review** still lives in the iOS app for now — bringing it to the web (with a faithful port of the
-> SM-2 scheduler) is the next slice.
+> browser; short-answer is graded by the backend's Claude call.
+> **Spaced-repetition review** (Review tab): walks your due cards, and each rating runs a faithful
+> TypeScript port of the iOS SM-2 scheduler — so reviewing on the web advances the *same* schedule
+> as the iOS app. The port is pinned to the Swift behaviour by a parity test suite (`npm test`).
 
 ## Stack
 
@@ -69,11 +70,17 @@ every `/v1/*` call fails as a CORS error in the browser.
 - **Filtering:** the CRUD list endpoints return all of a user's rows (delta-pull, not filtered
   server-side), so the client pages through and filters by subject/quiz. Fine at single-user scale.
 - **Progress:** `src/lib/progress.ts` derives mastery buckets from each card's stored SM-2 state.
-  These are simple, transparent heuristics; the authoritative scheduler lives in the iOS app.
+  These are simple, transparent display heuristics (distinct from the scheduler below).
 - **Quiz-taking:** `src/components/QuizRunner.tsx` grades by question kind. Multiple choice is
   checked in the browser against `answer_key` and saved via `POST /v1/attempts`. Short answer is
   sent to `POST /v1/grade` (the backend's Claude call, behind the spend cap), which grades *and*
   persists the attempt — so the client never double-writes it to `/v1/attempts`.
+- **Review (SM-2):** `src/lib/srs/scheduler.ts` is a faithful TypeScript port of the iOS scheduler
+  (`ios/Cram/Study/Scheduler.swift`) — standard SM-2 plus exam-date compression. `ReviewSession.tsx`
+  runs it on each rating and writes back `PATCH /v1/cards` + `POST /v1/review-logs`. Because the same
+  card can be reviewed on web *or* iOS, the two scheduler implementations must agree: `src/lib/srs/
+  *.test.ts` pins the port to vectors derived from the Swift source (`npm test`). The `due_date` is
+  naturally review-time-dependent (now + interval); only the algorithm is held identical.
 
 ## Deploy to Vercel
 

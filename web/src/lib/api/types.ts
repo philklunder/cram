@@ -117,6 +117,31 @@ export interface GradeResult {
   attempt_id?: string;
 }
 
+// Append-only review-log row (ReviewLogRead). One recorded card review.
+export interface ReviewLog {
+  id: string;
+  created_at: string;
+  card_id: string;
+  reviewed_at: string;
+  rating: number; // SM-2 quality: 1 again / 3 hard / 4 good / 5 easy
+}
+
+// POST /v1/review-logs body (ReviewLogCreate).
+export interface ReviewLogCreate {
+  card_id: string;
+  rating: number; // 1..5
+  reviewed_at?: string;
+}
+
+// PATCH /v1/cards/{id} body — the SM-2 write-back after a review (a subset of CardUpdate).
+export interface CardSM2Update {
+  ease_factor: number;
+  interval_days: number;
+  repetitions: number;
+  lapses: number;
+  due_date: string;
+}
+
 // --- POST /v1/generate response (GeneratedDeck enriched with persisted row ids) ----------
 
 export interface GeneratedCard {

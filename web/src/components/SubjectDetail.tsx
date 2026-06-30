@@ -6,6 +6,7 @@ import { useState } from "react";
 import { GenerateMaterialForm } from "@/components/GenerateMaterialForm";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuizRunner } from "@/components/QuizRunner";
+import { ReviewSession } from "@/components/ReviewSession";
 import {
   Badge,
   Button,
@@ -17,11 +18,18 @@ import {
   difficultyTone,
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
-import type { Card, Question, Quiz, Source } from "@/lib/api/types";
+import type { Card, Question, Quiz, Source, Subject } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
+import { subjectStrength as computeSubjectStrength } from "@/lib/srs/grade-strength";
 import { useAsync } from "@/lib/useAsync";
 
-type Tab = "progress" | "cards" | "quizzes" | "sources" | "add";
+type Tab = "progress" | "review" | "cards" | "quizzes" | "sources" | "add";
+
+// A card is due when its effective due date has passed.
+function dueCount(cards: Card[]): number {
+  const now = Date.now();
+  return cards.filter((c) => new Date(c.due_date).getTime() <= now).length;
+}
 
 export function SubjectDetail({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("progress");
@@ -38,10 +46,14 @@ export function SubjectDetail({ id }: { id: string }) {
   }
   if (!data) return null;
 
-  const { subject, sources, cards, quizzes, questions } = data;
+  const { subject, sources, cards, quizzes, questions, gradeEntries } = data;
+
+  // Subject grade strength feeds SM-2 exam compression — derived exactly as iOS does.
+  const strength = computeSubjectStrength(subject.grading_scale, subject.current_grade, gradeEntries);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "progress", label: "Progress" },
+    { id: "review", label: "Review", count: dueCount(cards) },
     { id: "cards", label: "Cards", count: cards.length },
     { id: "quizzes", label: "Quizzes", count: quizzes.length },
     { id: "sources", label: "Sources", count: sources.length },
@@ -94,6 +106,9 @@ export function SubjectDetail({ id }: { id: string }) {
 
       <div role="tabpanel">
         {tab === "progress" ? <ProgressPanel subject={subject} cards={cards} /> : null}
+        {tab === "review" ? (
+          <ReviewTab subject={subject} cards={cards} subjectStrength={strength} onReviewed={reload} />
+        ) : null}
         {tab === "cards" ? <CardsTab cards={cards} /> : null}
         {tab === "quizzes" ? <QuizzesTab quizzes={quizzes} questions={questions} /> : null}
         {tab === "sources" ? <SourcesTab sources={sources} /> : null}
@@ -122,6 +137,52 @@ function BackLink() {
       </svg>
       All subjects
     </Link>
+  );
+}
+
+function ReviewTab({
+  subject,
+  cards,
+  subjectStrength,
+  onReviewed,
+}: {
+  subject: Subject;
+  cards: Card[];
+  subjectStrength: number | null;
+  onReviewed: () => void;
+}) {
+  const [started, setStarted] = useState(false);
+  const due = dueCount(cards);
+
+  if (cards.length === 0) {
+    return <EmptyState title="No cards to review" hint="Use “Add material” to generate a deck." />;
+  }
+
+  if (started) {
+    return (
+      <ReviewSession
+        cards={cards}
+        examDate={subject.exam_date}
+        subjectStrength={subjectStrength}
+        onClose={() => setStarted(false)}
+        onReviewed={onReviewed}
+      />
+    );
+  }
+
+  return (
+    <Panel className="space-y-4 text-center">
+      <div>
+        <p className="text-3xl font-semibold tracking-tight text-gray-900">{due}</p>
+        <p className="mt-1 text-sm text-gray-500">{due === 1 ? "card due" : "cards due"} for review</p>
+      </div>
+      <div className="flex justify-center">
+        <Button onClick={() => setStarted(true)}>{due > 0 ? "Start review" : "Review all cards"}</Button>
+      </div>
+      {due === 0 ? (
+        <p className="text-xs text-gray-400">Nothing’s due — you can still review the whole deck.</p>
+      ) : null}
+    </Panel>
   );
 }
 
