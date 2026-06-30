@@ -7,25 +7,32 @@ to `main` once both halves are done.
 
 ## Decisions
 
-- **Scope = "study desk", now extending into studying.** v0.6 web does: Supabase login, browse
+- **Scope = "study desk", now a full study surface.** v0.6 web does: Supabase login, browse
   subjects (exam countdown), browse a subject's sources/cards/quizzes, upload material →
-  `/v1/generate`, and a progress readout. **As of 2026-06-30 the web also does quiz-taking** (see
-  the quiz-taking block below); **SRS flashcard review is next (Slice 2)** and is the first web
-  feature that will *mutate* SM-2 state.
+  `/v1/generate`, and a progress readout. **As of 2026-06-30 the web also does quiz-taking AND
+  spaced-repetition flashcard review** (see the blocks below) — review is the first web feature
+  that *mutates* SM-2 scheduling state, closing most of the original "review stays iOS-only" gap.
 - **Quiz-taking on web (2026-06-30).** `web/src/components/QuizRunner.tsx` runs a quiz one question
   at a time. **Grading is split by question kind, mirroring the backend's own design:**
   **multiple-choice is graded in the browser** against `answer_key` and persisted via
   `POST /v1/attempts` (append-only, no paid call); **short-answer goes to `POST /v1/grade`** (the
   one paid Claude call), which both grades *and* persists the attempt when `question_id` is sent —
   so the client must **not** also POST `/v1/attempts` for that answer (double-write).
-- **Web review (Slice 2) will be FULL SM-2 PARITY, not practice-only.** The chosen approach is to
-  faithfully **port `ios/Cram/Study/Scheduler.swift` to TypeScript** — both the SM-2 update *and*
-  the ADR-0004 exam-date compression (`card.mastery` + subject grade strength) — then write back
-  `PATCH /v1/cards` + `POST /v1/review-logs`. Rejected: a "practice-only" web review that never
-  mutates scheduling (safe but doesn't advance the user's real schedule).
-- **`web/` gets a test runner for the first time: Vitest.** Added specifically so the ported
-  scheduler can be pinned to the Swift behaviour with a **parity vector suite** (same inputs →
-  identical ease/interval/repetitions/lapses/due-date). Was a zero-test project before.
+- **Web review = FULL SM-2 PARITY, not practice-only (shipped 2026-06-30).** `Scheduler.swift` was
+  faithfully **ported to TypeScript** in [`web/src/lib/srs/scheduler.ts`](../web/src/lib/srs/scheduler.ts)
+  — both the SM-2 update *and* the ADR-0004 exam-date compression (`card.mastery` + subject grade
+  strength, the latter ported in `grade-strength.ts` incl. the weighted-average `currentGrade`
+  fallback) — and the result is written back via `PATCH /v1/cards` + `POST /v1/review-logs`
+  (`web/src/components/ReviewSession.tsx`). Rejected: a "practice-only" web review that never mutates
+  scheduling (safe but doesn't advance the real schedule). **Guardrail:** the canonical SM-2 integer
+  state is pure arithmetic, pinned to **34 parity vectors hand-derived from the Swift source**
+  (`scheduler.test.ts`, `grade-strength.test.ts`); a future change to the Swift scheduler now fails a
+  web test instead of silently diverging synced cards. `due_date` is inherently review-time-dependent
+  (now + interval) so it isn't expected to match cross-device to the second — only the algorithm is.
+- **`web/` gets a test runner for the first time: Vitest (2026-06-30).** Added with the scheduler
+  port specifically to host the parity suite (`npm test` → `vitest run`; `vitest.config.ts` mirrors
+  the `@` alias). DevDependency only — `npm audit --omit=dev` is clean; the esbuild/vite advisories
+  in its tree are dev-server-only and never shipped.
 - **Direct browser → backend calls with a Supabase Bearer JWT** — the web mirrors the iOS client's
   model (`Authorization: Bearer <access_token>`), *not* a Next.js BFF/proxy. See
   [`web/src/lib/api/client.ts`](../web/src/lib/api/client.ts).
@@ -110,11 +117,15 @@ to `main` once both halves are done.
   Anthropic Console hard cap ([edge-and-budget-backstops.md](edge-and-budget-backstops.md)) — worst
   case is feature-DoS within budget, not a cost blowout. Decide at deploy: disable public sign-up in
   Supabase, or rely on the caps.
-- **Web now writes study events, not just generate output.** Quiz-taking appends attempts
-  (`/v1/attempts` for MC, `/v1/grade` for short answer). The next step (review) will additionally
-  **mutate** card SM-2 state (`PATCH /v1/cards`) and append review-logs — at which point the web is
-  bound by the same sync semantics as the iOS client ([ios-sync-client.md](ios-sync-client.md)) and
-  the scheduler parity guarantee above.
+- **Web now writes study events AND mutates scheduling.** Quiz-taking appends attempts
+  (`/v1/attempts` for MC, `/v1/grade` for short answer); review now **mutates** card SM-2 state
+  (`PATCH /v1/cards`) and appends review-logs. The web is therefore bound by the same sync semantics
+  as the iOS client ([ios-sync-client.md](ios-sync-client.md)) — last-writer-wins — and by the
+  scheduler parity guarantee above: the two ports MUST agree, or a card reviewed on both devices
+  would flip-flop its schedule. The parity test suite is the enforcement mechanism.
+- **Review needs grade entries client-side.** To derive subject strength exactly as iOS does (its
+  `currentGrade` falls back to the weighted average of grade entries when no manual grade is set),
+  `loadSubjectBundle` now also pages `/v1/grade-entries`. They're the user's own owner-scoped rows.
 - **Short-answer grading spends real budget.** Each short-answer check is a Claude call against the
   per-user/global daily token cap ([cost-controls.md](cost-controls.md)); the UI surfaces the
   backend's 429 message and disables the control while in-flight, but the authoritative throttle is
@@ -130,11 +141,12 @@ to `main` once both halves are done.
 - Design/QA pass **done 2026-06-26** (AA contrast, async-button loading state, app icon + favicon,
   email truncation). Still open: a real typeface (vs the system stack) and arrow-key tab nav; both
   want a live signed-in run to verify the authenticated pages.
-- **Slice 2 (card review) is decided but not yet built** — port the scheduler + Vitest parity suite,
-  then the review UI (due cards → reveal → Again/Hard/Good/Easy → write back), then design +
-  security passes. The parity vectors should be generated *from* the Swift `Scheduler` (e.g. a small
-  Swift harness or hand-derived cases from `Scheduler.swift`) so the TS port is checked against the
-  source of truth, not against itself.
+- **Slice 2 (card review) shipped 2026-06-30** (scheduler port + 34-vector Vitest parity suite +
+  review UI + design/security passes; security found no Critical/High). Follow-ups: the parity
+  vectors are currently *hand-derived* from `Scheduler.swift` — a tiny Swift harness that emits the
+  expected vectors would make the cross-language pin automatic when the scheduler changes. The
+  backend does not range-validate the SM-2 columns (a hand-crafted PATCH could store a negative
+  interval on one's *own* card) — harmless at single-user scale, worth a guard if it ever matters.
 
 ## Last updated
 
