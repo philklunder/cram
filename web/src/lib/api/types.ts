@@ -75,6 +75,48 @@ export interface DeltaPage<T> {
   has_more: boolean;
 }
 
+// Append-only attempt row (AttemptRead). No updated_at/deleted_at — attempts are never edited.
+export interface Attempt {
+  id: string;
+  created_at: string; // ISO-8601 (server-insert time)
+  question_id: string;
+  response: string;
+  is_correct: boolean;
+  score: number; // 0..1
+  feedback: string;
+  graded_at: string;
+}
+
+// POST /v1/attempts body (AttemptCreate). Used for locally-graded multiple choice; `id` and
+// `graded_at` are server-defaulted when omitted.
+export interface AttemptCreate {
+  question_id: string;
+  response: string;
+  is_correct: boolean;
+  score: number; // 0..1
+  feedback?: string;
+  graded_at?: string;
+}
+
+// POST /v1/grade body (GradeRequest) — short-answer grading via the server-side Claude call.
+export interface GradeRequest {
+  prompt: string;
+  model_answer: string;
+  response: string;
+  topic?: string;
+  // When set, the backend persists the graded result as an Attempt under this question.
+  question_id?: string;
+}
+
+// POST /v1/grade response (GradeResult). `is_correct` is decided server-side from `score`.
+// `attempt_id` is present only when `question_id` was sent (the attempt was persisted).
+export interface GradeResult {
+  score: number; // 0..1
+  feedback: string;
+  is_correct: boolean;
+  attempt_id?: string;
+}
+
 // --- POST /v1/generate response (GeneratedDeck enriched with persisted row ids) ----------
 
 export interface GeneratedCard {

@@ -2,10 +2,13 @@
 
 The Cram web dashboard (v0.6). A Next.js app that authenticates with Supabase and reads/writes
 the **live Cram backend** (`https://cram.up.railway.app`). It's the "study desk": sign in, browse
-your subjects and decks, upload material to generate flashcards + quizzes, and track exam progress.
+your subjects and decks, upload material to generate flashcards + quizzes, take a quiz, and track
+exam progress.
 
-> Spaced-repetition review and quiz-taking stay in the iOS app for now — the web focuses on
-> ingestion, browsing, and progress.
+> **Quiz-taking** is live on the web (Quizzes tab → "Take quiz"): multiple-choice is graded in the
+> browser; short-answer is graded by the backend's Claude call. **Spaced-repetition flashcard
+> review** still lives in the iOS app for now — bringing it to the web (with a faithful port of the
+> SM-2 scheduler) is the next slice.
 
 ## Stack
 
@@ -67,6 +70,10 @@ every `/v1/*` call fails as a CORS error in the browser.
   server-side), so the client pages through and filters by subject/quiz. Fine at single-user scale.
 - **Progress:** `src/lib/progress.ts` derives mastery buckets from each card's stored SM-2 state.
   These are simple, transparent heuristics; the authoritative scheduler lives in the iOS app.
+- **Quiz-taking:** `src/components/QuizRunner.tsx` grades by question kind. Multiple choice is
+  checked in the browser against `answer_key` and saved via `POST /v1/attempts`. Short answer is
+  sent to `POST /v1/grade` (the backend's Claude call, behind the spend cap), which grades *and*
+  persists the attempt — so the client never double-writes it to `/v1/attempts`.
 
 ## Deploy to Vercel
 

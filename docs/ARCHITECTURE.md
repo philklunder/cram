@@ -18,7 +18,8 @@
 - **iOS app** — SwiftUI + SwiftData. The native client; built first, local-only. Daily study,
   capture (camera for textbook pages, file picker for PDFs).
 - **Web dashboard** — Next.js + React. The "study desk": upload large documents, browse subjects
-  and decks, view progress. Reads/writes the same API.
+  and decks, take quizzes, view progress. Reads/writes the same API. (SRS flashcard review is being
+  brought to the web next, behind a faithful port of the iOS SM-2 scheduler.)
 - **Backend** — FastAPI. Owns the data model, auth integration, the ingestion + generation
   pipeline, and the Claude API calls. The AI key lives **server-side only** — never in a client.
 - **Database / auth** — Supabase (Postgres + Auth + Storage). Stores subjects, sources, cards,
