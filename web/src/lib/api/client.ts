@@ -12,12 +12,16 @@ import type {
   Attempt,
   AttemptCreate,
   Card,
+  CardSM2Update,
   DeltaPage,
   GeneratedDeck,
+  GradeEntry,
   GradeRequest,
   GradeResult,
   Question,
   Quiz,
+  ReviewLog,
+  ReviewLogCreate,
   Source,
   Subject,
 } from "./types";
@@ -107,17 +111,21 @@ export interface SubjectBundle {
   cards: Card[];
   quizzes: Quiz[];
   questions: Question[];
+  // Needed to derive the subject's grade strength (which feeds SM-2 exam compression) the same
+  // way iOS does — its `currentGrade` falls back to the weighted average of grade entries.
+  gradeEntries: GradeEntry[];
 }
 
 // Everything needed to render a subject detail page, fetched in parallel and filtered to the
 // subject. Questions are filtered via the subject's quiz ids.
 export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
-  const [subject, sources, cards, quizzes, questions] = await Promise.all([
+  const [subject, sources, cards, quizzes, questions, gradeEntries] = await Promise.all([
     getSubject(id),
     listAll<Source>("sources").then(alive),
     listAll<Card>("cards").then(alive),
     listAll<Quiz>("quizzes").then(alive),
     listAll<Question>("questions").then(alive),
+    listAll<GradeEntry>("grade-entries").then(alive),
   ]);
 
   const subjectQuizzes = quizzes.filter((q) => q.subject_id === id);
@@ -129,6 +137,7 @@ export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
     cards: cards.filter((c) => c.subject_id === id),
     quizzes: subjectQuizzes,
     questions: questions.filter((q) => quizIds.has(q.quiz_id)),
+    gradeEntries: gradeEntries.filter((g) => g.subject_id === id),
   };
 }
 
@@ -173,6 +182,28 @@ export async function gradeShortAnswer(body: GradeRequest): Promise<GradeResult>
 // graded in the browser against `answer_key` and never touches the paid grading endpoint.
 export async function createAttempt(body: AttemptCreate): Promise<Attempt> {
   return request<Attempt>("/v1/attempts", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// --- Card review (spaced repetition) -----------------------------------------------------
+
+// Write back a card's SM-2 state after a review (PATCH /v1/cards/{id}). The new state is computed
+// by the local scheduler (src/lib/srs/scheduler.ts), which is a faithful port of the iOS one.
+export async function updateCard(id: string, patch: CardSM2Update): Promise<Card> {
+  return request<Card>(`/v1/cards/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Record one review (POST /v1/review-logs, append-only). Mirrors the iOS client, which logs every
+// review for analytics / future SRS tuning.
+export async function createReviewLog(body: ReviewLogCreate): Promise<ReviewLog> {
+  return request<ReviewLog>("/v1/review-logs", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
