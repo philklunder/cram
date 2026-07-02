@@ -79,7 +79,7 @@ export function GenerateMaterialForm({
             accept={ACCEPT}
             multiple
             onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="mt-1.5 block w-full cursor-pointer rounded-lg border border-gray-300 text-sm text-gray-600 transition file:mr-4 file:cursor-pointer file:border-0 file:border-r file:border-gray-200 file:bg-gray-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            className="mt-1.5 block w-full cursor-pointer rounded-xl border border-gray-200 text-sm text-gray-600 transition hover:border-gray-300 file:mr-4 file:cursor-pointer file:border-0 file:border-r file:border-gray-200 file:bg-brand-50/60 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/15"
           />
           <p className="mt-1.5 text-xs text-gray-500">
             PDF or images (JPEG, PNG, GIF, WebP).
@@ -100,7 +100,7 @@ export function GenerateMaterialForm({
       </form>
 
       {deck ? (
-        <div className="space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-4">
+        <div className="animate-fade-up space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-4">
           <div className="flex items-start gap-2.5">
             <svg className="mt-0.5 h-5 w-5 flex-none text-green-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path
@@ -121,7 +121,11 @@ export function GenerateMaterialForm({
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700">Preview</h4>
               <ul className="space-y-2">
                 {deck.cards.slice(0, 5).map((c, i) => (
-                  <li key={c.id ?? i} className="rounded-lg border border-green-200 bg-white p-3 text-sm">
+                  <li
+                    key={c.id ?? i}
+                    className="animate-fade-up rounded-xl border border-green-200 bg-white p-3 text-sm"
+                    style={{ animationDelay: `${i * 70}ms` }}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <span className="font-medium text-gray-900">{c.front}</span>
                       <Badge tone={difficultyTone(c.difficulty)}>D{c.difficulty}</Badge>
