@@ -29,6 +29,16 @@ to `main` once both halves are done.
   (`scheduler.test.ts`, `grade-strength.test.ts`); a future change to the Swift scheduler now fails a
   web test instead of silently diverging synced cards. `due_date` is inherently review-time-dependent
   (now + interval) so it isn't expected to match cross-device to the second — only the algorithm is.
+- **Grades section on web (2026-06-30) — the differentiator, last major gap vs. iOS.**
+  `web/src/components/GradesPanel.tsx` adds a **Grades tab** to the subject detail. List / add /
+  **soft-delete** (tombstone, so the deletion converges to iOS rather than resurrecting) real marks via
+  `POST`/`DELETE /v1/grade-entries`; a summary shows **current vs. target** with a Pass/Fail badge; an
+  inline editor sets `target_grade` + an optional manual `current_grade` override via
+  **`PATCH /v1/subjects`** (blank field ⇒ `null`, clearing it). Display + pass/fail logic is a TS port
+  of `GradeFormat.swift`/`GradingScale` in [`web/src/lib/grades.ts`](../web/src/lib/grades.ts), but the
+  current-grade/strength derivation is **reused from `grade-strength.ts`** (the scheduler already needed
+  it) — **not** re-ported — so there is one source of truth for "what is this subject's grade." No
+  in-place entry edit (delete + re-add), mirroring iOS `GradesView` (add + swipe-delete only).
 - **`web/` gets a test runner for the first time: Vitest (2026-06-30).** Added with the scheduler
   port specifically to host the parity suite (`npm test` → `vitest run`; `vitest.config.ts` mirrors
   the `@` alias). DevDependency only — `npm audit --omit=dev` is clean; the esbuild/vite advisories
@@ -97,6 +107,12 @@ to `main` once both halves are done.
   mitigation — it makes drift a failing test, not a silent production bug. This is exactly the
   divergence the original v0.6 README avoided by keeping review iOS-only; we're now taking it on
   deliberately, with a guardrail.
+- **Grades reuse the scheduler's grade math — no second port.** `grade-strength.ts` already ported
+  `currentGrade` (manual `??` weighted-average of entries) + `strength` for the ADR-0004 exam
+  compression; the Grades UI imports the *same* functions, so the number shown in the Grades tab is
+  exactly the number the scheduler compresses on. Only the *display* helpers (formatting, pass-mark,
+  scale/kind labels) are new in `grades.ts`. This deliberately avoids the two-ports-must-agree hazard
+  the scheduler has — there's only ever one grade derivation.
 - **MC grading is client-attested, and that's fine here.** The browser computes `is_correct`/`score`
   for multiple choice and the backend stores what it's told (the iOS client does the same). A user
   could forge their own attempt via devtools — but it only falsifies *their own* progress stats, no
@@ -126,6 +142,11 @@ to `main` once both halves are done.
 - **Review needs grade entries client-side.** To derive subject strength exactly as iOS does (its
   `currentGrade` falls back to the weighted average of grade entries when no manual grade is set),
   `loadSubjectBundle` now also pages `/v1/grade-entries`. They're the user's own owner-scoped rows.
+- **`grade-strength.ts` is now shared by two features** (the SM-2 scheduler *and* the Grades UI). A
+  change to how a subject's current grade is derived affects **both** exam compression and the Grades
+  display — keep it the single source. Setting a manual `current_grade` via the Grades editor
+  **overrides** the entry average everywhere (display *and* SM-2 strength), matching iOS
+  `Subject.currentGrade`.
 - **Short-answer grading spends real budget.** Each short-answer check is a Claude call against the
   per-user/global daily token cap ([cost-controls.md](cost-controls.md)); the UI surfaces the
   backend's 429 message and disables the control while in-flight, but the authoritative throttle is
@@ -147,7 +168,12 @@ to `main` once both halves are done.
   expected vectors would make the cross-language pin automatic when the scheduler changes. The
   backend does not range-validate the SM-2 columns (a hand-crafted PATCH could store a negative
   interval on one's *own* card) — harmless at single-user scale, worth a guard if it ever matters.
+- **Slice 3 (Grades) built 2026-06-30** (Grades tab + `grades.ts` display port; reuses `grade-strength.ts`;
+  typecheck + 34 tests + prod build green). Follow-ups: no in-place entry edit yet (delete + re-add);
+  the backend does not range-validate `score`/`weight` on `/v1/grade-entries` (the UI clamps to the
+  scale range + parses a comma decimal, but a hand-crafted POST could store an out-of-range grade on
+  one's *own* subject) — harmless at single-user scale, same posture as the SM-2 columns above.
 
 ## Last updated
 
-2026-06-30
+2026-07-02
