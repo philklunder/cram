@@ -144,10 +144,10 @@ export function ReviewSession({
   }
 
   return (
-    <Panel className="animate-rise space-y-5">
+    <Panel className="animate-rise space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500" aria-live="polite">
-          Card {idx + 1} of {queue.length}
+        <p className="text-sm font-medium tabular-nums text-gray-500" aria-live="polite">
+          Card <span className="text-gray-900">{idx + 1}</span> of {queue.length}
         </p>
         <Button variant="ghost" size="sm" onClick={onClose}>
           Exit
@@ -155,28 +155,32 @@ export function ReviewSession({
       </div>
 
       {/* Progress bar — fills as cards are reviewed. */}
-      <div className="h-1 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
         <div
-          className="h-full rounded-full bg-brand-600 transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500 ease-out"
           style={{ width: `${(idx / queue.length) * 100}%` }}
         />
       </div>
 
       {/* Card face — keyed on idx so each new card rises in. */}
       <div key={idx} className="animate-rise">
-        <div className="rounded-xl border border-gray-200 bg-gray-50/60 px-5 py-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{card.topic}</p>
+        <div className="flex min-h-[13rem] flex-col justify-center rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/70 px-6 py-10 text-center shadow-[inset_0_1px_0_rgb(255_255_255/0.9)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500/80">
+            {card.topic}
+          </p>
           <p
             ref={headingRef}
             tabIndex={-1}
-            className="mt-3 text-lg font-medium text-gray-900 focus:outline-none"
+            className="mt-4 text-xl font-medium leading-snug text-gray-900 focus:outline-none"
           >
             {card.front}
           </p>
           {showBack ? (
-            <div className="animate-rise mt-5 border-t border-gray-200 pt-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Answer</p>
-              <p className="mt-2 text-base text-gray-700">{card.back}</p>
+            <div className="animate-rise mt-6 border-t border-dashed border-gray-200 pt-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                Answer
+              </p>
+              <p className="mt-2 text-base leading-relaxed text-gray-700">{card.back}</p>
             </div>
           ) : null}
         </div>
@@ -202,7 +206,7 @@ export function ReviewSession({
                 disabled={saving}
                 aria-busy={pendingRating === rating || undefined}
                 className={cn(
-                  "inline-flex items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+                  "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 py-3 text-sm font-medium shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm",
                   RATING_CLASS[rating],
                 )}
               >

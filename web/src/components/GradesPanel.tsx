@@ -56,8 +56,14 @@ export function GradesPanel({
           </div>
         ) : (
           <ul className="mt-4 grid gap-3">
-            {sorted.map((e) => (
-              <GradeRow key={e.id} entry={e} scaleLabel={subject.grading_scale} onDeleted={onChanged} />
+            {sorted.map((e, i) => (
+              <GradeRow
+                key={e.id}
+                entry={e}
+                index={i}
+                scaleLabel={subject.grading_scale}
+                onDeleted={onChanged}
+              />
             ))}
           </ul>
         )}
@@ -179,7 +185,7 @@ function TargetsEditor({ subject, onSaved }: { subject: Subject; onSaved: () => 
   }
 
   return (
-    <form onSubmit={save} className="space-y-4 rounded-lg border border-gray-200 bg-gray-50/60 p-4">
+    <form onSubmit={save} className="animate-fade-up space-y-4 rounded-xl border border-gray-200/80 bg-gray-50/50 p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="target-grade" className={labelClass}>
@@ -402,10 +408,12 @@ function AddGradeForm({
 
 function GradeRow({
   entry,
+  index,
   scaleLabel,
   onDeleted,
 }: {
   entry: GradeEntry;
+  index: number;
   scaleLabel: Subject["grading_scale"];
   onDeleted: () => void;
 }) {
@@ -426,7 +434,7 @@ function GradeRow({
   }
 
   return (
-    <li>
+    <li className="animate-fade-up" style={{ animationDelay: `${Math.min(index, 10) * 45}ms` }}>
       <Panel className={cn(busy && "opacity-60")}>
         <div className="flex items-start justify-between gap-3">
           <span className="font-medium text-gray-900">{entry.title}</span>

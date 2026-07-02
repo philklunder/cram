@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { GenerateMaterialForm } from "@/components/GenerateMaterialForm";
 import { GradesPanel } from "@/components/GradesPanel";
@@ -20,7 +21,8 @@ import {
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
 import type { Card, Question, Quiz, Source, Subject } from "@/lib/api/types";
-import { formatDate } from "@/lib/format";
+import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
+import { subjectVars } from "@/lib/subjectColor";
 import { subjectStrength as computeSubjectStrength } from "@/lib/srs/grade-strength";
 import { useAsync } from "@/lib/useAsync";
 
@@ -33,6 +35,7 @@ function dueCount(cards: Card[]): number {
 }
 
 export function SubjectDetail({ id }: { id: string }) {
+  const reduce = useReducedMotion();
   const [tab, setTab] = useState<Tab>("progress");
   const { loading, error, data, reload } = useAsync<SubjectBundle>(() => loadSubjectBundle(id), [id]);
 
@@ -51,10 +54,11 @@ export function SubjectDetail({ id }: { id: string }) {
 
   // Subject grade strength feeds SM-2 exam compression — derived exactly as iOS does.
   const strength = computeSubjectStrength(subject.grading_scale, subject.current_grade, gradeEntries);
+  const due = dueCount(cards);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "progress", label: "Progress" },
-    { id: "review", label: "Review", count: dueCount(cards) },
+    { id: "review", label: "Review", count: due },
     { id: "cards", label: "Cards", count: cards.length },
     { id: "quizzes", label: "Quizzes", count: quizzes.length },
     { id: "grades", label: "Grades", count: gradeEntries.length },
@@ -63,67 +67,149 @@ export function SubjectDetail({ id }: { id: string }) {
   ];
 
   return (
-    <section className="animate-rise space-y-6">
-      <div>
-        <BackLink />
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900">{subject.name}</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {cards.length} {cards.length === 1 ? "card" : "cards"} · {quizzes.length}{" "}
-          {quizzes.length === 1 ? "quiz" : "quizzes"} · {sources.length}{" "}
-          {sources.length === 1 ? "source" : "sources"}
-        </p>
+    <section style={subjectVars(subject.id)} className="space-y-6">
+      <BackLink />
+      <Hero subject={subject} cards={cards} quizzes={quizzes} sources={sources} due={due} />
+
+      {/* Tab bar — horizontally scrollable on narrow screens; the active underline slides between
+          tabs via a shared layoutId. */}
+      <div className="-mx-1 overflow-x-auto px-1">
+        <div role="tablist" aria-label="Subject sections" className="flex min-w-max gap-1 border-b border-gray-200">
+          {tabs.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "relative inline-flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors duration-200",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2",
+                  active ? "text-[color:var(--sc-ink)]" : "text-gray-500 hover:text-gray-800",
+                )}
+              >
+                {t.label}
+                {t.count != null ? (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums transition-colors duration-200",
+                      active
+                        ? "bg-[var(--sc-soft)] text-[color:var(--sc-ink)]"
+                        : "bg-gray-100 text-gray-500",
+                    )}
+                  >
+                    {t.count}
+                  </span>
+                ) : null}
+                {active ? (
+                  <motion.span
+                    layoutId="subject-tab-underline"
+                    className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-[var(--sc-solid)]"
+                    transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div role="tablist" aria-label="Subject sections" className="flex flex-wrap gap-1 border-b border-gray-200">
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2",
-                active
-                  ? "border-brand-600 text-brand-700"
-                  : "border-transparent text-gray-500 hover:text-gray-800",
-              )}
-            >
-              {t.label}
-              {t.count != null ? (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 py-0.5 text-xs font-semibold",
-                    active ? "bg-brand-50 text-brand-700" : "bg-gray-100 text-gray-500",
-                  )}
-                >
-                  {t.count}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div role="tabpanel">
-        {tab === "progress" ? <ProgressPanel subject={subject} cards={cards} /> : null}
-        {tab === "review" ? (
-          <ReviewTab subject={subject} cards={cards} subjectStrength={strength} onReviewed={reload} />
-        ) : null}
-        {tab === "cards" ? <CardsTab cards={cards} /> : null}
-        {tab === "quizzes" ? <QuizzesTab quizzes={quizzes} questions={questions} /> : null}
-        {tab === "grades" ? (
-          <GradesPanel subject={subject} entries={gradeEntries} onChanged={reload} />
-        ) : null}
-        {tab === "sources" ? <SourcesTab sources={sources} /> : null}
-        {tab === "add" ? (
-          <Panel>
-            <GenerateMaterialForm subjectName={subject.name} onGenerated={reload} />
-          </Panel>
-        ) : null}
-      </div>
+      {/* Panels crossfade on switch; content is always rendered (never gated on a reveal class). */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          role="tabpanel"
+          key={tab}
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {tab === "progress" ? <ProgressPanel subject={subject} cards={cards} /> : null}
+          {tab === "review" ? (
+            <ReviewTab subject={subject} cards={cards} subjectStrength={strength} onReviewed={reload} />
+          ) : null}
+          {tab === "cards" ? <CardsTab cards={cards} /> : null}
+          {tab === "quizzes" ? <QuizzesTab quizzes={quizzes} questions={questions} /> : null}
+          {tab === "grades" ? (
+            <GradesPanel subject={subject} entries={gradeEntries} onChanged={reload} />
+          ) : null}
+          {tab === "sources" ? <SourcesTab sources={sources} /> : null}
+          {tab === "add" ? (
+            <Panel>
+              <GenerateMaterialForm subjectName={subject.name} onGenerated={reload} />
+            </Panel>
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
     </section>
+  );
+}
+
+// --- Hero -------------------------------------------------------------------------------
+
+function Hero({
+  subject,
+  cards,
+  quizzes,
+  sources,
+  due,
+}: {
+  subject: Subject;
+  cards: Card[];
+  quizzes: Quiz[];
+  sources: Source[];
+  due: number;
+}) {
+  const reduce = useReducedMotion();
+  const days = daysUntil(subject.exam_date);
+
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 120, damping: 18 }}
+      className="relative overflow-hidden rounded-2xl px-6 py-6 text-white shadow-card [background-image:linear-gradient(135deg,var(--sc-from),var(--sc-to))]"
+    >
+      <span aria-hidden className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-white/20 blur-3xl" />
+      <span aria-hidden className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-black/10 blur-3xl" />
+
+      <div className="relative flex items-start gap-4">
+        <span className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl bg-white/20 text-xl font-bold ring-1 ring-inset ring-white/40 backdrop-blur-sm">
+          {subjectInitials(subject.name)}
+        </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">{subject.name}</h1>
+          <p className="mt-1 text-sm text-white/85">
+            <span className="capitalize">{subject.grading_scale}</span> scale
+            <span className="px-1.5 text-white/50" aria-hidden>·</span>
+            {formatCountdown(days)}
+          </p>
+        </div>
+      </div>
+
+      {/* Quick stats as frosted chips — earned familiarity, not a hero-metric template. */}
+      <div className="relative mt-5 flex flex-wrap gap-2">
+        <HeroStat value={cards.length} label={cards.length === 1 ? "card" : "cards"} />
+        <HeroStat value={quizzes.length} label={quizzes.length === 1 ? "quiz" : "quizzes"} />
+        <HeroStat value={sources.length} label={sources.length === 1 ? "source" : "sources"} />
+        {due > 0 ? <HeroStat value={due} label="due now" emphatic /> : null}
+      </div>
+    </motion.div>
+  );
+}
+
+function HeroStat({ value, label, emphatic = false }: { value: number; label: string; emphatic?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-inset backdrop-blur-sm",
+        emphatic ? "bg-white/95 text-[color:var(--sc-ink)] ring-white/60" : "bg-white/15 text-white ring-white/25",
+      )}
+    >
+      <span className="font-semibold tabular-nums">{value}</span>
+      <span className={emphatic ? "" : "text-white/80"}>{label}</span>
+    </span>
   );
 }
 
@@ -131,7 +217,7 @@ function BackLink() {
   return (
     <Link
       href="/subjects"
-      className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-500 transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+      className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-500 transition hover:text-[color:var(--sc-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2"
     >
       <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
         <path
@@ -178,7 +264,7 @@ function ReviewTab({
   return (
     <Panel className="space-y-4 text-center">
       <div>
-        <p className="text-3xl font-semibold tracking-tight text-gray-900">{due}</p>
+        <p className="text-4xl font-semibold tracking-tight text-[color:var(--sc-ink)] tabular-nums">{due}</p>
         <p className="mt-1 text-sm text-gray-500">{due === 1 ? "card due" : "cards due"} for review</p>
       </div>
       <div className="flex justify-center">
@@ -197,8 +283,8 @@ function CardsTab({ cards }: { cards: Card[] }) {
   }
   return (
     <ul className="grid gap-3">
-      {cards.map((c) => (
-        <li key={c.id}>
+      {cards.map((c, i) => (
+        <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
           <Panel>
             <div className="flex items-start justify-between gap-3">
               <span className="font-medium text-gray-900">{c.front}</span>
@@ -206,7 +292,10 @@ function CardsTab({ cards }: { cards: Card[] }) {
             </div>
             <p className="mt-1 text-sm text-gray-600">{c.back}</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-              <Badge tone="neutral">{c.topic}</Badge>
+              {/* Topic wears the subject accent — the one place per card the identity shows through. */}
+              <span className="inline-flex items-center rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] ring-1 ring-inset ring-[var(--sc-line)]">
+                {c.topic}
+              </span>
               <span>reps {c.repetitions}</span>
               <span aria-hidden>·</span>
               <span>lapses {c.lapses}</span>
@@ -240,10 +329,10 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
 
   return (
     <div className="space-y-5">
-      {quizzes.map((quiz) => {
+      {quizzes.map((quiz, i) => {
         const qs = questions.filter((q) => q.quiz_id === quiz.id);
         return (
-          <Panel key={quiz.id}>
+          <Panel key={quiz.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 8) * 55}ms` }}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">{quiz.title}</h3>
@@ -251,17 +340,13 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
                   {qs.length} {qs.length === 1 ? "question" : "questions"}
                 </p>
               </div>
-              <Button
-                size="sm"
-                onClick={() => setActiveQuizId(quiz.id)}
-                disabled={qs.length === 0}
-              >
+              <Button size="sm" onClick={() => setActiveQuizId(quiz.id)} disabled={qs.length === 0}>
                 Take quiz
               </Button>
             </div>
             <ul className="mt-3 space-y-3">
               {qs.map((q) => (
-                <li key={q.id} className="rounded-lg border border-gray-200 p-3">
+                <li key={q.id} className="rounded-xl border border-gray-200/80 bg-gray-50/40 p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-sm font-medium text-gray-900">{q.prompt}</span>
                     <Badge tone="brand">
@@ -311,8 +396,8 @@ function SourcesTab({ sources }: { sources: Source[] }) {
   }
   return (
     <ul className="grid gap-3">
-      {sources.map((s) => (
-        <li key={s.id}>
+      {sources.map((s, i) => (
+        <li key={s.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
           <Panel>
             <div className="flex items-center justify-between gap-3">
               <span className="font-medium text-gray-900">{s.title}</span>

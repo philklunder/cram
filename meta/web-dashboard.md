@@ -74,6 +74,25 @@ to `main` once both halves are done.
   AA); `gray-400` is reserved for decorative/placeholder/icon use only. Async actions use a shared
   `Button` `loading` state (spinner + `aria-busy` + auto-disable) rather than swapping label text, so
   the layout never shifts mid-action.
+- **Per-subject color identity (redesign, 2026-07-02).** Each subject deterministically maps (djb2
+  hash of its stable `id`) to one of **10 curated color families** in
+  [`web/src/lib/subjectColor.ts`](../web/src/lib/subjectColor.ts), so the *same subject wears the
+  same accent everywhere* (list card, detail hero, tab underline, topic badges). Colors are shipped
+  as **`--sc-*` CSS custom properties** via a `style` object and read through Tailwind
+  arbitrary-value utilities (`bg-[var(--sc-soft)]`, `text-[color:var(--sc-ink)]`) — **not** Tailwind
+  color classes, because the family is chosen at runtime and Tailwind can't JIT dynamic class names.
+  Each family's `ink` (text) tone is contrast-checked ≥4.5:1 on both white and its own tint. This
+  content accent is deliberately **separate from** the cobalt `brand` chrome (nav, primary buttons,
+  focus) and from the semantic green/amber/red (grade quality, exam urgency).
+- **Adopted `motion` (framer-motion) — the first animation library dep (2026-07-02).** Used for
+  physical interaction motion the CSS keyframes couldn't cover cleanly: spring card-entrance stagger
+  on the subjects grid, a `layoutId` sliding tab underline, and `AnimatePresence` panel crossfades on
+  the subject detail. Existing CSS keyframes (`rise`/`fade-up`/`aurora`/`float`/`shimmer`) were kept
+  for the simpler entrances. All motion is gated on `useReducedMotion()` + the global
+  `prefers-reduced-motion` clamp in `globals.css`.
+- **Design source-of-truth docs.** Added [`web/PRODUCT.md`](../web/PRODUCT.md) (register=product,
+  users, principles) and [`web/DESIGN.md`](../web/DESIGN.md) (the cobalt + per-subject visual system),
+  seeded from the impeccable skill's `init` flow so future design work stays on-brand.
 
 ## Reasoning
 
@@ -121,6 +140,18 @@ to `main` once both halves are done.
   while the app is single-user with private, per-owner quizzes; a shared/multi-tenant quiz model
   would require moving MC grading server-side and withholding `answer_key` until submission. The
   2026-06-30 security pass confirmed no Critical/High and flagged these two as by-design.
+- **Why CSS variables, not Tailwind color classes, for per-subject color.** Tailwind v3 JIT only
+  emits classes it can see as literal strings at build time; a runtime-chosen `bg-emerald-50` /
+  `bg-violet-50` per subject would be purged. Emitting the family as `--sc-*` custom properties and
+  reading them through *static* arbitrary-value utilities keeps every class literal (so it survives
+  purge) while the actual color is swapped at runtime via one inline `style`. Rejected alternatives:
+  safelisting all 10 families × every shade (bloats the CSS and still hard-codes the set in two
+  places), or inline styling every colored element (loses Tailwind's state variants like `hover:`).
+- **Why a motion library at all, given the zero-extra-deps stance.** The `layoutId` sliding tab
+  underline and springy shared-element/enter-exit choreography are genuinely painful to do correctly
+  in hand-rolled CSS/JS (measuring positions, interrupting transitions, cleanup). `motion` is
+  tree-shakeable and scoped to the two client leaves that need it; it's the one deliberate exception
+  to the "system font / local `cn` / no runtime deps" rule, justified by the interaction quality.
 
 ## Implications
 
@@ -152,6 +183,10 @@ to `main` once both halves are done.
   backend's 429 message and disables the control while in-flight, but the authoritative throttle is
   server-side.
 - Deploy target is **Vercel** with root directory `web/`; the backend stays on Railway.
+- **`subjectColor.ts` is the single place to tune the palette.** Adding, removing, or recoloring a
+  family (or changing the hash) reshuffles which subjects get which hue — one file, no per-component
+  churn. `motion` is now in the shipped bundle for the `/subjects/[id]` route (~110 kB first-load);
+  keep it confined to client leaves so server components stay static.
 
 ## Open questions
 
@@ -173,6 +208,11 @@ to `main` once both halves are done.
   the backend does not range-validate `score`/`weight` on `/v1/grade-entries` (the UI clamps to the
   scale range + parses a comma decimal, but a hand-crafted POST could store an out-of-range grade on
   one's *own* subject) — harmless at single-user scale, same posture as the SM-2 columns above.
+- **Visual redesign (per-subject color + motion) built 2026-07-02** on top of the earlier uncommitted
+  design-polish pass (cobalt rebrand, aurora login, `fade-up`/`aurora`/`float`/`shimmer` keyframes,
+  count-up progress). Typecheck + 34 tests + prod build green. **Still open: the authenticated pages
+  have not had a live signed-in visual QA pass** — the data is auth-gated, so the grid/hero/tabs need
+  eyeballing against real subjects before this is fully verified.
 
 ## Last updated
 

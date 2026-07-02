@@ -25,9 +25,11 @@ export function AppNav({ email }: { email: string | null }) {
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link
           href="/subjects"
-          className="flex items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          className="group flex items-center gap-2.5 rounded-lg transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98]"
         >
-          <BrandMark size={30} />
+          <span className="transition-transform duration-300 ease-out group-hover:rotate-[-6deg] group-hover:scale-105">
+            <BrandMark size={30} />
+          </span>
           <span className="text-lg font-semibold tracking-tight text-gray-900">Cram</span>
         </Link>
         <div className="flex items-center gap-3">
