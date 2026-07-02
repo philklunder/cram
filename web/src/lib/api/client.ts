@@ -16,6 +16,7 @@ import type {
   DeltaPage,
   GeneratedDeck,
   GradeEntry,
+  GradeEntryCreate,
   GradeRequest,
   GradeResult,
   Question,
@@ -24,6 +25,7 @@ import type {
   ReviewLogCreate,
   Source,
   Subject,
+  SubjectUpdate,
 } from "./types";
 
 export class ApiError extends Error {
@@ -103,6 +105,16 @@ export async function listSubjects(): Promise<Subject[]> {
 
 export async function getSubject(id: string): Promise<Subject> {
   return request<Subject>(`/v1/subjects/${id}`);
+}
+
+// Patch a subject (PATCH /v1/subjects/{id}). Used by the Grades tab to set the target grade and
+// an optional manual current-grade override. Only the sent fields change.
+export async function updateSubject(id: string, patch: SubjectUpdate): Promise<Subject> {
+  return request<Subject>(`/v1/subjects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export interface SubjectBundle {
@@ -208,4 +220,22 @@ export async function createReviewLog(body: ReviewLogCreate): Promise<ReviewLog>
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// --- Grades ------------------------------------------------------------------------------
+
+// Record a real-world grade for a subject (POST /v1/grade-entries). Grades feed prioritization
+// and the SM-2 exam compression (the subject's strength), and surface in the Grades tab.
+export async function createGradeEntry(body: GradeEntryCreate): Promise<GradeEntry> {
+  return request<GradeEntry>("/v1/grade-entries", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Soft-delete a grade entry (DELETE /v1/grade-entries/{id}) — a tombstone, so the deletion also
+// converges to the iOS client on its next pull rather than reappearing.
+export async function deleteGradeEntry(id: string): Promise<void> {
+  await request<void>(`/v1/grade-entries/${id}`, { method: "DELETE" });
 }
