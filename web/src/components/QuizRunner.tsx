@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge, Button, ErrorBox, Panel, cn, labelClass, inputClass } from "@/components/ui";
 import { createAttempt, gradeShortAnswer } from "@/lib/api/client";
 import type { Question } from "@/lib/api/types";
+import { useCountUp } from "@/lib/useCountUp";
 
 interface Graded {
   score: number; // 0..1
@@ -110,9 +111,9 @@ export function QuizRunner({
       </div>
 
       {/* Progress bar — fills as questions are completed (graded). */}
-      <div className="h-1 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
         <div
-          className="h-full rounded-full bg-brand-600 transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500 ease-out"
           style={{ width: `${((idx + (result ? 1 : 0)) / questions.length) * 100}%` }}
         />
       </div>
@@ -145,9 +146,10 @@ export function QuizRunner({
               <label
                 key={i}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+                  "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition duration-200 ease-out",
+                  result == null && "hover:-translate-y-0.5 active:scale-[0.99]",
                   result == null && selected
-                    ? "border-brand-500 bg-brand-50/60 text-gray-900"
+                    ? "border-brand-500 bg-brand-50/60 text-gray-900 shadow-brand-sm"
                     : "border-gray-200 text-gray-700 hover:border-gray-300",
                   isAnswer && "border-green-500 bg-green-50 text-green-800",
                   isWrongPick && "border-red-400 bg-red-50 text-red-800",
@@ -211,7 +213,7 @@ function ResultCard({ result, answerKey }: { result: Graded; answerKey: string |
     <div
       aria-live="polite"
       className={cn(
-        "animate-rise space-y-2 rounded-lg border px-4 py-3 text-sm",
+        "animate-rise space-y-2 rounded-xl border px-4 py-3 text-sm",
         result.is_correct ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50",
       )}
     >
@@ -248,12 +250,13 @@ function Summary({
   const avg = total === 0 ? 0 : results.reduce((s, r) => s + r.score, 0) / total;
   const avgPct = Math.round(avg * 100);
   const tone = avgPct >= 80 ? "green" : avgPct >= 50 ? "amber" : "red";
+  const shownPct = Math.round(useCountUp(avgPct, 900));
 
   return (
     <Panel className="animate-rise space-y-4 text-center">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</p>
       <div>
-        <p className="text-4xl font-semibold tracking-tight text-gray-900">{avgPct}%</p>
+        <p className="text-4xl font-semibold tracking-tight tabular-nums text-gray-900">{shownPct}%</p>
         <p className="mt-1 text-sm text-gray-500">
           {correct} of {total} correct
         </p>
