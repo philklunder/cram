@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { GenerateMaterialForm } from "@/components/GenerateMaterialForm";
+import { GradesPanel } from "@/components/GradesPanel";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuizRunner } from "@/components/QuizRunner";
 import { ReviewSession } from "@/components/ReviewSession";
@@ -23,7 +24,7 @@ import { formatDate } from "@/lib/format";
 import { subjectStrength as computeSubjectStrength } from "@/lib/srs/grade-strength";
 import { useAsync } from "@/lib/useAsync";
 
-type Tab = "progress" | "review" | "cards" | "quizzes" | "sources" | "add";
+type Tab = "progress" | "review" | "cards" | "quizzes" | "grades" | "sources" | "add";
 
 // A card is due when its effective due date has passed.
 function dueCount(cards: Card[]): number {
@@ -56,6 +57,7 @@ export function SubjectDetail({ id }: { id: string }) {
     { id: "review", label: "Review", count: dueCount(cards) },
     { id: "cards", label: "Cards", count: cards.length },
     { id: "quizzes", label: "Quizzes", count: quizzes.length },
+    { id: "grades", label: "Grades", count: gradeEntries.length },
     { id: "sources", label: "Sources", count: sources.length },
     { id: "add", label: "Add material" },
   ];
@@ -111,6 +113,9 @@ export function SubjectDetail({ id }: { id: string }) {
         ) : null}
         {tab === "cards" ? <CardsTab cards={cards} /> : null}
         {tab === "quizzes" ? <QuizzesTab quizzes={quizzes} questions={questions} /> : null}
+        {tab === "grades" ? (
+          <GradesPanel subject={subject} entries={gradeEntries} onChanged={reload} />
+        ) : null}
         {tab === "sources" ? <SourcesTab sources={sources} /> : null}
         {tab === "add" ? (
           <Panel>

@@ -3,13 +3,16 @@
 The Cram web dashboard (v0.6). A Next.js app that authenticates with Supabase and reads/writes
 the **live Cram backend** (`https://cram.up.railway.app`). It's the "study desk": sign in, browse
 your subjects and decks, upload material to generate flashcards + quizzes, take a quiz, review your
-cards, and track exam progress.
+cards, record your grades, and track exam progress.
 
 > **Quiz-taking** is live on the web (Quizzes tab → "Take quiz"): multiple-choice is graded in the
 > browser; short-answer is graded by the backend's Claude call.
 > **Spaced-repetition review** (Review tab): walks your due cards, and each rating runs a faithful
 > TypeScript port of the iOS SM-2 scheduler — so reviewing on the web advances the *same* schedule
 > as the iOS app. The port is pinned to the Swift behaviour by a parity test suite (`npm test`).
+> **Grades** (Grades tab): record real-world marks per subject (kind / weight / date / score, with a
+> Pass/Fail badge) and see current-vs-target with an inline targets editor. Grades are the product's
+> differentiator — the subject's grade strength also feeds the SM-2 exam-date compression.
 
 ## Stack
 
@@ -75,6 +78,11 @@ every `/v1/*` call fails as a CORS error in the browser.
   checked in the browser against `answer_key` and saved via `POST /v1/attempts`. Short answer is
   sent to `POST /v1/grade` (the backend's Claude call, behind the spend cap), which grades *and*
   persists the attempt — so the client never double-writes it to `/v1/attempts`.
+- **Grades:** `src/components/GradesPanel.tsx` is the Grades tab. It lists/adds/soft-deletes grade
+  entries (`POST`/`DELETE /v1/grade-entries`) and edits the subject's target + optional manual current
+  grade (`PATCH /v1/subjects`). `src/lib/grades.ts` is a TS port of the iOS `GradeFormat` + `GradingScale`
+  (formatting, pass-mark, range); the current-grade/strength derivation is reused from
+  `src/lib/srs/grade-strength.ts`, so a grade reads and compresses identically to iOS.
 - **Review (SM-2):** `src/lib/srs/scheduler.ts` is a faithful TypeScript port of the iOS scheduler
   (`ios/Cram/Study/Scheduler.swift`) — standard SM-2 plus exam-date compression. `ReviewSession.tsx`
   runs it on each rating and writes back `PATCH /v1/cards` + `POST /v1/review-logs`. Because the same

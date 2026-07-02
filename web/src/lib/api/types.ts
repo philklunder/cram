@@ -68,6 +68,25 @@ export interface GradeEntry extends SyncRow {
   date: string;
 }
 
+// POST /v1/grade-entries body (GradeEntryCreate). `id`/`date` are server-defaulted when omitted.
+export interface GradeEntryCreate {
+  subject_id: string;
+  title: string;
+  kind: GradeKind;
+  score: number;
+  weight?: number; // 0..1, defaults to 1.0 server-side
+  date?: string; // ISO-8601
+}
+
+// PATCH /v1/subjects/{id} body (SubjectUpdate). Every field optional; only sent fields change.
+export interface SubjectUpdate {
+  name?: string;
+  exam_date?: string | null;
+  grading_scale?: GradingScale;
+  target_grade?: number | null;
+  current_grade?: number | null;
+}
+
 // Delta-pull envelope returned by every GET /v1/<resource>.
 export interface DeltaPage<T> {
   items: T[];
