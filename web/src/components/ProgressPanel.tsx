@@ -39,29 +39,29 @@ export function ProgressPanel({ subject, cards }: { subject: Subject; cards: Car
     <div className="space-y-6">
       <div className="animate-fade-up flex flex-wrap items-center gap-3">
         <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
-        <span className="text-sm text-gray-500">{formatCountdown(days)}</span>
+        <span className="text-sm text-muted">{formatCountdown(days)}</span>
         {p.dueNow > 0 ? (
-          <span className="text-sm font-medium text-amber-700">
+          <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
             {p.dueNow} {p.dueNow === 1 ? "card" : "cards"} due now
           </span>
         ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Metric value={p.total} label="Total cards" dotClass="bg-gray-300" delay={0} />
-        <Metric value={p.mastered} label="Mastered" valueClass="text-green-700" dotClass="bg-green-500" delay={60} />
-        <Metric value={p.learning} label="Learning" valueClass="text-amber-700" dotClass="bg-amber-400" delay={120} />
-        <Metric value={p.shaky} label="Shaky" valueClass="text-red-700" dotClass="bg-red-500" delay={180} />
+        <Metric value={p.total} label="Total cards" dotClass="bg-line-strong" delay={0} />
+        <Metric value={p.mastered} label="Mastered" valueClass="text-green-700 dark:text-green-400" dotClass="bg-green-500" delay={60} />
+        <Metric value={p.learning} label="Learning" valueClass="text-amber-700 dark:text-amber-400" dotClass="bg-amber-400" delay={120} />
+        <Metric value={p.shaky} label="Shaky" valueClass="text-red-700 dark:text-red-400" dotClass="bg-red-500" delay={180} />
       </div>
 
       <div className="animate-fade-up" style={{ animationDelay: "240ms" }}>
         <div className="mb-1.5 flex items-baseline justify-between text-sm">
-          <span className="font-medium text-gray-700">Mastery</span>
-          <span className="text-gray-500 tabular-nums">{Math.round(masteredPct)}%</span>
+          <span className="font-medium text-ink-2">Mastery</span>
+          <span className="text-muted tabular-nums">{Math.round(masteredPct)}%</span>
         </div>
         {/* Segmented bar: mastered / learning / shaky, so the composition reads at a glance. */}
         <div
-          className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100"
+          className="flex h-2.5 w-full overflow-hidden rounded-full bg-line"
           role="img"
           aria-label={`${p.mastered} mastered, ${p.learning} learning, ${p.shaky} shaky of ${p.total} cards`}
         >
@@ -86,7 +86,7 @@ function Segment({ widthPct, className }: { widthPct: number; className: string 
 function Metric({
   value,
   label,
-  valueClass = "text-gray-900",
+  valueClass = "text-ink",
   dotClass,
   delay,
 }: {
@@ -99,11 +99,11 @@ function Metric({
   const shown = useCountUp(value);
   return (
     <div
-      className="animate-fade-up rounded-xl border border-gray-200/80 bg-white p-4 shadow-card transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-card-hover"
+      className="animate-fade-up rounded-xl border border-line bg-surface p-4 shadow-card"
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className={cn("text-2xl font-semibold tabular-nums", valueClass)}>{Math.round(shown)}</div>
-      <div className="mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500">
+      <div className="mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
         <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", dotClass)} />
         {label}
       </div>

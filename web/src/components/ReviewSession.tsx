@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Badge, Button, ErrorBox, Panel, cn } from "@/components/ui";
+import { Button, ErrorBox, Panel, cn } from "@/components/ui";
 import { createReviewLog, updateCard } from "@/lib/api/client";
 import type { Card } from "@/lib/api/types";
 import { applyReview, REVIEW_RATINGS, type ReviewRating } from "@/lib/srs/scheduler";
@@ -23,10 +23,10 @@ function buildQueue(cards: Card[]): Card[] {
 
 // Per-rating accent, matching the iOS colour cues (again red / hard amber / good green / easy brand).
 const RATING_CLASS: Record<ReviewRating, string> = {
-  1: "border-red-300 text-red-700 hover:bg-red-50",
-  3: "border-amber-300 text-amber-800 hover:bg-amber-50",
-  4: "border-green-300 text-green-700 hover:bg-green-50",
-  5: "border-brand-300 text-brand-700 hover:bg-brand-50",
+  1: "border-red-300 text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/15",
+  3: "border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/15",
+  4: "border-green-300 text-green-700 hover:bg-green-50 dark:border-green-500/40 dark:text-green-300 dark:hover:bg-green-500/15",
+  5: "border-brand-300 text-brand-700 hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-200 dark:hover:bg-brand-500/15",
 };
 
 export function ReviewSession({
@@ -68,8 +68,8 @@ export function ReviewSession({
   if (queue.length === 0) {
     return (
       <Panel className="animate-rise space-y-4 text-center">
-        <p className="text-sm font-semibold text-gray-800">Nothing to review</p>
-        <p className="text-sm text-gray-500">Add material to this subject to generate cards.</p>
+        <p className="text-sm font-semibold text-ink">Nothing to review</p>
+        <p className="text-sm text-muted">Add material to this subject to generate cards.</p>
         <div className="flex justify-center">
           <Button variant="secondary" onClick={onClose}>
             Back
@@ -82,7 +82,7 @@ export function ReviewSession({
   if (finished || !card) {
     return (
       <Panel className="animate-rise space-y-4 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-green-600">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-green-600 dark:bg-green-500/15 dark:text-green-400">
           <svg className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
             <path
               fillRule="evenodd"
@@ -92,8 +92,8 @@ export function ReviewSession({
           </svg>
         </div>
         <div>
-          <p className="text-base font-semibold text-gray-900">Session complete</p>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p className="text-base font-semibold text-ink">Session complete</p>
+          <p className="mt-0.5 text-sm text-muted">
             You reviewed {reviewed} {reviewed === 1 ? "card" : "cards"}.
           </p>
         </div>
@@ -146,8 +146,8 @@ export function ReviewSession({
   return (
     <Panel className="animate-rise space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium tabular-nums text-gray-500" aria-live="polite">
-          Card <span className="text-gray-900">{idx + 1}</span> of {queue.length}
+        <p className="text-sm font-medium tabular-nums text-muted" aria-live="polite">
+          Card <span className="text-ink">{idx + 1}</span> of {queue.length}
         </p>
         <Button variant="ghost" size="sm" onClick={onClose}>
           Exit
@@ -155,32 +155,32 @@ export function ReviewSession({
       </div>
 
       {/* Progress bar — fills as cards are reviewed. */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-line" aria-hidden>
         <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-brand-500 transition-all duration-500 ease-out"
           style={{ width: `${(idx / queue.length) * 100}%` }}
         />
       </div>
 
       {/* Card face — keyed on idx so each new card rises in. */}
       <div key={idx} className="animate-rise">
-        <div className="flex min-h-[13rem] flex-col justify-center rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/70 px-6 py-10 text-center shadow-[inset_0_1px_0_rgb(255_255_255/0.9)]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500/80">
+        <div className="flex min-h-[13rem] flex-col justify-center rounded-2xl border border-line/80 bg-gradient-to-b from-surface to-surface-2/70 px-6 py-10 text-center shadow-[inset_0_1px_0_rgb(255_255_255/0.9)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500/80 dark:text-brand-300/90">
             {card.topic}
           </p>
           <p
             ref={headingRef}
             tabIndex={-1}
-            className="mt-4 text-xl font-medium leading-snug text-gray-900 focus:outline-none"
+            className="mt-4 text-xl font-medium leading-snug text-ink focus:outline-none"
           >
             {card.front}
           </p>
           {showBack ? (
-            <div className="animate-rise mt-6 border-t border-dashed border-gray-200 pt-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+            <div className="animate-rise mt-6 border-t border-dashed border-line pt-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-subtle">
                 Answer
               </p>
-              <p className="mt-2 text-base leading-relaxed text-gray-700">{card.back}</p>
+              <p className="mt-2 text-base leading-relaxed text-ink-2">{card.back}</p>
             </div>
           ) : null}
         </div>
@@ -190,7 +190,7 @@ export function ReviewSession({
 
       {showBack ? (
         <div>
-          <p className="mb-2 text-center text-xs text-gray-400" id="rate-label">
+          <p className="mb-2 text-center text-xs text-subtle" id="rate-label">
             How well did you recall it?
           </p>
           <div
@@ -206,7 +206,7 @@ export function ReviewSession({
                 disabled={saving}
                 aria-busy={pendingRating === rating || undefined}
                 className={cn(
-                  "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 py-3 text-sm font-medium shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm",
+                  "inline-flex items-center justify-center gap-2 rounded-xl border bg-surface px-3 py-3 text-sm font-medium shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm",
                   RATING_CLASS[rating],
                 )}
               >

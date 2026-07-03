@@ -52,7 +52,7 @@ export function LoginForm() {
   }
 
   return (
-    <div className="grid min-h-[100dvh] w-full lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-[100dvh] w-full lg:grid-cols-[1.1fr_1fr]">
       <BrandPanel />
 
       {/* Auth column */}
@@ -61,18 +61,18 @@ export function LoginForm() {
           {/* Compact brand lockup — only shows on mobile, where the brand panel is hidden. */}
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
             <BrandMark size={44} />
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900">
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-ink">
               Welcome to Cram
             </h1>
-            <p className="mt-1 text-sm text-gray-500">Your study desk. Sign in to continue.</p>
+            <p className="mt-1 text-sm text-muted">Your study desk. Sign in to continue.</p>
           </div>
 
-          <div className="hidden lg:mb-8 lg:block">
-            <h2 className="animate-fade-up text-2xl font-semibold tracking-tight text-gray-900">
+          <div className="hidden lg:mb-7 lg:block">
+            <h2 className="animate-fade-up text-[1.7rem] font-semibold leading-tight tracking-tight text-ink">
               {mode === "signin" ? "Welcome back" : "Create your account"}
             </h2>
             <p
-              className="animate-fade-up mt-1 text-sm text-gray-500"
+              className="animate-fade-up mt-1.5 text-sm text-muted"
               style={{ animationDelay: "60ms" }}
             >
               {mode === "signin"
@@ -83,7 +83,7 @@ export function LoginForm() {
 
           <form
             onSubmit={onSubmit}
-            className="animate-fade-up space-y-4 rounded-2xl border border-gray-200/80 bg-white/90 p-6 shadow-card backdrop-blur-sm"
+            className="animate-fade-up space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-card sm:p-7"
             style={{ animationDelay: "120ms" }}
           >
             <div>
@@ -121,7 +121,7 @@ export function LoginForm() {
 
             {error ? <ErrorBox message={error} /> : null}
             {notice ? (
-              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300">
                 {notice}
               </div>
             ) : null}
@@ -130,7 +130,7 @@ export function LoginForm() {
               {mode === "signin" ? "Sign in" : "Create account"}
             </Button>
 
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-muted">
               {mode === "signin" ? "Need an account?" : "Already have an account?"}{" "}
               <button
                 type="button"
@@ -139,7 +139,7 @@ export function LoginForm() {
                   setError(null);
                   setNotice(null);
                 }}
-                className="rounded font-medium text-brand-600 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+                className="rounded font-medium text-brand-600 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:text-brand-300 dark:hover:text-brand-200"
               >
                 {mode === "signin" ? "Sign up" : "Sign in"}
               </button>
@@ -157,50 +157,58 @@ export function LoginForm() {
 // focus ring, and the three things Cram actually does. Editorial, not a fake product screenshot.
 function BrandPanel() {
   return (
-    <aside className="relative hidden overflow-hidden bg-brand-800 lg:flex lg:flex-col lg:justify-between lg:p-12">
-      {/* Drifting aurora blobs — transform/opacity only, so they stay cheap and collapse under
-          prefers-reduced-motion via the global rule in globals.css. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="animate-aurora absolute -left-24 -top-24 h-[30rem] w-[30rem] rounded-full bg-brand-500/45 blur-3xl" />
-        <div className="animate-aurora-slow absolute -bottom-32 -right-16 h-[34rem] w-[34rem] rounded-full bg-brand-400/30 blur-3xl" />
-        <div className="animate-float absolute right-24 top-28 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-      </div>
-      {/* Fine grid to give the field structure without shouting. */}
+    <aside
+      className="relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-14"
+      style={{
+        // A deep cobalt-ink field with a single top-right glow. Static — no drifting loops — so it
+        // reads as a calm, premium brand moment rather than an animated screensaver.
+        backgroundImage:
+          "radial-gradient(120% 90% at 88% 6%, rgb(59 108 246 / 0.28), transparent 55%)," +
+          "linear-gradient(158deg, #12204a 0%, #0c1531 46%, #080d20 100%)",
+      }}
+    >
+      {/* Fine grid to give the field structure without shouting; fades toward the bottom. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.06]"
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
         style={{
           backgroundImage:
             "linear-gradient(rgb(255 255 255) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
+          backgroundSize: "46px 46px",
+          maskImage: "linear-gradient(to bottom, black, transparent 82%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black, transparent 82%)",
         }}
       />
+      {/* A single hairline of light along the seam so the panel edge reads as intentional. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-white/15 to-transparent"
+      />
 
-      {/* Top: mark inside a soft focus ring. */}
+      {/* Top: mark inside a soft glass tile. */}
       <div className="relative flex items-center gap-3">
-        <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur">
-          <BrandMark size={30} />
-          <span className="animate-float absolute -inset-2 -z-10 rounded-3xl bg-white/10 blur-md" />
+        <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-inset ring-white/15 backdrop-blur">
+          <BrandMark size={28} />
         </span>
         <span className="text-lg font-semibold tracking-tight text-white">Cram</span>
       </div>
 
       {/* Middle: the message + what it does. */}
       <div className="relative max-w-md">
-        <h1 className="animate-fade-up text-4xl font-semibold leading-tight tracking-tight text-white">
+        <h1 className="animate-fade-up text-[2.6rem] font-semibold leading-[1.08] tracking-tight text-white">
           Study with less
           <br />
-          <span className="text-brand-200">friction.</span>
+          <span className="text-brand-300">friction.</span>
         </h1>
         <p
-          className="animate-fade-up mt-4 text-base leading-relaxed text-brand-100/80"
+          className="animate-fade-up mt-5 text-[0.975rem] leading-relaxed text-brand-100/75"
           style={{ animationDelay: "80ms" }}
         >
           Cram turns your notes into decks, schedules the review for you, and keeps every grade in
           view.
         </p>
 
-        <ul className="mt-9 space-y-4">
+        <ul className="mt-10 space-y-1">
           <Feature
             delay="160ms"
             title="Material into decks"
@@ -252,15 +260,18 @@ function Feature({
   delay: string;
 }) {
   return (
-    <li className="animate-fade-up flex items-start gap-3.5" style={{ animationDelay: delay }}>
-      <span className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-white/10 text-brand-100 ring-1 ring-white/15">
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden>
+    <li
+      className="animate-fade-up flex items-start gap-3.5 border-t border-white/10 py-4 first:border-t-0"
+      style={{ animationDelay: delay }}
+    >
+      <span className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-white/10 text-brand-200 ring-1 ring-inset ring-white/10">
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-[1.15rem] w-[1.15rem]" aria-hidden>
           {icon}
         </svg>
       </span>
       <div>
-        <p className="font-medium text-white">{title}</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-brand-100/70">{body}</p>
+        <p className="text-[0.925rem] font-medium text-white">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-brand-100/65">{body}</p>
       </div>
     </li>
   );

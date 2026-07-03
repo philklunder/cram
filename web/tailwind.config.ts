@@ -2,9 +2,25 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
+  // Class strategy: a `dark` class on <html> flips the theme (see the no-flash script in
+  // app/layout.tsx + ThemeToggle). Lets us honour system preference AND a manual choice.
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
+        // Semantic surface/text/line tokens — the load-bearing part of theming. Each maps to a
+        // CSS variable (RGB triple) defined per theme in globals.css, so ONE class (e.g.
+        // `bg-surface`, `text-ink`, `border-line`) is correct in both light and dark, and alpha
+        // modifiers still work (`bg-surface/80`). Components should reach for these, not raw grays.
+        canvas: "rgb(var(--canvas) / <alpha-value>)", // page background
+        surface: "rgb(var(--surface) / <alpha-value>)", // cards / raised panels
+        "surface-2": "rgb(var(--surface-2) / <alpha-value>)", // insets, subtle fills
+        ink: "rgb(var(--ink) / <alpha-value>)", // primary text / headings
+        "ink-2": "rgb(var(--ink-2) / <alpha-value>)", // secondary body text
+        muted: "rgb(var(--muted) / <alpha-value>)", // tertiary text / captions
+        subtle: "rgb(var(--subtle) / <alpha-value>)", // quaternary / decorative
+        line: "rgb(var(--line) / <alpha-value>)", // hairline borders / tracks
+        "line-strong": "rgb(var(--line-strong) / <alpha-value>)", // hover borders / dots
         // Brand — a confident cobalt/azure, full scale so tints/shades are reusable tokens
         // rather than ad-hoc per component. Deliberately distinct from the app's semantic
         // green/amber/red (grade quality, exam urgency, card difficulty) so the accent never

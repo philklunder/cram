@@ -2,8 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Semantic theme tokens as RGB triples (consumed by the Tailwind `surface`/`ink`/`line`… colors).
+   Light is the default; `.dark` on <html> swaps the values. Contrast pairs were checked to clear
+   WCAG AA (≥4.5:1 for text) on their intended surface in BOTH themes. */
 :root {
   color-scheme: light;
+  --canvas: 249 250 251; /* gray-50 */
+  --surface: 255 255 255; /* white */
+  --surface-2: 249 250 251;
+  --ink: 17 24 39; /* gray-900 */
+  --ink-2: 55 65 81; /* gray-700 */
+  --muted: 107 114 128; /* gray-500 */
+  --subtle: 156 163 175; /* gray-400 */
+  --line: 229 231 235; /* gray-200 */
+  --line-strong: 209 213 219; /* gray-300 */
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: 11 17 32; /* deep cobalt-tinted ink, darker than the surfaces */
+  --surface: 19 28 46; /* raised card — lighter than canvas so elevation reads */
+  --surface-2: 27 39 64;
+  --ink: 231 236 245; /* ~13:1 on surface */
+  --ink-2: 195 204 218;
+  --muted: 154 167 189; /* ~7:1 on surface */
+  --subtle: 126 139 163; /* ~5:1 on surface */
+  --line: 42 53 80;
+  --line-strong: 58 71 103;
 }
 
 html,
@@ -12,17 +37,27 @@ body {
 }
 
 body {
-  @apply bg-gray-50 font-sans text-gray-900 antialiased;
-  /* Two faint cobalt glows so the canvas reads as lit rather than flat gray — one warm-cool
-     corner wash, one low ambient pool. Fixed so it stays put while content scrolls. */
+  @apply bg-canvas font-sans text-ink antialiased;
+  /* Two faint cobalt glows so the canvas reads as lit rather than flat — one warm-cool corner
+     wash, one low ambient pool. Fixed so it stays put while content scrolls. */
   background-image:
     radial-gradient(46rem 46rem at 100% -10%, rgb(59 108 246 / 0.09), transparent 62%),
     radial-gradient(38rem 38rem at -6% 108%, rgb(42 84 232 / 0.06), transparent 60%);
   background-attachment: fixed;
 }
 
+/* Dark: stronger, deeper glows so the near-black canvas still reads as lit, not flat. */
+.dark body {
+  background-image:
+    radial-gradient(48rem 48rem at 100% -10%, rgb(59 108 246 / 0.16), transparent 60%),
+    radial-gradient(40rem 40rem at -6% 108%, rgb(42 84 232 / 0.12), transparent 58%);
+}
+
 ::selection {
   background-color: rgb(59 108 246 / 0.20);
+}
+.dark ::selection {
+  background-color: rgb(96 144 250 / 0.34);
 }
 
 @layer base {

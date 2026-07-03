@@ -39,8 +39,8 @@ export function GradesPanel({
 
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">Entries</h3>
-          <span className="text-sm text-gray-500">
+          <h3 className="text-base font-semibold text-ink">Entries</h3>
+          <span className="text-sm text-muted">
             {entries.length} {entries.length === 1 ? "grade" : "grades"}
           </span>
         </div>
@@ -93,10 +93,10 @@ function Summary({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <Stat label="Current">
           {current == null ? (
-            <span className="text-2xl font-semibold text-gray-400">—</span>
+            <span className="text-2xl font-semibold text-subtle">—</span>
           ) : (
             <span className="flex items-center gap-2">
-              <span className="text-2xl font-semibold tabular-nums text-gray-900">
+              <span className="text-2xl font-semibold tabular-nums text-ink">
                 {formatGrade(scale, current)}
               </span>
               <Badge tone={isPassing(scale, current) ? "green" : "red"}>
@@ -107,9 +107,9 @@ function Summary({
         </Stat>
         <Stat label="Target">
           {target == null ? (
-            <span className="text-2xl font-semibold text-gray-400">—</span>
+            <span className="text-2xl font-semibold text-subtle">—</span>
           ) : (
-            <span className="text-2xl font-semibold tabular-nums text-gray-900">
+            <span className="text-2xl font-semibold tabular-nums text-ink">
               {formatGrade(scale, target)}
             </span>
           )}
@@ -122,12 +122,12 @@ function Summary({
       </div>
 
       {current != null && target != null ? (
-        <p className="text-sm text-gray-600">
-          You’re at <span className="font-medium text-gray-900">{formatGrade(scale, current)}</span>, aiming
-          for <span className="font-medium text-gray-900">{formatGrade(scale, target)}</span>.
+        <p className="text-sm text-ink-2">
+          You’re at <span className="font-medium text-ink">{formatGrade(scale, current)}</span>, aiming
+          for <span className="font-medium text-ink">{formatGrade(scale, target)}</span>.
         </p>
       ) : (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted">
           Cram uses your grades to focus study time on weaker subjects and to pace toward your target.
         </p>
       )}
@@ -142,7 +142,7 @@ function Summary({
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
       <div className="mt-1">{children}</div>
     </div>
   );
@@ -185,11 +185,11 @@ function TargetsEditor({ subject, onSaved }: { subject: Subject; onSaved: () => 
   }
 
   return (
-    <form onSubmit={save} className="animate-fade-up space-y-4 rounded-xl border border-gray-200/80 bg-gray-50/50 p-4">
+    <form onSubmit={save} className="animate-fade-up space-y-4 rounded-xl border border-line/80 bg-surface-2/50 p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="target-grade" className={labelClass}>
-            Target grade <span className="font-normal text-gray-500">({gradingScaleLabel[scale]})</span>
+            Target grade <span className="font-normal text-muted">({gradingScaleLabel[scale]})</span>
           </label>
           <input
             id="target-grade"
@@ -203,7 +203,7 @@ function TargetsEditor({ subject, onSaved }: { subject: Subject; onSaved: () => 
         </div>
         <div>
           <label htmlFor="manual-grade" className={labelClass}>
-            Current grade <span className="font-normal text-gray-500">(optional override)</span>
+            Current grade <span className="font-normal text-muted">(optional override)</span>
           </label>
           <input
             id="manual-grade"
@@ -216,7 +216,7 @@ function TargetsEditor({ subject, onSaved }: { subject: Subject; onSaved: () => 
           />
         </div>
       </div>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Leave a field blank to clear it. The current grade defaults to the weighted average of your
         entries; set it here only to override.
       </p>
@@ -337,7 +337,7 @@ function AddGradeForm({
           </div>
           <div>
             <label htmlFor="grade-score" className={labelClass}>
-              Score <span className="font-normal text-gray-500">({gradingScaleLabel[scale]})</span>
+              Score <span className="font-normal text-muted">({gradingScaleLabel[scale]})</span>
             </label>
             <input
               id="grade-score"
@@ -354,7 +354,7 @@ function AddGradeForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="grade-weight" className={labelClass}>
-              Weight <span className="font-normal text-gray-500">({weight}% of the subject grade)</span>
+              Weight <span className="font-normal text-muted">({weight}% of the subject grade)</span>
             </label>
             <input
               id="grade-weight"
@@ -437,17 +437,17 @@ function GradeRow({
     <li className="animate-fade-up" style={{ animationDelay: `${Math.min(index, 10) * 45}ms` }}>
       <Panel className={cn(busy && "opacity-60")}>
         <div className="flex items-start justify-between gap-3">
-          <span className="font-medium text-gray-900">{entry.title}</span>
+          <span className="font-medium text-ink">{entry.title}</span>
           <span className="flex items-center gap-2">
             <Badge tone={isPassing(scaleLabel, entry.score) ? "green" : "red"}>
               {isPassing(scaleLabel, entry.score) ? "Pass" : "Fail"}
             </Badge>
-            <span className="font-semibold tabular-nums text-gray-900">
+            <span className="font-semibold tabular-nums text-ink">
               {formatGrade(scaleLabel, entry.score)}
             </span>
           </span>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
           <Badge tone="neutral">{gradeKindLabel[entry.kind]}</Badge>
           <span>{Math.round(entry.weight * 100)}%</span>
           <span aria-hidden>·</span>
@@ -456,12 +456,12 @@ function GradeRow({
             type="button"
             onClick={remove}
             disabled={busy}
-            className="ml-auto rounded text-xs font-medium text-gray-400 transition hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-auto rounded text-xs font-medium text-subtle transition hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400"
           >
             {busy ? "Deleting…" : "Delete"}
           </button>
         </div>
-        {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
+        {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
       </Panel>
     </li>
   );
