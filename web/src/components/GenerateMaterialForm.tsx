@@ -48,8 +48,8 @@ export function GenerateMaterialForm({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-base font-semibold text-gray-900">Add material</h3>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <h3 className="text-base font-semibold text-ink">Add material</h3>
+        <p className="mt-0.5 text-sm text-muted">
           Upload a PDF or photos — Cram generates flashcards and a quiz from them.
         </p>
       </div>
@@ -57,7 +57,7 @@ export function GenerateMaterialForm({
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="title" className={labelClass}>
-            Title <span className="font-normal text-gray-500">(optional)</span>
+            Title <span className="font-normal text-muted">(optional)</span>
           </label>
           <input
             id="title"
@@ -79,12 +79,12 @@ export function GenerateMaterialForm({
             accept={ACCEPT}
             multiple
             onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="mt-1.5 block w-full cursor-pointer rounded-xl border border-gray-200 text-sm text-gray-600 transition hover:border-gray-300 file:mr-4 file:cursor-pointer file:border-0 file:border-r file:border-gray-200 file:bg-brand-50/60 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/15"
+            className="mt-1.5 block w-full cursor-pointer rounded-xl border border-line text-sm text-ink-2 transition hover:border-line-strong file:mr-4 file:cursor-pointer file:border-0 file:border-r file:border-line file:bg-brand-50/60 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/15 dark:file:bg-brand-500/15 dark:file:text-brand-200 dark:hover:file:bg-brand-500/25"
           />
-          <p className="mt-1.5 text-xs text-gray-500">
+          <p className="mt-1.5 text-xs text-muted">
             PDF or images (JPEG, PNG, GIF, WebP).
             {files.length > 0 ? (
-              <span className="font-medium text-gray-600">
+              <span className="font-medium text-ink-2">
                 {" "}
                 {files.length} selected.
               </span>
@@ -100,16 +100,16 @@ export function GenerateMaterialForm({
       </form>
 
       {deck ? (
-        <div className="animate-fade-up space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-4">
+        <div className="animate-fade-up space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-4 dark:border-green-500/30 dark:bg-green-500/10">
           <div className="flex items-start gap-2.5">
-            <svg className="mt-0.5 h-5 w-5 flex-none text-green-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <svg className="mt-0.5 h-5 w-5 flex-none text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path
                 fillRule="evenodd"
                 d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42l2.79 2.8 6.79-6.8a1 1 0 011.42 0z"
                 clipRule="evenodd"
               />
             </svg>
-            <p className="text-sm font-medium text-green-800">
+            <p className="text-sm font-medium text-green-800 dark:text-green-200">
               Generated {deck.cards.length} {deck.cards.length === 1 ? "card" : "cards"} and{" "}
               {deck.questions.length} {deck.questions.length === 1 ? "question" : "questions"} from
               “{deck.source_title}”. Saved to your account.
@@ -118,25 +118,25 @@ export function GenerateMaterialForm({
 
           {deck.cards.length > 0 ? (
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700">Preview</h4>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700 dark:text-green-300">Preview</h4>
               <ul className="space-y-2">
                 {deck.cards.slice(0, 5).map((c, i) => (
                   <li
                     key={c.id ?? i}
-                    className="animate-fade-up rounded-xl border border-green-200 bg-white p-3 text-sm"
+                    className="animate-fade-up rounded-xl border border-green-200 bg-surface p-3 text-sm dark:border-green-500/25"
                     style={{ animationDelay: `${i * 70}ms` }}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="font-medium text-gray-900">{c.front}</span>
+                      <span className="font-medium text-ink">{c.front}</span>
                       <Badge tone={difficultyTone(c.difficulty)}>D{c.difficulty}</Badge>
                     </div>
-                    <p className="mt-1 text-gray-600">{c.back}</p>
-                    <p className="mt-1 text-xs text-gray-500">{c.topic}</p>
+                    <p className="mt-1 text-ink-2">{c.back}</p>
+                    <p className="mt-1 text-xs text-muted">{c.topic}</p>
                   </li>
                 ))}
               </ul>
               {deck.cards.length > 5 ? (
-                <p className="mt-2 text-xs text-green-700">
+                <p className="mt-2 text-xs text-green-700 dark:text-green-300">
                   + {deck.cards.length - 5} more — refresh the Cards tab to see all.
                 </p>
               ) : null}

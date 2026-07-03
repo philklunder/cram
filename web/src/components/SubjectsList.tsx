@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
 
 import { Badge, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { listSubjects } from "@/lib/api/client";
@@ -24,27 +23,19 @@ function urgency(days: number | null): Urgency {
 // looming exam always reads red regardless of the subject's own hue. "far" borrows the subject
 // accent (calm, on-brand); "none"/"past" stay muted.
 const urgencyText: Record<Urgency, string> = {
-  urgent: "text-red-600",
-  soon: "text-amber-600",
-  far: "text-[color:var(--sc-ink)]",
-  past: "text-gray-400",
-  none: "text-gray-400",
+  urgent: "text-red-600 dark:text-red-400",
+  soon: "text-amber-600 dark:text-amber-400",
+  far: "text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]",
+  past: "text-subtle",
+  none: "text-subtle",
 };
 const urgencyDot: Record<Urgency, string> = {
   urgent: "bg-red-500",
   soon: "bg-amber-500",
   far: "bg-[var(--sc-solid)]",
-  past: "bg-gray-300",
-  none: "bg-gray-300",
+  past: "bg-line-strong",
+  none: "bg-line-strong",
 };
-
-// Compact countdown for the frosted chip on the gradient header.
-function shortCountdown(days: number | null): string {
-  if (days === null) return "No date";
-  if (days === 0) return "Today";
-  if (days < 0) return "Past";
-  return `${days}d`;
-}
 
 function byNearestExam(a: Subject, b: Subject): number {
   const da = daysUntil(a.exam_date);
@@ -54,74 +45,65 @@ function byNearestExam(a: Subject, b: Subject): number {
   return da - db;
 }
 
-function SubjectCard({ subject, index }: { subject: Subject; index: number }) {
-  const reduce = useReducedMotion();
+export function SubjectCard({ subject, index }: { subject: Subject; index: number }) {
   const days = daysUntil(subject.exam_date);
   const u = urgency(days);
 
   return (
-    <motion.div
-      style={subjectVars(subject.id)}
-      initial={reduce ? false : { opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 120, damping: 18, delay: Math.min(index, 10) * 0.05 }}
+    // Entrance is a one-shot CSS fade-up (staggered by index) — declarative, so the resting state
+    // is visible even before JS hydrates and it never ships blank in a headless render. Respects
+    // reduced-motion via the global clamp in globals.css.
+    <Link
+      href={`/subjects/${subject.id}`}
+      style={{ ...subjectVars(subject.id), animationDelay: `${Math.min(index, 12) * 45}ms` }}
+      className={cn(
+        "animate-fade-up group relative block overflow-hidden rounded-xl border border-line bg-surface shadow-card",
+        "transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--sc-line)] hover:shadow-card-hover",
+        "dark:hover:border-[color:var(--sc-solid)]/40",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+      )}
     >
-      <Link
-        href={`/subjects/${subject.id}`}
-        className={cn(
-          "group relative block overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-card",
-          "transition duration-300 ease-out hover:-translate-y-1 hover:border-[var(--sc-line)]",
-          "hover:shadow-[0_20px_44px_-14px_rgb(var(--sc-glow)_/_0.5)]",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2",
-        )}
-      >
-        {/* Gradient header — the subject's identity. Full band (not a side-stripe): monogram left,
-            frosted exam-countdown chip right. */}
-        <div className="relative flex h-24 items-center justify-between overflow-hidden px-5 [background-image:linear-gradient(135deg,var(--sc-from),var(--sc-to))]">
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full bg-white/25 blur-2xl transition-transform duration-500 ease-out group-hover:scale-125"
-          />
-          <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-lg font-bold text-white ring-1 ring-inset ring-white/40 backdrop-blur-sm">
-            {subjectInitials(subject.name)}
-          </span>
-          <span className="relative inline-flex items-center rounded-full bg-white/20 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-inset ring-white/30 backdrop-blur-sm">
-            {shortCountdown(days)}
-          </span>
-        </div>
-
-        {/* Body */}
-        <div className="p-5">
-          <h3 className="truncate text-base font-semibold text-gray-900 transition-colors duration-200 group-hover:text-[color:var(--sc-ink)]">
+      {/* Header: a quiet per-subject identity tile + the subject name and scale/grade meta. The
+          subject color lives only in the tile and the hover accent — the surface stays neutral. */}
+      <div className="flex items-start gap-3.5 px-4 pb-3.5 pt-4">
+        <span
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-[0.9rem] font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
+          aria-hidden
+        >
+          {subjectInitials(subject.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[0.95rem] font-semibold text-ink transition-colors duration-200 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]">
             {subject.name}
           </h3>
-          <p className="mt-0.5 truncate text-sm text-gray-500">
+          <p className="mt-0.5 truncate text-sm text-muted">
             <span className="capitalize">{subject.grading_scale}</span> scale
             {subject.current_grade != null ? ` · now ${subject.current_grade}` : ""}
             {subject.target_grade != null ? ` · target ${subject.target_grade}` : ""}
           </p>
-
-          <div className="mt-4 flex items-center justify-between">
-            <span className={cn("inline-flex items-center gap-2 text-sm font-medium tabular-nums", urgencyText[u])}>
-              <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", urgencyDot[u])} />
-              {formatCountdown(days)}
-            </span>
-            <svg
-              className="h-4 w-4 text-gray-300 transition group-hover:translate-x-1 group-hover:text-[color:var(--sc-ink)]"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden
-            >
-              <path
-                fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
         </div>
-      </Link>
-    </motion.div>
+      </div>
+
+      {/* Footer: the single countdown, semantic-colored by exam urgency, plus the affordance. */}
+      <div className="flex items-center justify-between border-t border-line px-4 py-3">
+        <span className={cn("inline-flex items-center gap-2 text-sm font-medium tabular-nums", urgencyText[u])}>
+          <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", urgencyDot[u])} />
+          {formatCountdown(days)}
+        </span>
+        <svg
+          className="h-4 w-4 text-subtle transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden
+        >
+          <path
+            fillRule="evenodd"
+            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </div>
+    </Link>
   );
 }
 
@@ -141,13 +123,13 @@ function SummaryStrip({ subjects }: { subjects: Subject[] }) {
         {subjects.length} {subjects.length === 1 ? "subject" : "subjects"}
       </Badge>
       {next ? (
-        <span className="text-sm text-gray-500">
-          Next up <span className="font-medium text-gray-700">{next.name}</span>,{" "}
+        <span className="text-sm text-muted">
+          Next up <span className="font-medium text-ink-2">{next.name}</span>,{" "}
           {formatCountdown(daysUntil(next.exam_date))}
         </span>
       ) : null}
       {urgent > 0 ? (
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
           <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-red-500" />
           {urgent} within 3 days
         </span>
@@ -160,7 +142,7 @@ function LoadingGrid() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-card">
+        <div key={i} className="overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-card">
           <Skeleton className="h-24 rounded-none" />
           <div className="space-y-2 p-5">
             <Skeleton className="h-4 w-2/3" />
@@ -179,8 +161,8 @@ export function SubjectsList() {
   return (
     <section>
       <div className="animate-rise mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Subjects</h1>
-        <p className="mt-1 text-sm text-gray-500">Your courses, ordered by the nearest exam.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Subjects</h1>
+        <p className="mt-1 text-sm text-muted">Your courses, ordered by the nearest exam.</p>
         {data && data.length > 0 ? <SummaryStrip subjects={data} /> : null}
       </div>
 

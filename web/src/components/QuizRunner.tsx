@@ -100,8 +100,8 @@ export function QuizRunner({
     <Panel className="animate-rise space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</p>
-          <p className="mt-0.5 text-sm text-gray-500" aria-live="polite">
+          <p className="text-xs font-medium uppercase tracking-wide text-subtle">{title}</p>
+          <p className="mt-0.5 text-sm text-muted" aria-live="polite">
             Question {idx + 1} of {questions.length}
           </p>
         </div>
@@ -111,9 +111,9 @@ export function QuizRunner({
       </div>
 
       {/* Progress bar — fills as questions are completed (graded). */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-line" aria-hidden>
         <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-brand-500 transition-all duration-500 ease-out"
           style={{ width: `${((idx + (result ? 1 : 0)) / questions.length) * 100}%` }}
         />
       </div>
@@ -125,13 +125,13 @@ export function QuizRunner({
             <h3
               ref={headingRef}
               tabIndex={-1}
-              className="text-base font-semibold text-gray-900 focus:outline-none"
+              className="text-base font-semibold text-ink focus:outline-none"
             >
               {q.prompt}
             </h3>
             <Badge tone="brand">{isMC ? "Multiple choice" : "Short answer"}</Badge>
           </div>
-          <p className="text-xs text-gray-500">{q.topic}</p>
+          <p className="text-xs text-muted">{q.topic}</p>
         </div>
 
         {isMC ? (
@@ -149,10 +149,10 @@ export function QuizRunner({
                   "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition duration-200 ease-out",
                   result == null && "hover:-translate-y-0.5 active:scale-[0.99]",
                   result == null && selected
-                    ? "border-brand-500 bg-brand-50/60 text-gray-900 shadow-brand-sm"
-                    : "border-gray-200 text-gray-700 hover:border-gray-300",
-                  isAnswer && "border-green-500 bg-green-50 text-green-800",
-                  isWrongPick && "border-red-400 bg-red-50 text-red-800",
+                    ? "border-brand-500 bg-brand-50/60 text-ink shadow-brand-sm dark:bg-brand-500/15"
+                    : "border-line text-ink-2 hover:border-line-strong",
+                  isAnswer && "border-green-500 bg-green-50 text-green-800 dark:border-green-500/50 dark:bg-green-500/15 dark:text-green-200",
+                  isWrongPick && "border-red-400 bg-red-50 text-red-800 dark:border-red-500/50 dark:bg-red-500/15 dark:text-red-200",
                   result != null && "cursor-default",
                 )}
               >
@@ -180,7 +180,7 @@ export function QuizRunner({
             value={response}
             onChange={(e) => setResponse(e.target.value)}
             disabled={result != null}
-            className={cn(inputClass, "resize-y disabled:bg-gray-50 disabled:text-gray-500")}
+            className={cn(inputClass, "resize-y disabled:bg-surface-2 disabled:text-muted")}
             placeholder="Type your answer…"
           />
         </div>
@@ -214,7 +214,9 @@ function ResultCard({ result, answerKey }: { result: Graded; answerKey: string |
       aria-live="polite"
       className={cn(
         "animate-rise space-y-2 rounded-xl border px-4 py-3 text-sm",
-        result.is_correct ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50",
+        result.is_correct
+          ? "border-green-200 bg-green-50 dark:border-green-500/30 dark:bg-green-500/10"
+          : "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10",
       )}
     >
       <div className="flex items-center gap-2">
@@ -222,13 +224,13 @@ function ResultCard({ result, answerKey }: { result: Graded; answerKey: string |
           {result.is_correct ? "Correct" : "Not quite"}
         </Badge>
         {answerKey != null ? (
-          <span className="text-xs text-gray-500">Scored {pct}%</span>
+          <span className="text-xs text-muted">Scored {pct}%</span>
         ) : null}
       </div>
-      {result.feedback ? <p className="text-gray-700">{result.feedback}</p> : null}
+      {result.feedback ? <p className="text-ink-2">{result.feedback}</p> : null}
       {answerKey != null ? (
-        <p className="text-gray-600">
-          <span className="font-medium text-gray-700">Model answer:</span> {answerKey}
+        <p className="text-ink-2">
+          <span className="font-medium text-ink">Model answer:</span> {answerKey}
         </p>
       ) : null}
     </div>
@@ -254,10 +256,10 @@ function Summary({
 
   return (
     <Panel className="animate-rise space-y-4 text-center">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-subtle">{title}</p>
       <div>
-        <p className="text-4xl font-semibold tracking-tight tabular-nums text-gray-900">{shownPct}%</p>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="text-4xl font-semibold tracking-tight tabular-nums text-ink">{shownPct}%</p>
+        <p className="mt-1 text-sm text-muted">
           {correct} of {total} correct
         </p>
       </div>

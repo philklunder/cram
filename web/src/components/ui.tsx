@@ -33,15 +33,17 @@ type ButtonVariant = "primary" | "secondary" | "ghost";
 type ButtonSize = "sm" | "md";
 
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] disabled:active:scale-100";
+  "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] disabled:active:scale-100";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   // Subtle top-lit gradient + a brand-tinted glow so the primary action feels raised, not painted on.
+  // The cobalt gradient reads well on both light and dark canvases, so it needs no dark override.
   primary:
     "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-brand-sm hover:from-brand-600 hover:to-brand-700 hover:shadow-brand-md active:from-brand-700 active:to-brand-800",
   secondary:
-    "border border-gray-200 bg-white text-gray-700 shadow-sm hover:border-brand-200 hover:bg-brand-50/40 hover:text-brand-700 hover:-translate-y-px hover:shadow-card",
-  ghost: "text-gray-600 hover:bg-brand-50/60 hover:text-brand-700",
+    "border border-line bg-surface text-ink-2 shadow-sm hover:border-brand-200 hover:bg-brand-50/40 hover:text-brand-700 hover:-translate-y-px hover:shadow-card dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-200",
+  ghost:
+    "text-ink-2 hover:bg-brand-50/60 hover:text-brand-700 dark:hover:bg-brand-500/15 dark:hover:text-brand-200",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
@@ -82,16 +84,16 @@ export function Button({
 
 // --- Form fields -----------------------------------------------------------------------
 
-export const labelClass = "block text-sm font-medium text-gray-700";
+export const labelClass = "block text-sm font-medium text-ink-2";
 export const inputClass =
-  "mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-sm transition duration-200 placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15";
+  "mt-1.5 w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink shadow-sm transition duration-200 placeholder:text-subtle hover:border-line-strong focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15";
 
 // --- Spinner / loaders -----------------------------------------------------------------
 
 export function Spinner({ label }: { label?: string }) {
   return (
-    <div className="flex items-center gap-3 text-sm text-gray-500" role="status">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-brand-600" />
+    <div className="flex items-center gap-3 text-sm text-muted" role="status">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand-600 dark:border-t-brand-400" />
       {label ?? "Loading…"}
     </div>
   );
@@ -116,9 +118,9 @@ export function Skeleton({ className = "" }: { className?: string }) {
     <div
       aria-hidden
       className={cn(
-        "relative overflow-hidden rounded-lg bg-gray-200/70",
+        "relative overflow-hidden rounded-lg bg-line/70",
         "after:absolute after:inset-0 after:-translate-x-full after:animate-shimmer",
-        "after:bg-gradient-to-r after:from-transparent after:via-white/60 after:to-transparent",
+        "after:bg-gradient-to-r after:from-transparent after:via-white/60 after:to-transparent dark:after:via-white/10",
         className,
       )}
     />
@@ -130,11 +132,13 @@ export function Skeleton({ className = "" }: { className?: string }) {
 type Tone = "neutral" | "brand" | "green" | "amber" | "red";
 
 const toneClasses: Record<Tone, string> = {
-  neutral: "bg-gray-100 text-gray-700 ring-gray-500/15",
-  brand: "bg-brand-50 text-brand-700 ring-brand-600/15",
-  green: "bg-green-50 text-green-700 ring-green-600/20",
-  amber: "bg-amber-50 text-amber-800 ring-amber-600/25",
-  red: "bg-red-50 text-red-700 ring-red-600/20",
+  // In dark mode the light -50 fills become bright patches, so each tone flips to a translucent
+  // tint of its own hue with a lighter -300 text — keeps meaning + clears contrast on dark surfaces.
+  neutral: "bg-gray-100 text-gray-700 ring-gray-500/15 dark:bg-white/10 dark:text-ink-2 dark:ring-white/10",
+  brand: "bg-brand-50 text-brand-700 ring-brand-600/15 dark:bg-brand-500/15 dark:text-brand-200 dark:ring-brand-400/20",
+  green: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-400/25",
+  amber: "bg-amber-50 text-amber-800 ring-amber-600/25 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25",
+  red: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/25",
 };
 
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: Tone }) {
@@ -165,7 +169,9 @@ export function Panel({
     <div
       style={style}
       className={cn(
-        "rounded-2xl border border-gray-200/70 bg-white p-5 shadow-card transition duration-300 ease-out hover:border-brand-200/70 hover:shadow-card-hover",
+        // A calm, static container. Elevation is carried by the crisp hairline + subtle shadow,
+        // not by hover motion — interactive surfaces add their own affordances on top.
+        "rounded-xl border border-line bg-surface p-5 shadow-card",
         className,
       )}
     >
@@ -180,10 +186,10 @@ export function ErrorBox({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+      className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
     >
       <svg
-        className="mt-0.5 h-4 w-4 flex-none text-red-500"
+        className="mt-0.5 h-4 w-4 flex-none text-red-500 dark:text-red-400"
         viewBox="0 0 20 20"
         fill="currentColor"
         aria-hidden
@@ -209,14 +215,14 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-gray-300/80 bg-white/50 px-6 py-12 text-center">
-      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-400 ring-1 ring-inset ring-brand-100">
+    <div className="rounded-2xl border border-dashed border-line-strong/80 bg-surface/50 px-6 py-12 text-center">
+      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-400 ring-1 ring-inset ring-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:ring-brand-500/20">
         <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
           <path d="M4 4a2 2 0 012-2h5.586A2 2 0 0113 2.586L16.414 6A2 2 0 0117 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
         </svg>
       </div>
-      <p className="text-sm font-semibold text-gray-800">{title}</p>
-      {hint ? <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">{hint}</p> : null}
+      <p className="text-sm font-semibold text-ink">{title}</p>
+      {hint ? <p className="mx-auto mt-1 max-w-sm text-sm text-muted">{hint}</p> : null}
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </div>
   );

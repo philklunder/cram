@@ -74,7 +74,7 @@ export function SubjectDetail({ id }: { id: string }) {
       {/* Tab bar — horizontally scrollable on narrow screens; the active underline slides between
           tabs via a shared layoutId. */}
       <div className="-mx-1 overflow-x-auto px-1">
-        <div role="tablist" aria-label="Subject sections" className="flex min-w-max gap-1 border-b border-gray-200">
+        <div role="tablist" aria-label="Subject sections" className="flex min-w-max gap-1 border-b border-line">
           {tabs.map((t) => {
             const active = tab === t.id;
             return (
@@ -85,8 +85,10 @@ export function SubjectDetail({ id }: { id: string }) {
                 onClick={() => setTab(t.id)}
                 className={cn(
                   "relative inline-flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors duration-200",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2",
-                  active ? "text-[color:var(--sc-ink)]" : "text-gray-500 hover:text-gray-800",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
+                  active
+                    ? "text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]"
+                    : "text-muted hover:text-ink",
                 )}
               >
                 {t.label}
@@ -95,8 +97,8 @@ export function SubjectDetail({ id }: { id: string }) {
                     className={cn(
                       "rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums transition-colors duration-200",
                       active
-                        ? "bg-[var(--sc-soft)] text-[color:var(--sc-ink)]"
-                        : "bg-gray-100 text-gray-500",
+                        ? "bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]"
+                        : "bg-line text-muted",
                     )}
                   >
                     {t.count}
@@ -148,7 +150,17 @@ export function SubjectDetail({ id }: { id: string }) {
 
 // --- Hero -------------------------------------------------------------------------------
 
-function Hero({
+// Exam-countdown color, mirroring the subjects grid: urgent red, soon amber, else neutral. Kept
+// local and small; the subject's own hue lives in the tile, so the meta line stays calm.
+function heroCountdownClass(days: number | null): string {
+  if (days === null) return "text-muted";
+  if (days < 0) return "text-subtle";
+  if (days <= 3) return "text-red-600 dark:text-red-400";
+  if (days <= 10) return "text-amber-600 dark:text-amber-400";
+  return "text-ink-2";
+}
+
+export function Hero({
   subject,
   cards,
   quizzes,
@@ -161,41 +173,37 @@ function Hero({
   sources: Source[];
   due: number;
 }) {
-  const reduce = useReducedMotion();
   const days = daysUntil(subject.exam_date);
 
   return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 120, damping: 18 }}
-      className="relative overflow-hidden rounded-2xl px-6 py-6 text-white shadow-card [background-image:linear-gradient(135deg,var(--sc-from),var(--sc-to))]"
-    >
-      <span aria-hidden className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-white/20 blur-3xl" />
-      <span aria-hidden className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-black/10 blur-3xl" />
-
-      <div className="relative flex items-start gap-4">
-        <span className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl bg-white/20 text-xl font-bold ring-1 ring-inset ring-white/40 backdrop-blur-sm">
+    // Neutral surface, consistent with the subject cards. The subject color is concentrated in the
+    // one gradient tile — a controlled identity moment, not a full color band. CSS entrance, so the
+    // resting state is visible without JS.
+    <div className="animate-fade-up rounded-xl border border-line bg-surface p-6 shadow-card">
+      <div className="flex items-start gap-4">
+        <span className="flex h-14 w-14 flex-none items-center justify-center rounded-xl text-xl font-bold text-white shadow-sm [background-image:linear-gradient(140deg,var(--sc-from),var(--sc-to))]">
           {subjectInitials(subject.name)}
         </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{subject.name}</h1>
-          <p className="mt-1 text-sm text-white/85">
-            <span className="capitalize">{subject.grading_scale}</span> scale
-            <span className="px-1.5 text-white/50" aria-hidden>·</span>
-            {formatCountdown(days)}
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">{subject.name}</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+            <span className="capitalize">{subject.grading_scale} scale</span>
+            <span aria-hidden className="text-subtle">·</span>
+            <span className={cn("font-medium tabular-nums", heroCountdownClass(days))}>
+              {formatCountdown(days)}
+            </span>
           </p>
         </div>
       </div>
 
-      {/* Quick stats as frosted chips — earned familiarity, not a hero-metric template. */}
-      <div className="relative mt-5 flex flex-wrap gap-2">
+      {/* Quick stats as quiet pills — earned familiarity, not a hero-metric template. */}
+      <div className="mt-5 flex flex-wrap gap-2">
         <HeroStat value={cards.length} label={cards.length === 1 ? "card" : "cards"} />
         <HeroStat value={quizzes.length} label={quizzes.length === 1 ? "quiz" : "quizzes"} />
         <HeroStat value={sources.length} label={sources.length === 1 ? "source" : "sources"} />
         {due > 0 ? <HeroStat value={due} label="due now" emphatic /> : null}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -203,12 +211,14 @@ function HeroStat({ value, label, emphatic = false }: { value: number; label: st
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-inset backdrop-blur-sm",
-        emphatic ? "bg-white/95 text-[color:var(--sc-ink)] ring-white/60" : "bg-white/15 text-white ring-white/25",
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm",
+        emphatic
+          ? "border-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:border-[color:var(--sc-solid)]/30 dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]"
+          : "border-line bg-surface-2 text-muted",
       )}
     >
-      <span className="font-semibold tabular-nums">{value}</span>
-      <span className={emphatic ? "" : "text-white/80"}>{label}</span>
+      <span className={cn("font-semibold tabular-nums", emphatic ? "" : "text-ink")}>{value}</span>
+      <span>{label}</span>
     </span>
   );
 }
@@ -217,7 +227,7 @@ function BackLink() {
   return (
     <Link
       href="/subjects"
-      className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-500 transition hover:text-[color:var(--sc-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2"
+      className="inline-flex items-center gap-1 rounded text-sm font-medium text-muted transition hover:text-[color:var(--sc-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:text-[color:var(--sc-ink-dark)]"
     >
       <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
         <path
@@ -264,14 +274,14 @@ function ReviewTab({
   return (
     <Panel className="space-y-4 text-center">
       <div>
-        <p className="text-4xl font-semibold tracking-tight text-[color:var(--sc-ink)] tabular-nums">{due}</p>
-        <p className="mt-1 text-sm text-gray-500">{due === 1 ? "card due" : "cards due"} for review</p>
+        <p className="text-4xl font-semibold tracking-tight text-[color:var(--sc-ink)] tabular-nums dark:text-[color:var(--sc-ink-dark)]">{due}</p>
+        <p className="mt-1 text-sm text-muted">{due === 1 ? "card due" : "cards due"} for review</p>
       </div>
       <div className="flex justify-center">
         <Button onClick={() => setStarted(true)}>{due > 0 ? "Start review" : "Review all cards"}</Button>
       </div>
       {due === 0 ? (
-        <p className="text-xs text-gray-400">Nothing’s due — you can still review the whole deck.</p>
+        <p className="text-xs text-subtle">Nothing’s due — you can still review the whole deck.</p>
       ) : null}
     </Panel>
   );
@@ -287,13 +297,13 @@ function CardsTab({ cards }: { cards: Card[] }) {
         <li key={c.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
           <Panel>
             <div className="flex items-start justify-between gap-3">
-              <span className="font-medium text-gray-900">{c.front}</span>
+              <span className="font-medium text-ink">{c.front}</span>
               <Badge tone={difficultyTone(c.difficulty)}>D{c.difficulty}</Badge>
             </div>
-            <p className="mt-1 text-sm text-gray-600">{c.back}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+            <p className="mt-1 text-sm text-ink-2">{c.back}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
               {/* Topic wears the subject accent — the one place per card the identity shows through. */}
-              <span className="inline-flex items-center rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] ring-1 ring-inset ring-[var(--sc-line)]">
+              <span className="inline-flex items-center rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] ring-1 ring-inset ring-[var(--sc-line)] dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-ink-dark)]/20">
                 {c.topic}
               </span>
               <span>reps {c.repetitions}</span>
@@ -335,8 +345,8 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
           <Panel key={quiz.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 8) * 55}ms` }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">{quiz.title}</h3>
-                <p className="mt-0.5 text-sm text-gray-500">
+                <h3 className="text-base font-semibold text-ink">{quiz.title}</h3>
+                <p className="mt-0.5 text-sm text-muted">
                   {qs.length} {qs.length === 1 ? "question" : "questions"}
                 </p>
               </div>
@@ -346,28 +356,28 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
             </div>
             <ul className="mt-3 space-y-3">
               {qs.map((q) => (
-                <li key={q.id} className="rounded-xl border border-gray-200/80 bg-gray-50/40 p-3.5">
+                <li key={q.id} className="rounded-xl border border-line/80 bg-surface-2/40 p-3.5">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm font-medium text-gray-900">{q.prompt}</span>
+                    <span className="text-sm font-medium text-ink">{q.prompt}</span>
                     <Badge tone="brand">
                       {q.kind === "multipleChoice" ? "Multiple choice" : "Short answer"}
                     </Badge>
                   </div>
                   {q.options.length > 0 ? (
-                    <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                    <ul className="mt-2 space-y-1 text-sm text-ink-2">
                       {q.options.map((opt, i) => (
                         <li
                           key={i}
                           className={cn(
                             "flex items-center gap-2",
-                            opt === q.answer_key && "font-medium text-green-700",
+                            opt === q.answer_key && "font-medium text-green-700 dark:text-green-400",
                           )}
                         >
                           <span
                             aria-hidden
                             className={cn(
                               "h-1.5 w-1.5 flex-none rounded-full",
-                              opt === q.answer_key ? "bg-green-500" : "bg-gray-300",
+                              opt === q.answer_key ? "bg-green-500" : "bg-line-strong",
                             )}
                           />
                           {opt}
@@ -375,11 +385,11 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-sm text-gray-500">
-                      Model answer: <span className="text-gray-700">{q.answer_key}</span>
+                    <p className="mt-2 text-sm text-muted">
+                      Model answer: <span className="text-ink-2">{q.answer_key}</span>
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-gray-500">{q.topic}</p>
+                  <p className="mt-2 text-xs text-muted">{q.topic}</p>
                 </li>
               ))}
             </ul>
@@ -400,10 +410,10 @@ function SourcesTab({ sources }: { sources: Source[] }) {
         <li key={s.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
           <Panel>
             <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-gray-900">{s.title}</span>
+              <span className="font-medium text-ink">{s.title}</span>
               <Badge tone="neutral">{s.kind}</Badge>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-muted">
               Added {formatDate(s.added_at)}
               {s.storage_paths.length > 0
                 ? ` · ${s.storage_paths.length} ${s.storage_paths.length === 1 ? "file" : "files"}`
