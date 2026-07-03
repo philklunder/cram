@@ -93,6 +93,27 @@ to `main` once both halves are done.
 - **Design source-of-truth docs.** Added [`web/PRODUCT.md`](../web/PRODUCT.md) (register=product,
   users, principles) and [`web/DESIGN.md`](../web/DESIGN.md) (the cobalt + per-subject visual system),
   seeded from the impeccable skill's `init` flow so future design work stays on-brand.
+- **Light + dark theming via a semantic token layer (2026-07-03).** Replaced raw `gray-*`/`white`
+  utilities app-wide with **semantic tokens defined as RGB-triple CSS variables** per theme in
+  `globals.css` (`--canvas / surface / surface-2 / ink / ink-2 / muted / subtle / line / line-strong`),
+  exposed as Tailwind colors (`bg-surface`, `text-ink`, `border-line`) with `darkMode: "class"`. One
+  class is then correct in both themes **and** alpha modifiers still work (`bg-surface/80`). A
+  `ThemeToggle` persists `localStorage['cram-theme']`; an inline no-flash script in `layout.tsx` sets
+  the `.dark` class on `<html>` before paint. Per-subject families gained `inkDark` / `soft-dark`
+  variants so the runtime accent reads on dark too. Every token pair is AA-checked in both themes.
+- **Linear-inspired restraint pass (2026-07-03).** Retuned the whole app toward a Linear aesthetic:
+  neutral surfaces carry the UI, and the per-subject color is demoted from a full gradient **band** to
+  one quiet identity **tile** — the single accent moment per card / hero. Crisp hairline borders over
+  heavy shadows; motion is state-driven only (retired the login's infinite `aurora`/`float` loops for
+  a static deep-cobalt field; review/quiz progress bars use a solid accent, not a gradient; dropped
+  hover-lifts on non-interactive tiles; `Panel` is now a calm static `rounded-xl` container). Direction
+  confirmed with the owner (north star = Linear, refine cobalt, keep per-subject) and recorded in a
+  rewritten `DESIGN.md` (the old "light theme locked" line was stale once dark mode shipped).
+- **Reveal animations must not gate visibility.** The subject card's entrance was a `motion`
+  `initial={{opacity:0}}` spring — which renders the card **blank** until JS hydrates (a headless
+  crawler, a background tab, JS disabled). Moved it to a declarative CSS `animate-fade-up` (staggered
+  by index), so the resting state is always visible and the motion is pure enhancement. This is now
+  the rule for the app: an entrance decorates an already-visible default, never gates it.
 
 ## Reasoning
 
@@ -152,6 +173,16 @@ to `main` once both halves are done.
   in hand-rolled CSS/JS (measuring positions, interrupting transitions, cleanup). `motion` is
   tree-shakeable and scoped to the two client leaves that need it; it's the one deliberate exception
   to the "system font / local `cn` / no runtime deps" rule, justified by the interaction quality.
+- **Why a token layer, not `dark:` variants everywhere.** Dark mode written as per-utility
+  `dark:bg-gray-…` overrides would double every color class and drift out of sync the moment one is
+  missed. One semantic RGB-triple variable per role, swapped by a single `.dark` class on `<html>`,
+  makes each component theme-agnostic and preserves Tailwind's alpha-modifier syntax — the load-bearing
+  simplification that made full light/dark parity tractable across ~15 components at once.
+- **Why demote per-subject color rather than remove it.** The color still earns its place as
+  *navigation* (a learner finds a subject by hue), but a full gradient band on every card read as
+  gamified/SaaS-loud and fought the "tool disappears into the task" principle. Concentrating it in one
+  tile keeps the identity signal while the surface stays neutral — chosen over both a monochrome strip
+  (loses the identity) and the old full band (too loud for the Linear target).
 
 ## Implications
 
@@ -187,6 +218,13 @@ to `main` once both halves are done.
   family (or changing the hash) reshuffles which subjects get which hue — one file, no per-component
   churn. `motion` is now in the shipped bundle for the `/subjects/[id]` route (~110 kB first-load);
   keep it confined to client leaves so server components stay static.
+- **Theming is now token-mediated end-to-end.** New UI must reach for the semantic tokens
+  (`bg-surface`/`text-ink`/`border-line`…), never raw `gray-*`/`white`, or it will be wrong in one
+  theme. Semantic green/amber/red and the per-subject accent each carry their own `dark:` variant.
+- **Dev gotcha: never run `next build` while `next dev` shares the `.next` dir.** The production build
+  overwrites the dev server's static chunks, so the running dev server then 404s its CSS and serves
+  **unstyled** pages (looks like "CSS broke"). Stop dev first (or build elsewhere); recover with
+  `rm -rf .next` + restart `npm run dev`, then hard-refresh the browser past the cached 404.
 
 ## Open questions
 
@@ -210,10 +248,15 @@ to `main` once both halves are done.
   one's *own* subject) — harmless at single-user scale, same posture as the SM-2 columns above.
 - **Visual redesign (per-subject color + motion) built 2026-07-02** on top of the earlier uncommitted
   design-polish pass (cobalt rebrand, aurora login, `fade-up`/`aurora`/`float`/`shimmer` keyframes,
-  count-up progress). Typecheck + 34 tests + prod build green. **Still open: the authenticated pages
-  have not had a live signed-in visual QA pass** — the data is auth-gated, so the grid/hero/tabs need
-  eyeballing against real subjects before this is fully verified.
+  count-up progress). Typecheck + 34 tests + prod build green.
+- **Dark mode + Linear restraint pass built 2026-07-03** (full light/dark token layer + the aesthetic
+  retune above). Typecheck + 34 tests + prod build green; login + subjects grid + detail hero + panels
+  verified in both themes via a mock-data preview harness. **Still open: no live signed-in visual QA on
+  the real authenticated pages** — the data is auth-gated, so grid/hero/tabs/panels were verified with
+  a *dev-only* `web/src/app/preview/page.tsx` (mock data, self-gated to `notFound()` in prod) that
+  should be deleted once a real signed-in pass confirms the pages. The 21st.dev Magic MCP is configured
+  but only loads at Claude Code startup, so it was unavailable this session (restart to use it).
 
 ## Last updated
 
-2026-07-02
+2026-07-03
