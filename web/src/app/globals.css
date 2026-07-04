@@ -3,32 +3,34 @@
 @tailwind utilities;
 
 /* Semantic theme tokens as RGB triples (consumed by the Tailwind `surface`/`ink`/`line`… colors).
-   Light is the default; `.dark` on <html> swaps the values. Contrast pairs were checked to clear
-   WCAG AA (≥4.5:1 for text) on their intended surface in BOTH themes. */
+   Light is the default and the design lead; `.dark` on <html> swaps the values and stays fully
+   supported. Neutrals are cooled toward slate so they harmonise with the electric-violet brand.
+   Contrast pairs were checked to clear WCAG AA (≥4.5:1 for text) on their intended surface in
+   BOTH themes. */
 :root {
   color-scheme: light;
-  --canvas: 249 250 251; /* gray-50 */
+  --canvas: 248 250 252; /* slate-50 */
   --surface: 255 255 255; /* white */
-  --surface-2: 249 250 251;
-  --ink: 17 24 39; /* gray-900 */
-  --ink-2: 55 65 81; /* gray-700 */
-  --muted: 107 114 128; /* gray-500 */
-  --subtle: 156 163 175; /* gray-400 */
-  --line: 229 231 235; /* gray-200 */
-  --line-strong: 209 213 219; /* gray-300 */
+  --surface-2: 241 245 249; /* slate-100 — insets, subtle fills */
+  --ink: 15 23 42; /* slate-900 — ~16:1 on white */
+  --ink-2: 51 65 85; /* slate-700 — ~9:1 on white */
+  --muted: 100 116 139; /* slate-500 — 4.6:1 on white */
+  --subtle: 148 163 184; /* slate-400 — decorative only */
+  --line: 226 232 240; /* slate-200 — hairlines/tracks */
+  --line-strong: 203 213 225; /* slate-300 — hover borders/dots */
 }
 
 .dark {
   color-scheme: dark;
-  --canvas: 11 17 32; /* deep cobalt-tinted ink, darker than the surfaces */
-  --surface: 19 28 46; /* raised card — lighter than canvas so elevation reads */
-  --surface-2: 27 39 64;
-  --ink: 231 236 245; /* ~13:1 on surface */
-  --ink-2: 195 204 218;
-  --muted: 154 167 189; /* ~7:1 on surface */
-  --subtle: 126 139 163; /* ~5:1 on surface */
-  --line: 42 53 80;
-  --line-strong: 58 71 103;
+  --canvas: 14 14 27; /* deep violet-ink, darker than the surfaces */
+  --surface: 23 23 41; /* raised card — lighter than canvas so elevation reads */
+  --surface-2: 32 33 55;
+  --ink: 233 232 244; /* ~13:1 on surface */
+  --ink-2: 198 199 214;
+  --muted: 158 160 182; /* ~6:1 on surface */
+  --subtle: 128 130 156; /* ~4.6:1 on surface */
+  --line: 46 46 74;
+  --line-strong: 63 64 98;
 }
 
 html,
@@ -38,37 +40,73 @@ body {
 
 body {
   @apply bg-canvas font-sans text-ink antialiased;
-  /* Two faint cobalt glows so the canvas reads as lit rather than flat — one warm-cool corner
-     wash, one low ambient pool. Fixed so it stays put while content scrolls. */
+  /* Two faint violet glows so the light canvas reads as lit rather than flat — one bright corner
+     wash, one low ambient pool. Fixed so they stay put while content scrolls. Violet-500/600. */
   background-image:
-    radial-gradient(46rem 46rem at 100% -10%, rgb(59 108 246 / 0.09), transparent 62%),
-    radial-gradient(38rem 38rem at -6% 108%, rgb(42 84 232 / 0.06), transparent 60%);
+    radial-gradient(48rem 48rem at 100% -12%, rgb(124 77 255 / 0.10), transparent 62%),
+    radial-gradient(40rem 40rem at -8% 110%, rgb(106 47 240 / 0.06), transparent 60%);
   background-attachment: fixed;
+  text-rendering: optimizeLegibility;
 }
 
 /* Dark: stronger, deeper glows so the near-black canvas still reads as lit, not flat. */
 .dark body {
   background-image:
-    radial-gradient(48rem 48rem at 100% -10%, rgb(59 108 246 / 0.16), transparent 60%),
-    radial-gradient(40rem 40rem at -6% 108%, rgb(42 84 232 / 0.12), transparent 58%);
+    radial-gradient(50rem 50rem at 100% -12%, rgb(124 77 255 / 0.18), transparent 60%),
+    radial-gradient(42rem 42rem at -8% 110%, rgb(106 47 240 / 0.13), transparent 58%);
 }
 
 ::selection {
-  background-color: rgb(59 108 246 / 0.20);
+  background-color: rgb(124 77 255 / 0.22);
 }
 .dark ::selection {
-  background-color: rgb(96 144 250 / 0.34);
+  background-color: rgb(157 130 255 / 0.34);
 }
 
 @layer base {
+  /* Confident, tightly-tracked headings; balance keeps multi-line headings evenly ragged. */
   h1,
   h2,
   h3 {
-    @apply tracking-tight;
+    @apply font-semibold tracking-tight;
+    text-wrap: balance;
+  }
+  h1 {
+    letter-spacing: -0.02em;
+  }
+  /* Reduce orphans/rivers in longer prose. */
+  p {
+    text-wrap: pretty;
   }
 }
 
-/* Respect users who prefer reduced motion. */
+/* Scroll-reveal — progressive enhancement, JS-free. The default (`.reveal` with no matching
+   rule below) is fully visible, so content never ships blank in a headless render, under
+   reduced-motion, or in a browser without scroll-driven-animation support. Only when the user
+   allows motion AND the engine supports `animation-timeline: view()` does the element fade+lift
+   as it scrolls into frame. Used sparingly — product UI loads into a task, it doesn't perform. */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 2% cover 20%;
+    }
+  }
+}
+
+/* Respect users who prefer reduced motion: neutralise animation + transition durations globally,
+   the safety net under every component's own reduced-motion handling. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -76,5 +114,6 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

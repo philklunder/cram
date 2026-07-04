@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Badge, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
+import { EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { listSubjects } from "@/lib/api/client";
 import type { Subject } from "@/lib/api/types";
 import { daysUntil, formatCountdown, subjectInitials } from "@/lib/format";
@@ -58,25 +58,29 @@ export function SubjectCard({ subject, index }: { subject: Subject; index: numbe
       style={{ ...subjectVars(subject.id), animationDelay: `${Math.min(index, 12) * 45}ms` }}
       className={cn(
         "animate-fade-up group relative block overflow-hidden rounded-xl border border-line bg-surface shadow-card",
-        "transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--sc-line)] hover:shadow-card-hover",
-        "dark:hover:border-[color:var(--sc-solid)]/40",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+        // A hairline of the subject accent along the top edge — subtle at rest, full on hover — so
+        // the card carries its identity without a heavy color band. (Top edge, not a side-stripe.)
+        "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--sc-solid)] before:opacity-40 before:transition-opacity before:duration-200 group-hover:before:opacity-100",
+        "transition duration-200 ease-out hover:-translate-y-1 hover:border-[var(--sc-line)] hover:shadow-card-hover",
+        "dark:hover:border-[color:var(--sc-solid)]/45",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
       )}
     >
-      {/* Header: a quiet per-subject identity tile + the subject name and scale/grade meta. The
-          subject color lives only in the tile and the hover accent — the surface stays neutral. */}
-      <div className="flex items-start gap-3.5 px-4 pb-3.5 pt-4">
+      {/* Header: a confident per-subject identity tile + the subject name and scale/grade meta. The
+          subject color lives in the tile, the top hairline, and the hover accent — the surface
+          itself stays neutral. */}
+      <div className="flex items-start gap-4 px-5 pb-4 pt-5">
         <span
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-[0.9rem] font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
+          className="flex h-12 w-12 flex-none items-center justify-center rounded-xl text-base font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] transition-transform duration-200 group-hover:scale-[1.04] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
           aria-hidden
         >
           {subjectInitials(subject.name)}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[0.95rem] font-semibold text-ink transition-colors duration-200 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]">
+          <h3 className="truncate text-base font-semibold text-ink transition-colors duration-200 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]">
             {subject.name}
           </h3>
-          <p className="mt-0.5 truncate text-sm text-muted">
+          <p className="mt-1 truncate text-sm text-muted">
             <span className="capitalize">{subject.grading_scale}</span> scale
             {subject.current_grade != null ? ` · now ${subject.current_grade}` : ""}
             {subject.target_grade != null ? ` · target ${subject.target_grade}` : ""}
@@ -85,13 +89,13 @@ export function SubjectCard({ subject, index }: { subject: Subject; index: numbe
       </div>
 
       {/* Footer: the single countdown, semantic-colored by exam urgency, plus the affordance. */}
-      <div className="flex items-center justify-between border-t border-line px-4 py-3">
-        <span className={cn("inline-flex items-center gap-2 text-sm font-medium tabular-nums", urgencyText[u])}>
+      <div className="flex items-center justify-between border-t border-line px-5 py-3.5">
+        <span className={cn("inline-flex items-center gap-2 text-sm font-semibold tabular-nums", urgencyText[u])}>
           <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", urgencyDot[u])} />
           {formatCountdown(days)}
         </span>
         <svg
-          className="h-4 w-4 text-subtle transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]"
+          className="h-4 w-4 text-subtle transition-transform duration-200 group-hover:translate-x-1 group-hover:text-[color:var(--sc-ink)] dark:group-hover:text-[color:var(--sc-ink-dark)]"
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden
@@ -107,6 +111,9 @@ export function SubjectCard({ subject, index }: { subject: Subject; index: numbe
   );
 }
 
+// A compact, inline stat strip (no boxes) — the "at a glance" read that opens the overview.
+// Numbers are the emphasis; labels sit under them. Adapted from the flat Linear-style KPI-strip
+// pattern rather than boxed stat cards, so it stays quiet against the card grid below.
 function SummaryStrip({ subjects }: { subjects: Subject[] }) {
   const urgent = subjects.filter((s) => {
     const d = daysUntil(s.exam_date);
@@ -118,36 +125,49 @@ function SummaryStrip({ subjects }: { subjects: Subject[] }) {
   });
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2">
-      <Badge tone="brand">
-        {subjects.length} {subjects.length === 1 ? "subject" : "subjects"}
-      </Badge>
+    <dl className="mt-6 flex flex-wrap items-stretch gap-x-8 gap-y-4">
+      <div>
+        <dt className="text-xs font-medium uppercase tracking-wide text-muted">Subjects</dt>
+        <dd className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{subjects.length}</dd>
+      </div>
+
       {next ? (
-        <span className="text-sm text-muted">
-          Next up <span className="font-medium text-ink-2">{next.name}</span>,{" "}
-          {formatCountdown(daysUntil(next.exam_date))}
-        </span>
+        <div className="border-l border-line pl-8">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Next exam</dt>
+          <dd className="mt-0.5 flex items-baseline gap-2 text-sm">
+            <span className="max-w-[16ch] truncate font-semibold text-ink">{next.name}</span>
+            <span className="tabular-nums text-muted">{formatCountdown(daysUntil(next.exam_date))}</span>
+          </dd>
+        </div>
       ) : null}
+
       {urgent > 0 ? (
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-red-500" />
-          {urgent} within 3 days
-        </span>
+        <div className="border-l border-line pl-8">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Within 3 days</dt>
+          <dd className="mt-0.5 inline-flex items-center gap-2 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
+            <span aria-hidden className="h-2 w-2 rounded-full bg-red-500" />
+            {urgent}
+          </dd>
+        </div>
       ) : null}
-    </div>
+    </dl>
   );
 }
 
 function LoadingGrid() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-card">
-          <Skeleton className="h-24 rounded-none" />
-          <div className="space-y-2 p-5">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="mt-4 h-3 w-24" />
+        <div key={i} className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+          <div className="flex items-start gap-4 px-5 pb-4 pt-5">
+            <Skeleton className="h-12 w-12 flex-none rounded-xl" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          </div>
+          <div className="border-t border-line px-5 py-3.5">
+            <Skeleton className="h-3.5 w-24" />
           </div>
         </div>
       ))}
@@ -160,11 +180,13 @@ export function SubjectsList() {
 
   return (
     <section>
-      <div className="animate-rise mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Subjects</h1>
-        <p className="mt-1 text-sm text-muted">Your courses, ordered by the nearest exam.</p>
+      <header className="animate-rise mb-8">
+        <h1 className="text-3xl font-bold tracking-tight text-ink">Subjects</h1>
+        <p className="mt-2 max-w-prose text-[0.95rem] text-ink-2">
+          Your courses, ordered by the nearest exam.
+        </p>
         {data && data.length > 0 ? <SummaryStrip subjects={data} /> : null}
-      </div>
+      </header>
 
       {loading ? <LoadingGrid /> : null}
       {error ? <ErrorBox message={error} /> : null}
@@ -177,7 +199,7 @@ export function SubjectsList() {
       ) : null}
 
       {data && data.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {[...data].sort(byNearestExam).map((s, i) => (
             <SubjectCard key={s.id} subject={s} index={i} />
           ))}

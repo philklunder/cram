@@ -9,7 +9,6 @@ import { GradesPanel } from "@/components/GradesPanel";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { Hero } from "@/components/SubjectDetail";
 import { SubjectCard } from "@/components/SubjectsList";
-import { Badge } from "@/components/ui";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { subjectVars } from "@/lib/subjectColor";
 import type { Card, GradeEntry, GradingScale, Subject } from "@/lib/api/types";
@@ -103,29 +102,37 @@ export default function PreviewPage() {
 
   return (
     <div className="min-h-[100dvh] bg-canvas">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-subtle">
-            Preview · subjects grid
-          </span>
+      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
+        <div className="mb-8 flex items-start justify-between">
+          <header>
+            <h1 className="text-3xl font-bold tracking-tight text-ink">Subjects</h1>
+            <p className="mt-2 max-w-prose text-[0.95rem] text-ink-2">
+              Your courses, ordered by the nearest exam.
+            </p>
+            <dl className="mt-6 flex flex-wrap items-stretch gap-x-8 gap-y-4">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Subjects</dt>
+                <dd className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{SUBJECTS.length}</dd>
+              </div>
+              <div className="border-l border-line pl-8">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Next exam</dt>
+                <dd className="mt-0.5 flex items-baseline gap-2 text-sm">
+                  <span className="max-w-[16ch] truncate font-semibold text-ink">Organic Chemistry</span>
+                  <span className="tabular-nums text-muted">in 2 days</span>
+                </dd>
+              </div>
+              <div className="border-l border-line pl-8">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Within 3 days</dt>
+                <dd className="mt-0.5 inline-flex items-center gap-2 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
+                  <span aria-hidden className="h-2 w-2 rounded-full bg-red-500" />1
+                </dd>
+              </div>
+            </dl>
+          </header>
           <ThemeToggle />
         </div>
 
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Subjects</h1>
-          <p className="mt-1 text-sm text-muted">Your courses, ordered by the nearest exam.</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Badge tone="brand">{SUBJECTS.length} subjects</Badge>
-            <span className="text-sm text-muted">
-              Next up <span className="font-medium text-ink-2">Organic Chemistry</span>, in 2 days
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-red-500" />1 within 3 days
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {SUBJECTS.map((s, i) => (
             <SubjectCard key={s.id} subject={s} index={i} />
           ))}

@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-full">
       <AppNav email={user.email ?? null} />
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">{children}</main>
     </div>
   );
 }
