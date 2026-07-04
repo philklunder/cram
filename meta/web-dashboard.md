@@ -114,6 +114,28 @@ to `main` once both halves are done.
   crawler, a background tab, JS disabled). Moved it to a declarative CSS `animate-fade-up` (staggered
   by index), so the resting state is always visible and the motion is pure enhancement. This is now
   the rule for the app: an entrance decorates an already-visible default, never gates it.
+- **Bolder, higher-contrast evolve pass — brand hue swap cobalt → electric-violet "iris" (2026-07-04).**
+  The owner asked to push *past* the Linear-restraint pass toward a bolder, higher-contrast language
+  **on top of** the existing token architecture (not a rebuild). The single load-bearing change:
+  `brand` was retuned from cobalt (`500 #3b6cf6`) to an electric violet/iris (`500 #7c4dff`,
+  `600 #6a2ff0`) in `tailwind.config.ts` + the `globals.css` canvas glows — a one-line-per-file token
+  swap that re-hues the whole app. Layered on: heavier type (`font-bold` headings, `text-3xl`), wider
+  shells (`max-w-6xl`), bigger `rounded-xl` tiles, top-edge accent hairlines on cards (never a
+  side-stripe), uppercase-tracked KPI strips. AA re-checked in both themes (white-on-600 ≈ 6.4:1).
+- **Login rebuilt to a provided reference mock (2026-07-04).** The owner supplied a PNG comp and asked
+  for an exact match. `LoginForm.tsx` was rebuilt to it: centered "Welcome back" card, leading-icon
+  inputs (mail/lock) + password show/hide, Remember-me + Forgot-password row, arrow CTA, "or" divider,
+  Continue-with-Google, Sign-up toggle, a top-bar Dark-mode toggle + Need-help link, and a "Trusted by
+  students" footer; the brand panel gained a security callout and a **floating product illustration
+  built entirely in CSS/SVG** (two 3D-perspective-tilted glass cards — a "Swiss scale" flashcard stack
+  + a "Your progress" chart card with an amber A- badge, glowing violet line, and day-gridlines — plus
+  a mortarboard and a field of static glowing sparkles). Illustration is `aria-hidden`, gated
+  `min-[1400px]:block` so it only shows when the panel has room.
+- **Auth affordances: some wired, some visual (2026-07-04).** Continue-with-Google → Supabase
+  `signInWithOAuth({provider:"google"})`; Forgot-password → `resetPasswordForEmail`; password
+  show/hide + mode toggle are local state. **Remember-me is UI-only** (Supabase persists sessions by
+  default; no persistence switch wired). Added a `label` variant to the shared `ThemeToggle` for the
+  login top bar rather than duplicating its localStorage/no-flash logic.
 
 ## Reasoning
 
@@ -183,6 +205,22 @@ to `main` once both halves are done.
   gamified/SaaS-loud and fought the "tool disappears into the task" principle. Concentrating it in one
   tile keeps the identity signal while the surface stays neutral — chosen over both a monochrome strip
   (loses the identity) and the old full band (too loud for the Linear target).
+- **Why a token swap carried the whole rebrand.** Because every component already reaches for the
+  `brand` scale (never a raw color), retuning the 50–900 ramp in one config file re-hued the entire
+  app cobalt → violet with no per-component churn — the payoff of the semantic-token layer. The
+  "bolder" direction sits *on top of* that architecture, not against it; the Linear restraint pass is
+  now partially superseded but the token/theming plumbing is unchanged.
+- **Why the login illustration is CSS/SVG, not a raster crop or a real 3D asset.** The reference cards
+  are translucent glass over the panel gradient, so cropping them from the comp would bake in the
+  background (double-composite) and can't theme or stay crisp at any DPI. A literal 3D render would add
+  an image asset + export pipeline. Recreating with CSS `perspective`/`rotateY` + inline SVG keeps it
+  vector-crisp, themeable, dependency-free, and editable in code — consistent with the zero-extra-deps
+  stance. The trade-off accepted: it *evokes* the comp's 3D render rather than pixel-matching it.
+- **Why wire Google/Forgot for real but leave Remember-me visual.** OAuth and password-reset are
+  one-call Supabase primitives with obvious correct behavior, so wiring them is cheaper than faking
+  them. Remember-me's honest implementation (opting *out* of session persistence) needs a custom
+  storage adapter on the Supabase client — real work for a control most users leave checked — so it
+  ships as UI-only for now and is flagged, rather than shipped mislabeled.
 
 ## Implications
 
@@ -221,6 +259,17 @@ to `main` once both halves are done.
 - **Theming is now token-mediated end-to-end.** New UI must reach for the semantic tokens
   (`bg-surface`/`text-ink`/`border-line`…), never raw `gray-*`/`white`, or it will be wrong in one
   theme. Semantic green/amber/red and the per-subject accent each carry their own `dark:` variant.
+- **`web/DESIGN.md` is now stale after the 2026-07-04 pass.** It still describes the cobalt +
+  Linear-restraint system; the shipped `brand` is electric-violet and the language is bolder. Rewrite
+  it once the evolve pass reaches the remaining surfaces (SubjectDetail/Hero, ProgressPanel,
+  GradesPanel, Review/QuizRunner still carry the quieter Linear treatment).
+- **Continue-with-Google needs the Google provider enabled in the Supabase project** (+ the deployed
+  origin in its redirect allowlist). Until then the button renders but the click returns an inline
+  error. Forgot-password works once Supabase email is configured.
+- **The login "Need help?" link is a `mailto:` to the owner's personal address** (`klunderphilipp@
+  gmail.com`) — a placeholder from matching the reference. Once pushed it auto-deploys to Vercel and
+  that address is public on the login page; swap it for a real support address (or remove it) before
+  it matters.
 - **Dev gotcha: never run `next build` while `next dev` shares the `.next` dir.** The production build
   overwrites the dev server's static chunks, so the running dev server then 404s its CSS and serves
   **unstyled** pages (looks like "CSS broke"). Stop dev first (or build elsewhere); recover with
@@ -256,7 +305,12 @@ to `main` once both halves are done.
   a *dev-only* `web/src/app/preview/page.tsx` (mock data, self-gated to `notFound()` in prod) that
   should be deleted once a real signed-in pass confirms the pages. The 21st.dev Magic MCP is configured
   but only loads at Claude Code startup, so it was unavailable this session (restart to use it).
+- **Bolder violet evolve pass + login redesign built 2026-07-04** (brand hue swap + login rebuilt to a
+  reference mock with a CSS/SVG illustration; typecheck + prod build green, verified in light/dark via
+  the headless-Edge screenshot loop on `localhost:3000`). Follow-ups: rewrite `DESIGN.md`; carry the
+  bolder pass to the remaining surfaces; swap the "Need help?" placeholder email; decide whether
+  Remember-me should be truly wired; enable Google OAuth in Supabase if that button is to work.
 
 ## Last updated
 
-2026-07-03
+2026-07-04
