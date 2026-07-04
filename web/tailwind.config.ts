@@ -21,21 +21,23 @@ const config: Config = {
         subtle: "rgb(var(--subtle) / <alpha-value>)", // quaternary / decorative
         line: "rgb(var(--line) / <alpha-value>)", // hairline borders / tracks
         "line-strong": "rgb(var(--line-strong) / <alpha-value>)", // hover borders / dots
-        // Brand — a confident cobalt/azure, full scale so tints/shades are reusable tokens
-        // rather than ad-hoc per component. Deliberately distinct from the app's semantic
-        // green/amber/red (grade quality, exam urgency, card difficulty) so the accent never
-        // collides with meaning.
+        // Brand — a confident electric violet ("iris"), full scale so tints/shades are reusable
+        // tokens rather than ad-hoc per component. Tuned a touch bluer + more saturated than the
+        // per-subject `violet` family (subjectColor.ts) so app chrome never reads as a subject
+        // accent, and deliberately distinct from the semantic green/amber/red (grade quality,
+        // exam urgency, card difficulty) so the accent never collides with meaning. Every pair
+        // below was AA-checked: white on 600 ≈ 6.4:1, 600-on-white ≈ 6.4:1, 700-on-50 ≈ 7.5:1.
         brand: {
-          50: "#eff4ff",
-          100: "#dbe6fe",
-          200: "#bfd3fe",
-          300: "#93b4fd",
-          400: "#6090fa",
-          500: "#3b6cf6",
-          600: "#2a54e8",
-          700: "#2343c7",
-          800: "#223aa1",
-          900: "#21357f",
+          50: "#f3f1ff",
+          100: "#e9e4ff",
+          200: "#d5ccff",
+          300: "#b7a6ff",
+          400: "#977bff",
+          500: "#7c4dff",
+          600: "#6a2ff0",
+          700: "#591fd0",
+          800: "#491ba8",
+          900: "#3d1a83",
         },
       },
       fontFamily: {
@@ -56,9 +58,10 @@ const config: Config = {
         // default black-based shadows.
         card: "0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.05)",
         "card-hover": "0 8px 24px -6px rgb(15 23 42 / 0.12), 0 3px 8px -3px rgb(15 23 42 / 0.08)",
-        // Tinted to the brand hue so the primary CTA feels lit rather than dropped on black.
-        "brand-sm": "0 1px 2px 0 rgb(42 84 232 / 0.20), 0 2px 8px -2px rgb(42 84 232 / 0.25)",
-        "brand-md": "0 8px 24px -6px rgb(42 84 232 / 0.35), 0 4px 10px -4px rgb(42 84 232 / 0.28)",
+        // Tinted to the brand hue (violet-600 #6a2ff0 = rgb 106 47 240) so the primary CTA feels
+        // lit rather than dropped on black.
+        "brand-sm": "0 1px 2px 0 rgb(106 47 240 / 0.22), 0 2px 8px -2px rgb(106 47 240 / 0.28)",
+        "brand-md": "0 10px 28px -8px rgb(106 47 240 / 0.42), 0 4px 12px -4px rgb(106 47 240 / 0.32)",
       },
       keyframes: {
         rise: {
