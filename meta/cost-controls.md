@@ -26,6 +26,10 @@
   even if the Supabase Storage upload fails: `persist_generation` catches `StorageError`, logs it,
   and writes the source with empty `storage_paths`. The cards are the product; the stored file is
   secondary.
+- **Prompt caching is on for generation only, and mostly writes (by design).** `generation.py`
+  passes top-level `cache_control={"type":"ephemeral"}` (automatic caching — breakpoint on the last
+  cacheable block); `grading.py` deliberately omits it. `TokenUsage.from_usage` folds
+  `cache_creation`/`cache_read` into the billed input total so the spend cap reflects real spend.
 
 ## Reasoning
 - An in-memory limiter resets on restart and is per-worker, giving false confidence right when the
@@ -49,6 +53,16 @@
   the generated cards the user paid for) is the wrong posture. Originally a `StorageError` propagated
   uncaught as a bare `500`; now generate persists the deck without the file. Same principle as the
   metering rule: don't waste a paid call.
+- **Why the prompt cache mostly writes and rarely reads (and why that's fine).** Caching is a
+  prefix match; a read only lands on a repeat of the *same* prefix within the 5-min TTL. On
+  `claude-sonnet-4-6` (`CRAM_MODEL` default) the minimum cacheable prefix is **2048 tokens**. In
+  generation the *stable* prefix (`SYSTEM_PROMPT` ~500 tok + user text) is well under that floor, so
+  it can't be cached on its own — only the whole prefix (system + text + the large uploaded files)
+  clears 2048, and every upload is unique, so production sees cache *writes* but almost no *reads*
+  (the Anthropic Console shows caching "configured but idle"). This is expected, not a regression:
+  it's a dev/retry win only. Grading omits caching because its entire prompt sits under the 2048-token
+  floor — the marker would silently no-op. Getting real cross-request reads would need a ≥2048-token
+  shared prefix (not worth padding a prompt for) or a model with a lower floor (Sonnet 4.5 = 1024).
 
 ## Implications
 - Two new backend-internal tables (not synced to iOS). `ai_usage_events` is owned (auth-FK + RLS like
@@ -74,4 +88,4 @@
   limit** rather than tighter in-app logic — see [edge-and-budget-backstops.md](edge-and-budget-backstops.md).
 
 ## Last updated
-2026-06-23
+2026-07-06
