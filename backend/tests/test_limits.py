@@ -191,6 +191,7 @@ def _prod_settings(**overrides):
         supabase_jwks_url="https://x.supabase.co/auth/v1/.well-known/jwks.json",
         supabase_service_role_key="",
         supabase_storage_bucket="sources",
+        cors_origins=(),
     )
     base.update(overrides)
     return Settings(**base)

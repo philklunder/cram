@@ -35,13 +35,13 @@ export function LoginForm() {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.push("/subjects");
+        router.push("/dashboard");
         router.refresh();
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.session) {
-          router.push("/subjects");
+          router.push("/dashboard");
           router.refresh();
         } else {
           setNotice("Check your email to confirm your account, then sign in.");
@@ -55,7 +55,7 @@ export function LoginForm() {
     }
   }
 
-  // Google OAuth. signInWithOAuth redirects the browser to Google and back to /subjects, so there's
+  // Google OAuth. signInWithOAuth redirects the browser to Google and back to /dashboard, so there's
   // no manual navigation here. If the Google provider isn't enabled on the Supabase project, the
   // call returns an error and we surface it inline.
   async function onGoogle() {
@@ -65,7 +65,7 @@ export function LoginForm() {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/subjects` },
+      options: { redirectTo: `${window.location.origin}/dashboard` },
     });
     if (error) {
       setError(error.message);

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { AppNav } from "@/components/AppNav";
+import { AppShell } from "@/components/shell/AppShell";
 import { SetupNotice } from "@/components/SetupNotice";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
@@ -17,10 +17,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  return (
-    <div className="min-h-full">
-      <AppNav email={user.email ?? null} />
-      <main className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">{children}</main>
-    </div>
-  );
+  return <AppShell email={user.email ?? null}>{children}</AppShell>;
 }

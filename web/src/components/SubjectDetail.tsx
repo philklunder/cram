@@ -263,8 +263,7 @@ function ReviewTab({
     return (
       <ReviewSession
         cards={cards}
-        examDate={subject.exam_date}
-        subjectStrength={subjectStrength}
+        contextFor={() => ({ subject, examDate: subject.exam_date, strength: subjectStrength })}
         onClose={() => setStarted(false)}
         onReviewed={onReviewed}
       />
@@ -331,6 +330,7 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
     return (
       <QuizRunner
         title={activeQuiz.title}
+        subjectId={activeQuiz.subject_id}
         questions={questions.filter((q) => q.quiz_id === activeQuiz.id)}
         onClose={() => setActiveQuizId(null)}
       />

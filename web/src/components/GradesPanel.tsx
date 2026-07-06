@@ -186,7 +186,7 @@ function TargetsEditor({ subject, onSaved }: { subject: Subject; onSaved: () => 
 
   return (
     <form onSubmit={save} className="animate-fade-up space-y-4 rounded-xl border border-line/80 bg-surface-2/50 p-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="target-grade" className={labelClass}>
             Target grade <span className="font-normal text-muted">({gradingScaleLabel[scale]})</span>
@@ -317,7 +317,7 @@ function AddGradeForm({
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="grade-kind" className={labelClass}>
               Kind
@@ -351,7 +351,7 @@ function AddGradeForm({
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="grade-weight" className={labelClass}>
               Weight <span className="font-normal text-muted">({weight}% of the subject grade)</span>

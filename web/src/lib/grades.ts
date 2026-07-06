@@ -5,9 +5,16 @@
 // `currentGrade` is re-exported here so the Grades UI has one import.
 
 import type { GradeKind, GradingScale } from "@/lib/api/types";
-import { currentGrade } from "@/lib/srs/grade-strength";
+import { currentGrade, gradeStrengthForScore } from "@/lib/srs/grade-strength";
 
 export { currentGrade };
+
+// Normalize any scale's score to a 0–100 "performance" percent (100 = best), so grades on
+// different scales (Swiss 1–6, percentage, letter…) can be averaged and compared on one axis —
+// the way the cross-subject Grades and Progress pages show them.
+export function gradePercent(scale: GradingScale, score: number): number {
+  return Math.round(gradeStrengthForScore(scale, score) * 100);
+}
 
 // Valid numeric range per scale (mirrors GradingScale.range).
 const RANGES: Record<GradingScale, readonly [number, number]> = {
