@@ -136,6 +136,34 @@ to `main` once both halves are done.
   show/hide + mode toggle are local state. **Remember-me is UI-only** (Supabase persists sessions by
   default; no persistence switch wired). Added a `label` variant to the shared `ThemeToggle` for the
   login top bar rather than duplicating its localStorage/no-flash logic.
+- **Sidebar-shell architecture replaces the top-nav (2026-07-06).** The whole app moved from a
+  centered `max-w-5xl` top-nav to a persistent **left sidebar + sticky top bar** (`AppNav.tsx`
+  DELETED). New `components/shell/` (`AppShell` composes `AppSidebar` [wordmark → primary nav →
+  streak card + Go-Premium] + `AppTopbar` [global `⌘K` search, theme toggle, notifications, account
+  chip]; mobile drawer), plus `components/dashboard/` and `components/pages/` component trees and
+  routed `(app)/{dashboard,calendar,flashcards,grades,progress,quizzes,review,settings,upload,premium}/`
+  destinations. Most surfaces are a two-column grid (primary column + right rail of supporting cards)
+  that collapses to one column under `lg`.
+- **All surfaces matched to owner reference mocks (2026-07-06).** The owner supplied 8 labelled PNGs
+  (Dashboard, Review runner, Flashcards, Quiz session, AI Decks, Progress, Grades, Study-planner/
+  Calendar); each surface was built/tuned to its reference in the electric-violet system and verified
+  in **light + dark** via the dev-only `web/src/app/preview/` harness (headless-Edge screenshots;
+  the `?p=<slug>` page reads the slug in a `useEffect`, so shots need msedge `--virtual-time-budget`
+  to let the effect run before capture). The bolder-violet pass is now complete across the app, not
+  just login.
+- **`study_sessions` — a new append-only owned resource for the weekly-activity chart (2026-07-06).**
+  Backend gained `study_sessions` (model + `alembic/0004_study_sessions` + full wiring: enums/models/
+  repository `OWNED_MODELS`+`PARENTS`/routers `SPECS`/api_schemas), an immutable per-block record of
+  study time (`started_at` domain event time, bounded `duration_seconds` 0–86 400, `kind` enum,
+  optional owned `subject_id`) feeding the dashboard's weekly-activity aggregate. It reuses the exact
+  owned-model + RLS-owner-policy pattern of the other domain tables. **Migration 0004 was applied to
+  live Supabase 2026-07-06** (was at `0003`, now `0004_study_sessions (head)`). `client.ts` added the
+  read helpers `listSources`/`listGradeEntries`/`listAttempts`/study-session + `createSubject`.
+- **`web/DESIGN.md` rewritten to the shipped violet sidebar system (2026-07-06).** Replaced the stale
+  cobalt/Linear/top-nav copy with the electric-violet tokens, the sidebar-shell + two-column-rail
+  layout pattern, motion rules, and a per-surface catalog. A `/security-review` + `/code-review` of
+  the whole pending diff found **no Critical/High/Medium** (study_sessions reuses the audited
+  owned-model/RLS pattern; the only `dangerouslySetInnerHTML` is the static no-flash theme script).
 
 ## Reasoning
 
@@ -259,10 +287,14 @@ to `main` once both halves are done.
 - **Theming is now token-mediated end-to-end.** New UI must reach for the semantic tokens
   (`bg-surface`/`text-ink`/`border-line`…), never raw `gray-*`/`white`, or it will be wrong in one
   theme. Semantic green/amber/red and the per-subject accent each carry their own `dark:` variant.
-- **`web/DESIGN.md` is now stale after the 2026-07-04 pass.** It still describes the cobalt +
-  Linear-restraint system; the shipped `brand` is electric-violet and the language is bolder. Rewrite
-  it once the evolve pass reaches the remaining surfaces (SubjectDetail/Hero, ProgressPanel,
-  GradesPanel, Review/QuizRunner still carry the quieter Linear treatment).
+- **`web/DESIGN.md` rewritten 2026-07-06** to match the shipped electric-violet sidebar system (the
+  2026-07-04 evolve pass reached every surface). New UI should follow it: semantic tokens, the
+  sidebar-shell + two-column-rail layout, one violet accent, quiet per-subject identity, AA in both
+  themes.
+- **`study_sessions` requires a running-app write path.** The table + migration exist and the live DB
+  is migrated, but a client must actually `POST /v1/study-sessions` at the end of a review/quiz for
+  the dashboard's weekly-activity chart to populate with real data (currently it renders from
+  whatever sessions exist). Wire the write on session completion (web now; iOS mirrors later).
 - **Continue-with-Google needs the Google provider enabled in the Supabase project** (+ the deployed
   origin in its redirect allowlist). Until then the button renders but the click returns an inline
   error. Forgot-password works once Supabase email is configured.
@@ -313,4 +345,4 @@ to `main` once both halves are done.
 
 ## Last updated
 
-2026-07-04
+2026-07-06
