@@ -18,6 +18,7 @@ import { SettingsView } from "@/components/pages/SettingsView";
 import { UploadWork } from "@/components/pages/UploadWork";
 import type { LibraryData } from "@/lib/api/client";
 import type { Card, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
+import { setDisplayScale } from "@/lib/useDisplayScale";
 
 const NOW = Date.now();
 const DAY = 86_400_000;
@@ -284,8 +285,13 @@ export default function PagesPreview() {
   if (process.env.NODE_ENV === "production") notFound();
   const [slug, setSlug] = useState("review");
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("p");
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("p");
     if (p && PAGES[p]) setSlug(p);
+    // Dev convenience: ?scale=swiss forces the display grading scale so the Settings-driven
+    // conversion can be previewed without clicking through the picker.
+    const scale = params.get("scale");
+    if (scale) setDisplayScale(scale as GradingScale);
   }, []);
 
   const page = PAGES[slug] ?? PAGES.review;

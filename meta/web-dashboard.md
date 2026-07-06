@@ -164,6 +164,21 @@ to `main` once both halves are done.
   layout pattern, motion rules, and a per-surface catalog. A `/security-review` + `/code-review` of
   the whole pending diff found **no Critical/High/Medium** (study_sessions reuses the audited
   owned-model/RLS pattern; the only `dangerouslySetInnerHTML` is the static no-flash theme script).
+- **Global "display grading scale" preference (2026-07-06).** A **device-local** setting
+  (Settings → Grading scale; [`web/src/lib/useDisplayScale.ts`](../web/src/lib/useDisplayScale.ts),
+  `localStorage['cram-grade-scale']`, default `percentage`) that controls how **aggregate,
+  cross-subject grade numbers** are shown: the Grades page's Overall/Average-by-subject stats and its
+  Current/Target table columns, the Progress "Current average" + its 7-day delta, the grade-trend
+  chart's Y-axis, and the per-subject "Average". Picking `swiss` shows those as **6.0–1.0 grades**
+  instead of `%`. **Presentation only** — each subject keeps its own `grading_scale` for *entry*, raw
+  grade *entries* still render in their native scale (a German mark stays `2.0`), and non-grade
+  metrics stay in `%` (exam weight, pass rate, card-mastery/readiness, topic-mastery donut). Built on
+  the existing normalize-to-0–100-performance layer: `grades.ts` gained the **inverse**
+  (`gradeFromPercent` / `formatPercentInScale` / `formatPercentDeltaInScale`) so any averaged % maps
+  back to a grade on the chosen scale — no new grade math. Read via **`useSyncExternalStore`** so a
+  change on Settings updates a mounted Grades/Progress view live and across tabs; the server + first-
+  paint snapshot returns the default, so there's no hydration mismatch. The `/preview` harness gained
+  a dev-only `?scale=` override to screenshot the conversion.
 
 ## Reasoning
 
@@ -249,6 +264,17 @@ to `main` once both halves are done.
   them. Remember-me's honest implementation (opting *out* of session persistence) needs a custom
   storage adapter on the Supabase client — real work for a control most users leave checked — so it
   ships as UI-only for now and is flagged, rather than shipped mislabeled.
+- **Why the grading scale is a display-only preference, not per-subject or a data change.** Subjects
+  already carry their own `grading_scale` (how marks are *entered*); the owner's ask was purely "show
+  my **averages** in Swiss." Converting the normalized 0–100 performance back to a grade at the
+  display layer means zero migration, no backend change, and the single grade-derivation source
+  (`grade-strength.ts`) stays untouched — the number shown is still the number the scheduler
+  compresses on. Rejected: (a) storing the display scale server-side — a device preference doesn't
+  warrant a settings resource/schema; (b) reformatting the raw grade *entries* — they're already
+  grades in their own scale, so converting them would double-convert and hide the real mark. Non-grade
+  figures (readiness, mastery %, exam weight, pass rate) are deliberately **excluded** because they
+  aren't grades — pinning them to a 1–6 axis would be misleading, and the owner explicitly wanted
+  weight/pass-rate to stay `%`.
 
 ## Implications
 
@@ -298,6 +324,11 @@ to `main` once both halves are done.
 - **Continue-with-Google needs the Google provider enabled in the Supabase project** (+ the deployed
   origin in its redirect allowlist). Until then the button renders but the click returns an inline
   error. Forgot-password works once Supabase email is configured.
+- **New aggregate-grade UI must format through `formatPercentInScale(displayScale, pct)`** (read the
+  scale with `useDisplayScale()`), never a bare `` `${pct}%` ``, or it will ignore the Settings
+  preference. The preference is **device-local** (localStorage, like the theme) — it does **not** sync
+  to iOS, and iOS has no equivalent. Only `percentage` (the default) reproduces the pre-2026-07-06
+  presentation, so existing screenshots/expectations still hold out of the box.
 - **The login "Need help?" link is a `mailto:` to the owner's personal address** (`klunderphilipp@
   gmail.com`) — a placeholder from matching the reference. Once pushed it auto-deploys to Vercel and
   that address is public on the login page; swap it for a real support address (or remove it) before
@@ -342,7 +373,10 @@ to `main` once both halves are done.
   the headless-Edge screenshot loop on `localhost:3000`). Follow-ups: rewrite `DESIGN.md`; carry the
   bolder pass to the remaining surfaces; swap the "Need help?" placeholder email; decide whether
   Remember-me should be truly wired; enable Google OAuth in Supabase if that button is to work.
-
-## Last updated
+- **Display grading-scale preference built 2026-07-06** (Settings picker + `useDisplayScale` store +
+  the `gradeFromPercent`/`formatPercentInScale`/`formatPercentDeltaInScale` inverse in `grades.ts`;
+  typecheck + 34 tests green; Grades/Progress/Settings verified in the `?scale=swiss` preview harness).
+  It's **web-only + device-local**: if grade display should be consistent with iOS, it needs a
+  *synced* user setting (a new owned resource, or Supabase user metadata) instead of localStorage.
 
 2026-07-06
