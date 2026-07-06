@@ -21,10 +21,11 @@ by at most the in-flight requests, which is acceptable and documented (ADR 0009)
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,38 @@ logger = logging.getLogger("cram.limits")
 
 # Rate-limit window length; the bucket key is the request minute (now truncated to :00).
 _RATE_WINDOW_SECONDS = 60
+
+# Opportunistic pruning of the rate_limit_buckets table (ADR 0009 documented the sweep but
+# never scheduled it, so the table grew one row per (subject, minute) forever). We delete
+# buckets older than the retention window lazily, at most once per interval per process —
+# the deploy runs a single uvicorn worker, so in-process throttling is sufficient and needs
+# no external cron. Only long-past windows are removed, never a live counter, so this can
+# never affect an in-flight limit decision.
+_BUCKET_RETENTION_SECONDS = 3600  # keep the last hour of counters
+_PRUNE_INTERVAL_SECONDS = 3600  # sweep at most hourly
+_last_prune_monotonic = 0.0
+
+
+def _maybe_prune_buckets(session: Session) -> None:
+    """Delete rate-limit buckets older than the retention window, throttled to once per
+    interval per process. Best-effort: a failure here must never break the request that
+    triggered it, so it is logged and swallowed."""
+    global _last_prune_monotonic
+    now = time.monotonic()
+    if now - _last_prune_monotonic < _PRUNE_INTERVAL_SECONDS:
+        return
+    _last_prune_monotonic = now  # claim the slot before the (fallible) delete
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_BUCKET_RETENTION_SECONDS)
+    try:
+        result = session.execute(
+            delete(RateLimitBucket).where(RateLimitBucket.window_start < cutoff)
+        )
+        session.commit()
+        if result.rowcount:
+            logger.info("pruned %s stale rate-limit bucket(s)", result.rowcount)
+    except Exception:  # noqa: BLE001 — pruning is best-effort housekeeping
+        logger.warning("rate-limit bucket prune failed", exc_info=True)
+        session.rollback()
 
 
 # --- subject key + client IP ------------------------------------------------------------
@@ -86,6 +119,10 @@ def check_rate_limit(session: Session, subject: str, limit_per_min: int) -> None
     )
     count = session.execute(stmt).scalar_one()
     session.commit()
+
+    # Piggyback the housekeeping sweep on a path that already runs on every request; it is
+    # self-throttled to once an hour and only removes long-expired windows.
+    _maybe_prune_buckets(session)
 
     if count > limit_per_min:
         retry_after = max(1, _RATE_WINDOW_SECONDS - now.second)

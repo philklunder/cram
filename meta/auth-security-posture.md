@@ -32,6 +32,12 @@
   prod. See [cost-controls.md](cost-controls.md) and ADR 0009.
 - **Secrets are server-side only and never committed.** `.env` is gitignored; only `.env.example`
   (blank placeholders) ships. The Claude key, Supabase service-role key, and DB creds live in `.env`.
+- **The web client carries its own HTTP-hardening layer (2026-07-06).** Browser-side defense-in-depth
+  that the backend can't provide: a CSP (`frame-ancestors 'none'`) + `X-Frame-Options`/`nosniff`/
+  `Referrer-Policy`/`Permissions-Policy`/HSTS on every route, and login-form anti-enumeration + a
+  sign-up password floor. These are documented in [web-dashboard.md](web-dashboard.md); the
+  authoritative password-strength/leaked-password check is a Supabase Auth project setting, not app
+  code.
 
 ## Reasoning
 - Safety that depends on remembering to *opt out* of an unsafe mode (e.g. setting `CRAM_ENV=prod`)
@@ -73,5 +79,7 @@
   the pre-deploy audit confirmed are load-bearing and unenforceable from within the app.
 
 ## Last updated
-2026-06-19 (extreme security review: HS256 made dev-only + JWKS required at boot; JWT claim-presence
-enforced; `/healthz` minimised. Prior content from the 2026-06-18 pre-deploy audit.)
+2026-07-06 (full-app security pass: added the web HTTP-hardening layer — see web-dashboard.md — and a
+`rate_limit_buckets` lazy prune; no backend auth findings. Prior: 2026-06-19 extreme security review —
+HS256 made dev-only + JWKS required at boot; JWT claim-presence enforced; `/healthz` minimised;
+2026-06-18 pre-deploy audit.)

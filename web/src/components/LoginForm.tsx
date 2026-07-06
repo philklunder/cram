@@ -39,8 +39,15 @@ export function LoginForm() {
         router.refresh();
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data.session) {
+        // Don't leak whether an address is already registered: an "already registered"
+        // error is shown as the same neutral confirmation as a fresh sign-up, so the two
+        // cases are indistinguishable to an attacker probing for accounts.
+        if (error && /already|exist|registered/i.test(error.message)) {
+          setNotice("Check your email to confirm your account, then sign in.");
+          setMode("signin");
+        } else if (error) {
+          throw error;
+        } else if (data.session) {
           router.push("/dashboard");
           router.refresh();
         } else {
@@ -82,11 +89,14 @@ export function LoginForm() {
     setError(null);
     setNotice(null);
     const supabase = createClient();
+    // Fire-and-forget: always show the same neutral notice regardless of whether the address
+    // has an account, so the reset flow can't be used to enumerate registered emails. Any
+    // real error is logged for debugging but never distinguishes "no such user" to the client.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/login`,
     });
-    if (error) setError(error.message);
-    else setNotice("Check your email for a link to reset your password.");
+    if (error) console.warn("password reset:", error.message);
+    setNotice("If that email has an account, we've sent a link to reset your password.");
   }
 
   return (
@@ -163,7 +173,11 @@ export function LoginForm() {
                   type={showPassword ? "text" : "password"}
                   autoComplete={mode === "signin" ? "current-password" : "new-password"}
                   required
-                  minLength={6}
+                  // Only enforce the stronger minimum on sign-up — an existing account may
+                  // have a shorter legacy password and must still be able to sign in.
+                  // Server-side strength (min length + leaked-password check) is configured
+                  // in the Supabase project's Auth settings.
+                  minLength={mode === "signup" ? 8 : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
