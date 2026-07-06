@@ -30,6 +30,13 @@
   passes top-level `cache_control={"type":"ephemeral"}` (automatic caching — breakpoint on the last
   cacheable block); `grading.py` deliberately omits it. `TokenUsage.from_usage` folds
   `cache_creation`/`cache_read` into the billed input total so the spend cap reflects real spend.
+- **`rate_limit_buckets` is pruned lazily in-process, not by an external cron (2026-07-06).**
+  ADR 0009 documented the sweep (`DELETE … WHERE window_start < now()-'1h'`) but never scheduled it,
+  so the table grew one row per (subject, minute) forever. `_maybe_prune_buckets` in `limits.py`
+  runs the delete opportunistically from `check_rate_limit` (a path hit on every request),
+  self-throttled to once per hour per process via an in-process monotonic timestamp, and is
+  best-effort (any failure is logged + swallowed, never breaks the triggering request). Retention =
+  1h of counters.
 
 ## Reasoning
 - An in-memory limiter resets on restart and is per-worker, giving false confidence right when the
@@ -80,8 +87,11 @@
 
 ## Open questions
 - A monthly ceiling and/or USD cost view layered on the same ledger, if billing visibility needs it.
-- Pruning `rate_limit_buckets` / aging out `ai_usage_events` (a scheduled `DELETE` or Supabase cron) —
-  currently unbounded growth, fine at current volume.
+- ~~Pruning `rate_limit_buckets`~~ **done 2026-07-06** — lazy in-process sweep (see Decisions).
+  Aging out `ai_usage_events` is still unbounded (append-only ledger); fine at current volume, but a
+  scheduled `DELETE`/Supabase cron would be the move if it ever grows. The bucket prune's in-process
+  throttle is per-worker, so multiple workers would each sweep hourly — harmless (idempotent delete),
+  but revisit if the deploy ever scales past one uvicorn worker.
 - The spend cap's check-then-act window allows a bounded overshoot (in-flight requests); closing it
   fully (reserve-then-reconcile) isn't worth it for a single-tenant deploy. At a very small budget the
   overshoot can equal a month's spend, so the real backstop is an **out-of-app Anthropic Console hard

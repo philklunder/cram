@@ -179,6 +179,24 @@ to `main` once both halves are done.
   change on Settings updates a mounted Grades/Progress view live and across tabs; the server + first-
   paint snapshot returns the default, so there's no hydration mismatch. The `/preview` harness gained
   a dev-only `?scale=` override to screenshot the conversion.
+- **HTTP security headers via `next.config.mjs` `headers()` (2026-07-06 security pass).** Every route
+  ships a `Content-Security-Policy` + `X-Frame-Options: DENY` + `X-Content-Type-Options: nosniff` +
+  `Referrer-Policy: strict-origin-when-cross-origin` + `Permissions-Policy` (camera/mic/geo off) +
+  `Strict-Transport-Security` (2yr, preload). `frame-ancestors 'none'` is the load-bearing clickjacking
+  defense. The CSP's `connect-src` is **derived at build time from the same `NEXT_PUBLIC_SUPABASE_URL`
+  / `NEXT_PUBLIC_CRAM_BACKEND_URL`** the client uses (plus a `wss://` variant for Supabase realtime), so
+  it tracks the real deployment instead of a hard-coded list. `script-src`/`style-src` keep
+  **`'unsafe-inline'`** — the App Router bootstraps hydration with inline scripts (+ the no-flash theme
+  script in `layout.tsx`) and the UI uses inline `style={{…}}` extensively; a nonce-strict CSP is a
+  larger change deferred as an open question.
+- **Login form hardened against account enumeration + weak passwords (2026-07-06).** `LoginForm.tsx`:
+  sign-up now shows the **same neutral "check your email" notice** whether or not the address is already
+  registered (the `signUp` "already registered" error is caught and mapped to the confirmation, not
+  surfaced); **password reset always** shows "if that email has an account…" regardless of outcome (any
+  real error is `console.warn`'d, never shown) — so neither flow reveals whether an email is registered.
+  Password `minLength` is raised to **8 on sign-up only** (sign-in stays unconstrained so a legacy
+  short password can still log in); the authoritative strength + leaked-password check is a **Supabase
+  Auth project setting** (dashboard-side, enabled by the owner 2026-07-06), not client-enforceable.
 
 ## Reasoning
 
@@ -378,5 +396,14 @@ to `main` once both halves are done.
   typecheck + 34 tests green; Grades/Progress/Settings verified in the `?scale=swiss` preview harness).
   It's **web-only + device-local**: if grade display should be consistent with iOS, it needs a
   *synced* user setting (a new owned resource, or Supabase user metadata) instead of localStorage.
+- **Security hardening pass built 2026-07-06** (full audit of backend + web). Fixed: web HTTP security
+  headers + CSP, login anti-enumeration + sign-up password floor (see Decisions), and a backend
+  `rate_limit_buckets` lazy prune ([cost-controls.md](cost-controls.md)). Dashboard-side config
+  (Supabase leaked-password protection, `CRAM_CORS_ORIGINS`, service-role-key placement) verified by
+  the owner. Follow-up: the CSP keeps `'unsafe-inline'` for script/style — tightening to a
+  nonce-strict policy needs middleware nonce injection + threading the nonce through the App Router's
+  inline scripts, deferred as a larger change. **Verify live after deploy:** load the site and watch
+  the console for CSP `connect-src` violations (Supabase/backend origins come from the build-time
+  `NEXT_PUBLIC_*` env, so they must be set in the Vercel build, not just locally).
 
 2026-07-06
