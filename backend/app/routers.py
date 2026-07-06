@@ -31,6 +31,7 @@ from .models import (
     Quiz,
     ReviewLog,
     Source,
+    StudySession,
     Subject,
 )
 from .repository import ConflictError, OwnedRepository, OwnershipError
@@ -158,7 +159,7 @@ def build_router(spec: ResourceSpec) -> APIRouter:
     return router
 
 
-# The eight resources. Order is irrelevant; each is independent.
+# The nine resources. Order is irrelevant; each is independent.
 SPECS: list[ResourceSpec] = [
     ResourceSpec("subjects", Subject, s.SubjectRead, s.SubjectCreate, s.SubjectUpdate),
     ResourceSpec("sources", Source, s.SourceRead, s.SourceCreate, s.SourceUpdate),
@@ -170,6 +171,9 @@ SPECS: list[ResourceSpec] = [
     ),
     ResourceSpec("attempts", Attempt, s.AttemptRead, s.AttemptCreate, None),
     ResourceSpec("review-logs", ReviewLog, s.ReviewLogRead, s.ReviewLogCreate, None),
+    ResourceSpec(
+        "study-sessions", StudySession, s.StudySessionRead, s.StudySessionCreate, None
+    ),
 ]
 
 

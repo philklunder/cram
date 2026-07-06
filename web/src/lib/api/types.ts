@@ -152,6 +152,30 @@ export interface ReviewLogCreate {
   reviewed_at?: string;
 }
 
+export type StudyKind = "review" | "quiz" | "other";
+
+// Append-only study-session row (StudySessionRead) — one recorded block of study time, used for
+// the dashboard's weekly-activity chart. Same append-only shape as ReviewLog. `started_at` buckets
+// the block by day; `duration_seconds` is the elapsed study time. Mirrors the backend
+// study_sessions resource (migration 0004) so the iOS client can adopt the identical contract.
+export interface StudySession {
+  id: string;
+  created_at: string;
+  subject_id: string | null; // null = not attributed to a single subject
+  started_at: string; // ISO-8601 — when the block began
+  duration_seconds: number;
+  kind: StudyKind;
+}
+
+// POST /v1/study-sessions body (StudySessionCreate). `id`/`started_at` are server-defaulted when
+// omitted; `kind` defaults to "other".
+export interface StudySessionCreate {
+  subject_id?: string | null;
+  started_at?: string;
+  duration_seconds: number;
+  kind?: StudyKind;
+}
+
 // PATCH /v1/cards/{id} body — the SM-2 write-back after a review (a subset of CardUpdate).
 export interface CardSM2Update {
   ease_factor: number;

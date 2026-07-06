@@ -43,6 +43,15 @@ class GradingScale(str, enum.Enum):
     gpa = "gpa"
 
 
+class StudyKind(str, enum.Enum):
+    """What a recorded study block was — feeds the dashboard's weekly-activity chart.
+    ``other`` is the default catch-all so the CHECK admits blocks not tied to a review/quiz."""
+
+    review = "review"
+    quiz = "quiz"
+    other = "other"
+
+
 def checked_text_enum(py_enum: type[enum.Enum], name: str) -> SAEnum:
     """A VARCHAR + CHECK column type persisting each member's ``.value`` string.
 

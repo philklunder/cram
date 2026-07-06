@@ -24,6 +24,8 @@ import type {
   ReviewLog,
   ReviewLogCreate,
   Source,
+  StudySession,
+  StudySessionCreate,
   Subject,
   SubjectUpdate,
 } from "./types";
@@ -79,7 +81,10 @@ async function request<T>(
 // single-user study app's scale.
 const PAGE_LIMIT = 1000;
 
-async function listAll<T extends { deleted_at: string | null }>(resource: string): Promise<T[]> {
+// Page through every row the caller owns for a delta-pull resource. Works for both syncable rows
+// and append-only ones (attempts, review-logs, study-sessions) — tombstone filtering is a separate
+// concern applied by `alive` only where the resource has a `deleted_at`.
+async function pageAll<T>(resource: string): Promise<T[]> {
   const out: T[] = [];
   let cursor: string | null = null;
   // Hard ceiling on iterations as a safety net against a misbehaving cursor.
@@ -94,6 +99,10 @@ async function listAll<T extends { deleted_at: string | null }>(resource: string
   return out;
 }
 
+async function listAll<T extends { deleted_at: string | null }>(resource: string): Promise<T[]> {
+  return pageAll<T>(resource);
+}
+
 // Drop tombstoned rows — a delta pull includes soft-deleted rows so clients can converge.
 function alive<T extends { deleted_at: string | null }>(rows: T[]): T[] {
   return rows.filter((r) => !r.deleted_at);
@@ -105,6 +114,27 @@ export async function listSubjects(): Promise<Subject[]> {
 
 export async function getSubject(id: string): Promise<Subject> {
   return request<Subject>(`/v1/subjects/${id}`);
+}
+
+// All of the caller's sources (GET /v1/sources) — the uploaded materials, used as "decks" on the
+// Flashcards page.
+export async function listSources(): Promise<Source[]> {
+  return alive(await listAll<Source>("sources"));
+}
+
+// Create a subject (POST /v1/subjects). Used by the Grades page's "New subject" form; the id is
+// server-generated when omitted.
+export async function createSubject(body: {
+  name: string;
+  grading_scale: Subject["grading_scale"];
+  exam_date?: string | null;
+  target_grade?: number | null;
+}): Promise<Subject> {
+  return request<Subject>("/v1/subjects", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 // Patch a subject (PATCH /v1/subjects/{id}). Used by the Grades tab to set the target grade and
@@ -238,4 +268,92 @@ export async function createGradeEntry(body: GradeEntryCreate): Promise<GradeEnt
 // converges to the iOS client on its next pull rather than reappearing.
 export async function deleteGradeEntry(id: string): Promise<void> {
   await request<void>(`/v1/grade-entries/${id}`, { method: "DELETE" });
+}
+
+// All of the caller's grade entries (GET /v1/grade-entries). Feeds the cross-subject Grades page.
+export async function listGradeEntries(): Promise<GradeEntry[]> {
+  return alive(await listAll<GradeEntry>("grade-entries"));
+}
+
+// --- Analytics reads (append-only rows) --------------------------------------------------
+
+// All of the caller's quiz attempts (GET /v1/attempts). Feeds the dashboard's quiz-average stat.
+export async function listAttempts(): Promise<Attempt[]> {
+  return pageAll<Attempt>("attempts");
+}
+
+// All of the caller's review logs (GET /v1/review-logs). Feeds the study streak.
+export async function listReviewLogs(): Promise<ReviewLog[]> {
+  return pageAll<ReviewLog>("review-logs");
+}
+
+// --- Study sessions (duration tracking) --------------------------------------------------
+
+// All of the caller's study sessions (GET /v1/study-sessions). Feeds the weekly-activity chart.
+export async function listStudySessions(): Promise<StudySession[]> {
+  return pageAll<StudySession>("study-sessions");
+}
+
+// Record a completed study block (POST /v1/study-sessions). Called by the review/quiz runners when
+// a session ends, so the weekly-activity chart reflects real elapsed study time.
+export async function createStudySession(body: StudySessionCreate): Promise<StudySession> {
+  return request<StudySession>("/v1/study-sessions", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// --- Library (subjects + their decks/quizzes) --------------------------------------------
+
+export interface LibraryData {
+  subjects: Subject[];
+  cards: Card[];
+  quizzes: Quiz[];
+  questions: Question[];
+}
+
+// The subjects/cards/quizzes/questions the Review, Quizzes, Flashcards and Progress pages browse.
+// Fetched in parallel; aggregation is client-side, matching the rest of the app.
+export async function loadLibrary(): Promise<LibraryData> {
+  const [subjects, cards, quizzes, questions] = await Promise.all([
+    listSubjects(),
+    listAll<Card>("cards").then(alive),
+    listAll<Quiz>("quizzes").then(alive),
+    listAll<Question>("questions").then(alive),
+  ]);
+  return { subjects, cards, quizzes, questions };
+}
+
+// --- Dashboard ---------------------------------------------------------------------------
+
+export interface DashboardData {
+  subjects: Subject[];
+  cards: Card[];
+  quizzes: Quiz[];
+  questions: Question[];
+  attempts: Attempt[];
+  reviewLogs: ReviewLog[];
+  gradeEntries: GradeEntry[];
+  studySessions: StudySession[];
+}
+
+// Everything the dashboard needs, fetched in parallel. Aggregation is done client-side (same
+// pattern as the SRS scheduler and progress heuristics) — see lib/dashboard.ts. Quizzes +
+// questions are needed only to attribute each attempt to a subject for the per-subject quiz average.
+// `study-sessions` is tolerated as empty until its backend resource ships (migration 0004), so the
+// dashboard renders fully before duration tracking is live.
+export async function loadDashboard(): Promise<DashboardData> {
+  const [subjects, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions] =
+    await Promise.all([
+      listSubjects(),
+      listAll<Card>("cards").then(alive),
+      listAll<Quiz>("quizzes").then(alive),
+      listAll<Question>("questions").then(alive),
+      listAttempts(),
+      listReviewLogs(),
+      listAll<GradeEntry>("grade-entries").then(alive),
+      listStudySessions().catch(() => [] as StudySession[]),
+    ]);
+  return { subjects, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions };
 }

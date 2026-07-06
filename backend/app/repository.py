@@ -39,6 +39,7 @@ from .models import (
     Quiz,
     ReviewLog,
     Source,
+    StudySession,
     Subject,
 )
 from .sync import Cursor
@@ -47,7 +48,7 @@ from .sync import Cursor
 # is the allow-list — _owned() refuses anything not registered here, so a stray non-owned
 # model can never be queried unscoped through this repository.
 OWNED_MODELS: frozenset[type] = frozenset(
-    {Subject, Source, Card, Quiz, Question, Attempt, GradeEntry, ReviewLog}
+    {Subject, Source, Card, Quiz, Question, Attempt, GradeEntry, ReviewLog, StudySession}
 )
 
 # FK → owning-parent relationships: {model: {fk_attr: (parent_model, required)}}. Used to
@@ -61,6 +62,8 @@ PARENTS: dict[type, dict[str, tuple[type, bool]]] = {
     Attempt: {"question_id": (Question, True)},
     GradeEntry: {"subject_id": (Subject, True)},
     ReviewLog: {"card_id": (Card, True)},
+    # subject_id is optional (a session can span subjects); when present it must be owned.
+    StudySession: {"subject_id": (Subject, False)},
 }
 
 # Soft-delete cascade: {model: [(child_model, child_fk_attr), …]} over *sync* tables only.

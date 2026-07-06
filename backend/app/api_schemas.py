@@ -23,7 +23,7 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models.enums import GradeKind, GradingScale, QuestionKind, SourceKind
+from .models.enums import GradeKind, GradingScale, QuestionKind, SourceKind, StudyKind
 
 # --- envelopes -------------------------------------------------------------------------
 
@@ -285,3 +285,23 @@ class ReviewLogCreate(BaseModel):
     reviewed_at: datetime | None = None
     # SM-2 quality: 1 (again) / 3 (hard) / 4 (good) / 5 (easy).
     rating: int = Field(ge=1, le=5)
+
+
+# --- study_sessions (append-only) ------------------------------------------------------
+
+
+class StudySessionRead(_AppendRead):
+    subject_id: uuid.UUID | None = None
+    started_at: datetime
+    duration_seconds: int
+    kind: StudyKind
+
+
+class StudySessionCreate(BaseModel):
+    id: uuid.UUID | None = None
+    subject_id: uuid.UUID | None = None
+    started_at: datetime | None = None
+    # Elapsed study time. Non-negative; a capped upper bound keeps a runaway client timer from
+    # poisoning the weekly-activity aggregate (24h = 86400s).
+    duration_seconds: int = Field(ge=0, le=86_400)
+    kind: StudyKind = StudyKind.other
