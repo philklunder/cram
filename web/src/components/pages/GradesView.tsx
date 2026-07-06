@@ -27,6 +27,7 @@ import { formatDate, subjectInitials } from "@/lib/format";
 import {
   currentGrade,
   formatGrade,
+  formatPercentInScale,
   gradeKindLabel,
   gradeKinds,
   gradePercent,
@@ -35,6 +36,7 @@ import {
   scaleRange,
 } from "@/lib/grades";
 import { useAsync } from "@/lib/useAsync";
+import { useDisplayScale } from "@/lib/useDisplayScale";
 import { subjectVars } from "@/lib/subjectColor";
 
 type Status = "on-track" | "slightly-below" | "below" | "none";
@@ -89,6 +91,7 @@ export function GradesView({
   entries: GradeEntry[];
   onChanged?: () => void;
 }) {
+  const displayScale = useDisplayScale();
   const rows = useMemo(() => buildRows(subjects, entries), [subjects, entries]);
   const graded = rows.filter((r) => r.currentPct != null);
   const overallPct =
@@ -114,8 +117,8 @@ export function GradesView({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <StatCard icon={TrendingUp} label="Overall average" value={overallPct == null ? "—" : `${overallPct}%`} sub="Normalized across scales" />
-            <StatCard icon={BarChart3} label="Average by subject" value={avgBySubject == null ? "—" : `${avgBySubject}%`} sub={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
+            <StatCard icon={TrendingUp} label="Overall average" value={overallPct == null ? "—" : formatPercentInScale(displayScale, overallPct)} sub={displayScale === "percentage" ? "Normalized across scales" : `${gradingScaleLabel[displayScale].split(" ")[0]} scale`} />
+            <StatCard icon={BarChart3} label="Average by subject" value={avgBySubject == null ? "—" : formatPercentInScale(displayScale, avgBySubject)} sub={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
             <StatCard icon={LayoutGrid} label="Total subjects" value={String(subjects.length)} sub="Active subjects" />
             <StatCard icon={CheckCircle2} label="Passing subjects" value={String(passing)} sub={graded.length ? `${Math.round((passing / graded.length) * 100)}% passing` : "—"} tone="green" />
           </div>
@@ -147,7 +150,7 @@ export function GradesView({
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <SubjectRow key={r.subject.id} row={r} />
+                      <SubjectRow key={r.subject.id} row={r} displayScale={displayScale} />
                     ))}
                   </tbody>
                 </table>
@@ -210,7 +213,7 @@ const STATUS: Record<Status, { label: string; className: string }> = {
   none: { label: "No target", className: "text-muted" },
 };
 
-function SubjectRow({ row }: { row: Row }) {
+function SubjectRow({ row, displayScale }: { row: Row; displayScale: GradingScale }) {
   const { subject, current, currentPct, latest, count, status, trend } = row;
   const scale = subject.grading_scale;
   return (
@@ -227,17 +230,17 @@ function SubjectRow({ row }: { row: Row }) {
         </Link>
       </td>
       <td className="px-3 py-3">
-        {current == null ? (
+        {current == null || currentPct == null ? (
           <span className="text-muted">—</span>
         ) : (
           <div>
-            <span className="font-semibold tabular-nums text-ink">{currentPct}%</span>
+            <span className="font-semibold tabular-nums text-ink">{formatPercentInScale(displayScale, currentPct)}</span>
             <span className={cn("block text-xs", STATUS[status].className)}>{STATUS[status].label}</span>
           </div>
         )}
       </td>
       <td className="px-3 py-3 font-medium tabular-nums text-ink-2">
-        {subject.target_grade == null ? "—" : `${row.targetPct}%`}
+        {subject.target_grade == null || row.targetPct == null ? "—" : formatPercentInScale(displayScale, row.targetPct)}
       </td>
       <td className="px-3 py-3">
         {latest ? (

@@ -88,3 +88,51 @@ export function formatGrade(scale: GradingScale, value: number): string {
 export function isPassing(scale: GradingScale, score: number): boolean {
   return lowerIsBetter(scale) ? score <= PASS_MARK[scale] : score >= PASS_MARK[scale];
 }
+
+// --- Display-scale conversion ------------------------------------------------------------
+// The app normalizes every subject's grade to a 0–100 "performance" percent (see gradePercent)
+// so grades on different per-subject scales can be averaged. The Settings "Grading scale" picker
+// then chooses how those aggregate numbers are *shown*: "percentage" keeps the raw %, any other
+// scale converts the % back to a grade on that scale. This is the inverse of gradeStrengthForScore.
+
+// Turn a 0–100 performance percent back into a score on `scale` (100 = best performance).
+export function gradeFromPercent(scale: GradingScale, pct: number): number {
+  const [lo, hi] = scaleRange(scale);
+  const t = Math.min(1, Math.max(0, pct / 100)); // performance fraction, 1 = best
+  return lowerIsBetter(scale) ? hi - t * (hi - lo) : lo + t * (hi - lo);
+}
+
+// Format a 0–100 performance percent for display under the chosen display scale. For "percentage"
+// this is just "NN%"; every other scale converts to a grade and formats it (e.g. 88 → "5.4" Swiss).
+export function formatPercentInScale(scale: GradingScale, pct: number): string {
+  return scale === "percentage" ? `${Math.round(pct)}%` : formatGrade(scale, gradeFromPercent(scale, pct));
+}
+
+// Format a *change* in performance percent (e.g. a 7-day trend delta) under the display scale, with
+// a leading sign. Percentage stays in points ("+5%"); other scales express the change in grade
+// points, sign-flipped for lower-is-better scales so "better" always reads as positive.
+export function formatPercentDeltaInScale(scale: GradingScale, pctDelta: number): string {
+  if (scale === "percentage") {
+    const r = Math.round(pctDelta);
+    return `${r >= 0 ? "+" : "−"}${Math.abs(r)}%`;
+  }
+  const [lo, hi] = scaleRange(scale);
+  const gradeDelta = (pctDelta / 100) * (hi - lo) * (lowerIsBetter(scale) ? -1 : 1);
+  const abs = Math.abs(gradeDelta);
+  const digits = scale === "letter" ? 2 : 1;
+  return `${gradeDelta >= 0 ? "+" : "−"}${abs.toFixed(digits)}`;
+}
+
+// Whether "better" means a higher displayed number on this scale — used to colour trend deltas.
+export function higherIsBetter(scale: GradingScale): boolean {
+  return !lowerIsBetter(scale);
+}
+
+// Labels for the Settings display-scale picker. "percentage" is the app default (raw %).
+export const displayScaleLabel: Record<GradingScale, string> = {
+  percentage: "Percentage (%)",
+  swiss: "Swiss (6.0–1.0)",
+  german: "German (1.0–6.0)",
+  letter: "Letter (A–F)",
+  gpa: "GPA (0–4)",
+};

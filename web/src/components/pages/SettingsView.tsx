@@ -6,14 +6,20 @@ import { LogOut } from "lucide-react";
 
 import { PageHeader } from "@/components/pages/shared";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Button, Panel } from "@/components/ui";
+import { Button, Panel, inputClass } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import type { GradingScale } from "@/lib/api/types";
+import { displayScaleLabel } from "@/lib/grades";
+import { setDisplayScale, useDisplayScale } from "@/lib/useDisplayScale";
 
 // Account + preferences. Email comes from the server layout (the session), so this stays a thin
 // presentational component. Sign-out mirrors the top-bar user menu.
+const DISPLAY_SCALES: GradingScale[] = ["percentage", "swiss", "german", "letter", "gpa"];
+
 export function SettingsView({ email }: { email: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const displayScale = useDisplayScale();
 
   async function signOut() {
     setBusy(true);
@@ -45,6 +51,25 @@ export function SettingsView({ email }: { email: string | null }) {
         <SettingRow title="Appearance" description="Switch between light and dark. Your choice is remembered on this device.">
           <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-2 py-1.5">
             <ThemeToggle label />
+          </div>
+        </SettingRow>
+
+        <SettingRow
+          title="Grading scale"
+          description="How averages are shown across Grades and Progress. Pick Swiss to see your overall average as a 6.0–1.0 grade instead of a percentage. Exam weights and pass rates stay in %."
+        >
+          <div>
+            <label htmlFor="display-scale" className="sr-only">Grading scale</label>
+            <select
+              id="display-scale"
+              value={displayScale}
+              onChange={(e) => setDisplayScale(e.target.value as GradingScale)}
+              className={inputClass}
+            >
+              {DISPLAY_SCALES.map((s) => (
+                <option key={s} value={s}>{displayScaleLabel[s]}</option>
+              ))}
+            </select>
           </div>
         </SettingRow>
 

@@ -17,7 +17,7 @@ import {
 import { PageHeader } from "@/components/pages/shared";
 import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
-import type { GradeEntry, StudySession, Subject } from "@/lib/api/types";
+import type { GradeEntry, GradingScale, StudySession, Subject } from "@/lib/api/types";
 import {
   activityHeatmap,
   computeStreak,
@@ -26,10 +26,17 @@ import {
   nearestExam,
 } from "@/lib/dashboard";
 import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
-import { currentGrade, gradePercent } from "@/lib/grades";
+import {
+  currentGrade,
+  formatPercentDeltaInScale,
+  formatPercentInScale,
+  gradePercent,
+  higherIsBetter,
+} from "@/lib/grades";
 import { computeProgress } from "@/lib/progress";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
+import { useDisplayScale } from "@/lib/useDisplayScale";
 
 interface ProgressData {
   subjects: Subject[];
@@ -58,6 +65,7 @@ function trendPoints(entries: GradeEntry[], scaleOf: Map<string, Subject["gradin
 
 export function ProgressOverviewView({ data, now = Date.now() }: { data: ProgressData; now?: number }) {
   const { subjects, cards, gradeEntries, reviewLogs, studySessions } = data;
+  const displayScale = useDisplayScale();
   const scaleOf = useMemo(() => new Map(subjects.map((s) => [s.id, s.grading_scale] as const)), [subjects]);
 
   const streak = computeStreak(reviewLogs, now);
@@ -87,7 +95,7 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
         <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Stat row */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-            <Stat icon={TrendingUp} tone="brand" label="Current average" value={currentAvg == null ? "—" : `${currentAvg}%`} sub={delta != null ? <Delta v={delta} /> : "No trend yet"} />
+            <Stat icon={TrendingUp} tone="brand" label="Current average" value={currentAvg == null ? "—" : formatPercentInScale(displayScale, currentAvg)} sub={delta != null ? <Delta v={delta} scale={displayScale} /> : "No trend yet"} />
             <Stat icon={Target} tone="red" label="Target grade" value={targetSubject?.target_grade != null ? String(targetSubject.target_grade) : "—"} sub={targetSubject ? `${targetSubject.grading_scale} scale` : "Set a target"} />
             <Stat icon={Award} tone="brand" label="Readiness" value={`${readiness}%`} sub={readinessLabel(readiness)} />
             <Stat icon={Flame} tone="amber" label="Study streak" value={String(streak.current)} sub={streak.current === 1 ? "day in a row" : "days in a row"} />
@@ -97,14 +105,14 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
           {/* Grade trend + topic mastery */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="min-w-0 lg:col-span-3">
-              <GradeTrend points={allPoints} targetPct={targetPct} now={now} />
+              <GradeTrend points={allPoints} targetPct={targetPct} now={now} displayScale={displayScale} />
             </div>
             <div className="min-w-0 lg:col-span-2">
               <TopicMastery buckets={buckets} />
             </div>
           </div>
 
-          <SubjectsPerformance subjects={subjects} data={data} now={now} />
+          <SubjectsPerformance subjects={subjects} data={data} now={now} displayScale={displayScale} />
 
           <Achievements streak={streak.current} mastered={buckets.mastered} />
         </div>
@@ -120,11 +128,14 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
   );
 }
 
-function Delta({ v }: { v: number }) {
-  const up = v >= 0;
+// `v` is a change in normalized performance percent; a positive `v` always means "did better".
+// The arrow/colour follow that, while the number itself is shown in the chosen display scale
+// (percentage points, or grade points — where "better" may be a lower number, e.g. German).
+function Delta({ v, scale }: { v: number; scale: GradingScale }) {
+  const better = v >= 0;
   return (
-    <span className={cn("inline-flex items-center gap-0.5 font-medium", up ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-      {up ? "↑" : "↓"} {Math.abs(v)}% vs last 7 days
+    <span className={cn("inline-flex items-center gap-0.5 font-medium", better ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+      {better ? "↑" : "↓"} {formatPercentDeltaInScale(scale, v).replace(/^[+−]/, "")} vs last 7 days
     </span>
   );
 }
@@ -161,7 +172,7 @@ const RANGES: { label: string; days: number }[] = [
   { label: "All", days: Infinity },
 ];
 
-function GradeTrend({ points, targetPct, now }: { points: { t: number; pct: number }[]; targetPct: number | null; now: number }) {
+function GradeTrend({ points, targetPct, now, displayScale }: { points: { t: number; pct: number }[]; targetPct: number | null; now: number; displayScale: GradingScale }) {
   const [range, setRange] = useState(2); // default 3M
   const days = RANGES[range].days;
   const shown = days === Infinity ? points : points.filter((p) => p.t >= now - days * 86_400_000);
@@ -218,7 +229,7 @@ function GradeTrend({ points, targetPct, now }: { points: { t: number; pct: numb
           {[0, 50, 100].map((g) => (
             <g key={g}>
               <line x1={pad.l} x2={W - pad.r} y1={y(g)} y2={y(g)} stroke="rgb(148 163 184 / 0.18)" strokeWidth="1" />
-              <text x={pad.l - 6} y={y(g) + 3} textAnchor="end" className="fill-[rgb(148_163_184)] text-[9px]">{g}</text>
+              <text x={pad.l - 6} y={y(g) + 3} textAnchor="end" className="fill-[rgb(148_163_184)] text-[9px]">{formatPercentInScale(displayScale, g)}</text>
             </g>
           ))}
           {targetPct != null ? (
@@ -296,7 +307,7 @@ function Donut({ segments, centerValue, centerSub, size = 128, stroke = 15 }: { 
 
 // --- Subjects performance ----------------------------------------------------------------
 
-function SubjectsPerformance({ subjects, data, now }: { subjects: Subject[]; data: ProgressData; now: number }) {
+function SubjectsPerformance({ subjects, data, now, displayScale }: { subjects: Subject[]; data: ProgressData; now: number; displayScale: GradingScale }) {
   const withCards = subjects.filter((s) => data.cards.some((c) => c.subject_id === s.id)).slice(0, 4);
   if (withCards.length === 0) return null;
   return (
@@ -304,18 +315,23 @@ function SubjectsPerformance({ subjects, data, now }: { subjects: Subject[]; dat
       <h2 className="mb-4 text-lg font-semibold tracking-tight text-ink">Subjects performance</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {withCards.map((s) => (
-          <SubjectPerfCard key={s.id} subject={s} data={data} now={now} />
+          <SubjectPerfCard key={s.id} subject={s} data={data} now={now} displayScale={displayScale} />
         ))}
       </div>
     </div>
   );
 }
 
-function SubjectPerfCard({ subject, data, now }: { subject: Subject; data: ProgressData; now: number }) {
+function SubjectPerfCard({ subject, data, now, displayScale }: { subject: Subject; data: ProgressData; now: number; displayScale: GradingScale }) {
   const cards = data.cards.filter((c) => c.subject_id === subject.id);
   const entries = data.gradeEntries.filter((e) => e.subject_id === subject.id).sort((a, b) => a.date.localeCompare(b.date));
   const cur = currentGrade(subject.current_grade, entries);
-  const avgPct = cur != null ? gradePercent(subject.grading_scale, cur) : masteryBuckets(cards).masteredPct;
+  // "Average" shows the subject's grade in the chosen display scale; with no grade yet we fall back
+  // to card-mastery %, which is a progress figure (not a grade) so it always stays a percentage.
+  const avgDisplay =
+    cur != null
+      ? formatPercentInScale(displayScale, gradePercent(subject.grading_scale, cur))
+      : `${masteryBuckets(cards).masteredPct}%`;
   const readiness = readinessScore(cards);
   const b = masteryBuckets(cards);
   const topics = new Map<string, typeof cards>();
@@ -347,7 +363,7 @@ function SubjectPerfCard({ subject, data, now }: { subject: Subject; data: Progr
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-3">
-        <Metric label="Average" value={`${avgPct}%`} />
+        <Metric label="Average" value={avgDisplay} />
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Trend</p>
           <div className="mt-1"><MiniSpark values={spark} /></div>
