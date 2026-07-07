@@ -14,6 +14,7 @@ from .mixins import OwnedMixin, SyncMixin, UUIDPkMixin
 
 if TYPE_CHECKING:
     from .card import Card
+    from .exam import Exam
     from .grade_entry import GradeEntry
     from .quiz import Quiz
     from .source import Source
@@ -40,6 +41,9 @@ class Subject(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
     # SOFT delete via SyncMixin.deleted_at, which clients pull as tombstones. Phase 3 delete
     # logic must set deleted_at on descendants explicitly — a hard cascade leaves offline
     # clients with ghost rows because no child tombstone is ever emitted.
+    exams: Mapped[list["Exam"]] = relationship(
+        back_populates="subject", cascade="all, delete-orphan", passive_deletes=True
+    )
     sources: Mapped[list["Source"]] = relationship(
         back_populates="subject", cascade="all, delete-orphan", passive_deletes=True
     )

@@ -23,6 +23,27 @@ export interface Subject extends SyncRow {
   current_grade: number | null;
 }
 
+// An assessment within a subject; groups the cards (and quiz) studied for it. exam_date is
+// optional and, when set, drives the countdown + SM-2 exam compression for that exam's cards.
+export interface Exam extends SyncRow {
+  subject_id: string;
+  title: string;
+  exam_date: string | null;
+}
+
+// POST /v1/exams body (ExamCreate). `id` is server-defaulted when omitted.
+export interface ExamCreate {
+  subject_id: string;
+  title: string;
+  exam_date?: string | null;
+}
+
+// PATCH /v1/exams/{id} body (ExamUpdate). Every field optional; only sent fields change.
+export interface ExamUpdate {
+  title?: string;
+  exam_date?: string | null;
+}
+
 export interface Source extends SyncRow {
   subject_id: string;
   kind: SourceKind;
@@ -33,6 +54,7 @@ export interface Source extends SyncRow {
 
 export interface Card extends SyncRow {
   subject_id: string;
+  exam_id: string | null;
   source_id: string | null;
   front: string;
   back: string;
@@ -47,6 +69,7 @@ export interface Card extends SyncRow {
 
 export interface Quiz extends SyncRow {
   subject_id: string;
+  exam_id: string | null;
   title: string;
 }
 
@@ -210,6 +233,7 @@ export interface GeneratedDeck {
   questions: GeneratedQuestion[];
   // Present once the server has persisted the deck under the caller.
   subject_id?: string;
+  exam_id?: string | null;
   source_id?: string;
   quiz_id?: string;
 }

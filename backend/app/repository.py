@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Attempt,
     Card,
+    Exam,
     GradeEntry,
     Question,
     Quiz,
@@ -48,16 +49,22 @@ from .sync import Cursor
 # is the allow-list — _owned() refuses anything not registered here, so a stray non-owned
 # model can never be queried unscoped through this repository.
 OWNED_MODELS: frozenset[type] = frozenset(
-    {Subject, Source, Card, Quiz, Question, Attempt, GradeEntry, ReviewLog, StudySession}
+    {Subject, Exam, Source, Card, Quiz, Question, Attempt, GradeEntry, ReviewLog, StudySession}
 )
 
 # FK → owning-parent relationships: {model: {fk_attr: (parent_model, required)}}. Used to
 # assert the caller owns every referenced parent before an insert (anti parent-stealing).
 PARENTS: dict[type, dict[str, tuple[type, bool]]] = {
     Subject: {},
+    Exam: {"subject_id": (Subject, True)},
     Source: {"subject_id": (Subject, True)},
-    Card: {"subject_id": (Subject, True), "source_id": (Source, False)},
-    Quiz: {"subject_id": (Subject, True)},
+    # exam_id is optional (an unassigned card is "General"); when present it must be owned.
+    Card: {
+        "subject_id": (Subject, True),
+        "exam_id": (Exam, False),
+        "source_id": (Source, False),
+    },
+    Quiz: {"subject_id": (Subject, True), "exam_id": (Exam, False)},
     Question: {"quiz_id": (Quiz, True)},
     Attempt: {"question_id": (Question, True)},
     GradeEntry: {"subject_id": (Subject, True)},
@@ -73,12 +80,16 @@ PARENTS: dict[type, dict[str, tuple[type, bool]]] = {
 # entry. Recursion handles the nested case (subject → quiz → question).
 CASCADE: dict[type, list[tuple[type, str]]] = {
     Subject: [
+        (Exam, "subject_id"),
         (Source, "subject_id"),
         (Card, "subject_id"),
         (Quiz, "subject_id"),
         (GradeEntry, "subject_id"),
     ],
     Quiz: [(Question, "quiz_id")],
+    # NOTE: Exam has NO cascade entry on purpose — deleting an exam must NOT tombstone its
+    # cards/quizzes. They keep their (now dangling) exam_id and fall back to the subject's
+    # "General" bucket on the client, mirroring how a card outlives its source.
 }
 
 

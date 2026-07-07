@@ -56,6 +56,7 @@ function card(id: string, subjectId: string, topic: string, shape: CardShape): C
     updated_at: iso(NOW),
     deleted_at: null,
     subject_id: subjectId,
+    exam_id: null,
     source_id: null,
     front: `Q ${id}`,
     back: "…",
@@ -97,6 +98,7 @@ const QUIZZES: Quiz[] = SUBJECTS.map((s) => ({
   updated_at: iso(NOW),
   deleted_at: null,
   subject_id: s.id,
+  exam_id: null,
   title: `${s.name} quiz`,
 }));
 

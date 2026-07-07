@@ -14,6 +14,9 @@ import type {
   Card,
   CardSM2Update,
   DeltaPage,
+  Exam,
+  ExamCreate,
+  ExamUpdate,
   GeneratedDeck,
   GradeEntry,
   GradeEntryCreate,
@@ -147,8 +150,45 @@ export async function updateSubject(id: string, patch: SubjectUpdate): Promise<S
   });
 }
 
+// Delete a subject (DELETE /v1/subjects/{id}). The backend tombstones the row; the subject then
+// stops appearing anywhere it's fetched by id or listed (tombstones are filtered by `alive`).
+export async function deleteSubject(id: string): Promise<void> {
+  await request<void>(`/v1/subjects/${id}`, { method: "DELETE" });
+}
+
+// --- exams (a subject's assessments) -----------------------------------------------------
+
+export async function listExams(): Promise<Exam[]> {
+  return alive(await listAll<Exam>("exams"));
+}
+
+// Create an exam under a subject (POST /v1/exams).
+export async function createExam(body: ExamCreate): Promise<Exam> {
+  return request<Exam>("/v1/exams", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Patch an exam (PATCH /v1/exams/{id}). Only the sent fields change.
+export async function updateExam(id: string, patch: ExamUpdate): Promise<Exam> {
+  return request<Exam>(`/v1/exams/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Delete an exam (DELETE /v1/exams/{id}). Tombstoned server-side; its cards/quizzes survive and
+// fall back to the subject's "General" bucket (their exam_id keeps pointing at the gone exam).
+export async function deleteExam(id: string): Promise<void> {
+  await request<void>(`/v1/exams/${id}`, { method: "DELETE" });
+}
+
 export interface SubjectBundle {
   subject: Subject;
+  exams: Exam[];
   sources: Source[];
   cards: Card[];
   quizzes: Quiz[];
@@ -161,8 +201,9 @@ export interface SubjectBundle {
 // Everything needed to render a subject detail page, fetched in parallel and filtered to the
 // subject. Questions are filtered via the subject's quiz ids.
 export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
-  const [subject, sources, cards, quizzes, questions, gradeEntries] = await Promise.all([
+  const [subject, exams, sources, cards, quizzes, questions, gradeEntries] = await Promise.all([
     getSubject(id),
+    listAll<Exam>("exams").then(alive),
     listAll<Source>("sources").then(alive),
     listAll<Card>("cards").then(alive),
     listAll<Quiz>("quizzes").then(alive),
@@ -175,6 +216,7 @@ export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
 
   return {
     subject,
+    exams: exams.filter((e) => e.subject_id === id),
     sources: sources.filter((s) => s.subject_id === id),
     cards: cards.filter((c) => c.subject_id === id),
     quizzes: subjectQuizzes,
@@ -187,6 +229,8 @@ export interface GenerateParams {
   subjectName: string;
   title: string;
   files: File[];
+  // When set, the generated cards + quiz are filed under this exam; otherwise "General".
+  examId?: string | null;
 }
 
 // Upload material and generate a deck (POST /v1/generate, multipart). The backend persists the
@@ -196,12 +240,14 @@ export async function generateDeck({
   subjectName,
   title,
   files,
+  examId,
 }: GenerateParams): Promise<GeneratedDeck> {
   const kind = files.some((f) => f.type === "application/pdf") ? "pdf" : "photo";
   const form = new FormData();
   form.append("subject_name", subjectName);
   form.append("title", title);
   form.append("kind", kind);
+  if (examId) form.append("exam_id", examId);
   for (const f of files) form.append("files", f);
   // Do NOT set Content-Type — the browser sets the multipart boundary.
   return request<GeneratedDeck>("/v1/generate", { method: "POST", body: form });

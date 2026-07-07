@@ -94,6 +94,28 @@ class SubjectUpdate(BaseModel):
     current_grade: float | None = None
 
 
+# --- exams -----------------------------------------------------------------------------
+
+
+class ExamRead(_SyncRead):
+    subject_id: uuid.UUID
+    title: str
+    exam_date: datetime | None = None
+
+
+class ExamCreate(BaseModel):
+    id: uuid.UUID | None = None
+    subject_id: uuid.UUID
+    title: str
+    exam_date: datetime | None = None
+
+
+class ExamUpdate(BaseModel):
+    subject_id: uuid.UUID | None = None
+    title: str | None = None
+    exam_date: datetime | None = None
+
+
 # --- sources ---------------------------------------------------------------------------
 
 
@@ -126,6 +148,7 @@ class SourceUpdate(BaseModel):
 
 class CardRead(_SyncRead):
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
     front: str
     back: str
@@ -141,6 +164,7 @@ class CardRead(_SyncRead):
 class CardCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
     front: str
     back: str
@@ -155,6 +179,7 @@ class CardCreate(BaseModel):
 
 class CardUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
+    exam_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
     front: str | None = None
     back: str | None = None
@@ -172,17 +197,20 @@ class CardUpdate(BaseModel):
 
 class QuizRead(_SyncRead):
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     title: str
 
 
 class QuizCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     title: str
 
 
 class QuizUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
+    exam_id: uuid.UUID | None = None
     title: str | None = None
 
 

@@ -26,6 +26,7 @@ from .limits import enforce_rate_limit
 from .models import (
     Attempt,
     Card,
+    Exam,
     GradeEntry,
     Question,
     Quiz,
@@ -159,9 +160,10 @@ def build_router(spec: ResourceSpec) -> APIRouter:
     return router
 
 
-# The nine resources. Order is irrelevant; each is independent.
+# The resources. Order is irrelevant; each is independent.
 SPECS: list[ResourceSpec] = [
     ResourceSpec("subjects", Subject, s.SubjectRead, s.SubjectCreate, s.SubjectUpdate),
+    ResourceSpec("exams", Exam, s.ExamRead, s.ExamCreate, s.ExamUpdate),
     ResourceSpec("sources", Source, s.SourceRead, s.SourceCreate, s.SourceUpdate),
     ResourceSpec("cards", Card, s.CardRead, s.CardCreate, s.CardUpdate),
     ResourceSpec("quizzes", Quiz, s.QuizRead, s.QuizCreate, s.QuizUpdate),
