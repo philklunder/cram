@@ -148,9 +148,11 @@ to `main` once both halves are done.
   (Dashboard, Review runner, Flashcards, Quiz session, AI Decks, Progress, Grades, Study-planner/
   Calendar); each surface was built/tuned to its reference in the electric-violet system and verified
   in **light + dark** via the dev-only `web/src/app/preview/` harness (headless-Edge screenshots;
-  the `?p=<slug>` page reads the slug in a `useEffect`, so shots need msedge `--virtual-time-budget`
-  to let the effect run before capture). The bolder-violet pass is now complete across the app, not
-  just login.
+  the `?p=<slug>` preview page reads the slug **server-side from `searchParams`** as of 2026-07-07 —
+  split into a `page.tsx` server wrapper + `PagesPreviewClient` — so a plain headless shot captures the
+  right surface on first paint; the old client `useEffect` slug-switch never fired before capture, so
+  every `?p=` shot silently rendered the default Review page). The bolder-violet pass is complete
+  across the app, not just login.
 - **`study_sessions` — a new append-only owned resource for the weekly-activity chart (2026-07-06).**
   Backend gained `study_sessions` (model + `alembic/0004_study_sessions` + full wiring: enums/models/
   repository `OWNED_MODELS`+`PARENTS`/routers `SPECS`/api_schemas), an immutable per-block record of
@@ -197,6 +199,22 @@ to `main` once both halves are done.
   Password `minLength` is raised to **8 on sign-up only** (sign-in stays unconstrained so a legacy
   short password can still log in); the authoritative strength + leaked-password check is a **Supabase
   Auth project setting** (dashboard-side, enabled by the owner 2026-07-06), not client-enforceable.
+- **The HTTPS-forcing directives are gated on `NODE_ENV` so local dev works over plain http (2026-07-07).**
+  `next.config.mjs` now drops three things under `next dev` and keeps them under `next build`/`next start`:
+  the **HSTS** header, the CSP **`upgrade-insecure-requests`**, and (inversely) it *adds* a dev-only
+  **`'unsafe-eval'`** to `script-src`. In production (Vercel, HTTPS) the emitted header set is
+  byte-identical to the pre-2026-07-07 config — no hardening lost. `NODE_ENV` is `"development"` under
+  `next dev` and `"production"` under `next build`/`next start`, so a single `const isProd` toggles all
+  three.
+- **Polish pass across the app (2026-07-07).** A broad impeccable/product-register refinement,
+  **presentational only — no data-flow or API changes**: the dashboard hero greets by name
+  (`greetingName()` in `lib/format.ts` prefers OAuth `full_name`/`name`, else a capitalized email
+  local-part, else nothing; `(app)/dashboard/page.tsx` now reads the session server-side and is
+  `force-dynamic` like `/settings`); **Settings** rebuilt to two-column rows + an account avatar chip +
+  a Light/Dark **segmented control** (`ThemeChoice`, sharing extracted `readTheme`/`applyTheme` with
+  `ThemeToggle` so there's one theme source of truth); **AI Decks** preview pipeline redrawn as a
+  horizontal connected stepper; **Quizzes hub** rows widened to full-width with a "Practice" CTA to
+  match the Review hub. Verified typecheck + 34 tests + prod build + light/dark screenshots.
 
 ## Reasoning
 
@@ -293,6 +311,14 @@ to `main` once both halves are done.
   figures (readiness, mastery %, exam weight, pass rate) are deliberately **excluded** because they
   aren't grades — pinning them to a 1–6 axis would be misleading, and the owner explicitly wanted
   weight/pass-rate to stay `%`.
+- **Why gate the HTTPS headers on `NODE_ENV`, not drop them or exempt localhost.** HSTS and
+  `upgrade-insecure-requests` are correct and wanted in production, so removing them outright would
+  weaken the live site. A per-host exemption in `headers()` doesn't help: `source` matches the path, not
+  the scheme, so an HSTS header would still be sent on the `http://localhost` response — and that
+  single response is what pins the browser to https for the whole `max-age`. Gating on build mode is
+  the one clean seam (dev never emits, prod always does). The reciprocal `'unsafe-eval'` is added
+  *only* in dev, so the shipped policy is never widened. A local HTTPS cert for `next dev` was rejected
+  as more setup than the problem warrants.
 
 ## Implications
 
@@ -405,5 +431,13 @@ to `main` once both halves are done.
   inline scripts, deferred as a larger change. **Verify live after deploy:** load the site and watch
   the console for CSP `connect-src` violations (Supabase/backend origins come from the build-time
   `NEXT_PUBLIC_*` env, so they must be set in the Vercel build, not just locally).
+- **Polish pass + local-dev http gating done 2026-07-07** (see Decisions). All 8 reference surfaces
+  re-verified light+dark as still matching; the changes are presentational + the `NODE_ENV`-gated
+  security headers. A secret/PII scan of the committed diff was clean (`.env.local` untracked; only
+  empty-placeholder `.env.example` tracked; no service-role key anywhere in `web/`). Production CSP/HSTS
+  unchanged. Open: the login "Need help?" `mailto:` to the owner's personal address is still a
+  placeholder on the public login page — swap or remove before it matters.
 
-2026-07-06
+## Last updated
+
+2026-07-07
