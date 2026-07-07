@@ -194,7 +194,7 @@ export default function DashboardPreviewPage() {
 
   return (
     <AppShell email="philipp@cram.study" activeHref="/dashboard">
-      <DashboardView data={DATA} now={NOW} />
+      <DashboardView data={DATA} now={NOW} name="Philipp" />
     </AppShell>
   );
 }

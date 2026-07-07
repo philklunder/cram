@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, HelpCircle } from "lucide-react";
+import { ChevronRight, HelpCircle, Play } from "lucide-react";
 
 import { EmptyState } from "@/components/ui";
 import { LibraryLoader, PageHeader } from "@/components/pages/shared";
@@ -50,7 +50,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
                 </span>
                 <h2 className="text-base font-semibold tracking-tight text-ink">{subject.name}</h2>
               </div>
-              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ul className="space-y-3">
                 {quizzes.map((quiz) => (
                   <QuizCard
                     key={quiz.id}
@@ -73,17 +73,24 @@ function QuizCard({ quiz, subject, count }: { quiz: Quiz; subject: Subject; coun
     <li>
       <Link
         href={`/subjects/${subject.id}`}
-        className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-4 shadow-card transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--sc-line)] hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:border-[color:var(--sc-solid)]/45"
+        className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 shadow-card transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--sc-line)] hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:border-[color:var(--sc-solid)]/45"
       >
-        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
-          <HelpCircle className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+        <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25">
+          <HelpCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">{quiz.title}</p>
-          <p className="text-xs text-muted tabular-nums">
-            {count} question{count === 1 ? "" : "s"}
-          </p>
+          <p className="truncate font-semibold text-ink">{quiz.title}</p>
+          <p className="text-sm text-muted">Multiple choice · graded instantly</p>
         </div>
+        <span className="flex-none text-sm font-medium tabular-nums text-ink-2">
+          {count} question{count === 1 ? "" : "s"}
+        </span>
+        <span className="hidden flex-none rounded-lg bg-[var(--sc-soft)] px-3 py-1.5 text-sm font-medium text-[color:var(--sc-ink)] transition group-hover:bg-[var(--sc-solid)] group-hover:text-white sm:inline-flex dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:group-hover:text-white">
+          <span className="inline-flex items-center gap-1.5">
+            <Play className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+            Practice
+          </span>
+        </span>
         <ChevronRight className="h-4 w-4 flex-none text-subtle transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
       </Link>
     </li>
