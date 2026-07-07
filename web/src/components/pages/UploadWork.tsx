@@ -41,7 +41,6 @@ export function UploadWork({
   const { data: subjects, reload } = useAsync(() => listSubjects(), []);
   const [files, setFiles] = useState<File[]>([]);
   const [subjectName, setSubjectName] = useState(demoSubject ?? "");
-  const [examDate, setExamDate] = useState("");
   const [targetGrade, setTargetGrade] = useState("");
   const [gen, setGen] = useState({ flashcards: true, quiz: true, summary: false });
   const [dragOver, setDragOver] = useState(false);
@@ -67,11 +66,11 @@ export function UploadWork({
     setDeck(null);
     try {
       const result = await generateDeck({ subjectName: subjectName.trim(), title: files[0].name, files });
-      // Persist exam date / target onto the (possibly new) subject.
-      if (result.subject_id && (examDate || targetGrade)) {
+      // Persist the target grade onto the (possibly new) subject. Exam dates live on exams now and
+      // are set on the subject page — the AI Decks flow just files cards under the subject.
+      if (result.subject_id && targetGrade) {
         await updateSubject(result.subject_id, {
-          ...(examDate ? { exam_date: new Date(examDate).toISOString() } : {}),
-          ...(targetGrade ? { target_grade: Number(targetGrade.replace(",", ".")) || null } : {}),
+          target_grade: Number(targetGrade.replace(",", ".")) || null,
         }).catch(() => {});
       }
       setDeck(result);
@@ -142,15 +141,11 @@ export function UploadWork({
 
           {/* Subject + exam + target */}
           <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-1">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
                 <label htmlFor="ad-subject" className={labelClass}>Subject</label>
                 <input id="ad-subject" list="ad-subjects" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="e.g. ABU" autoComplete="off" className={inputClass} />
                 <datalist id="ad-subjects">{(subjects ?? []).map((s) => <option key={s.id} value={s.name} />)}</datalist>
-              </div>
-              <div>
-                <label htmlFor="ad-exam" className={labelClass}>Exam date <span className="font-normal text-muted">(optional)</span></label>
-                <input id="ad-exam" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="ad-target" className={labelClass}>Target grade <span className="font-normal text-muted">(optional)</span></label>

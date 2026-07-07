@@ -8,8 +8,8 @@ import { ReviewSession, type ReviewCardContext } from "@/components/ReviewSessio
 import { PageHeader } from "@/components/pages/shared";
 import { Badge, Button, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
-import type { Card, Subject } from "@/lib/api/types";
-import { computeStreak } from "@/lib/dashboard";
+import type { Card, Exam, Subject } from "@/lib/api/types";
+import { computeStreak, subjectExamDate } from "@/lib/dashboard";
 import { daysUntil, formatCountdown, subjectInitials } from "@/lib/format";
 import { subjectStrength } from "@/lib/srs/grade-strength";
 import { subjectVars } from "@/lib/subjectColor";
@@ -22,12 +22,12 @@ interface Row {
   days: number | null;
 }
 
-function rows(subjects: Subject[], cards: Card[], now: number): Row[] {
+function rows(subjects: Subject[], cards: Card[], exams: Exam[], now: number): Row[] {
   return subjects
     .map((subject) => {
       const own = cards.filter((c) => c.subject_id === subject.id);
       const due = own.filter((c) => new Date(c.due_date).getTime() <= now).length;
-      return { subject, due, total: own.length, days: daysUntil(subject.exam_date) };
+      return { subject, due, total: own.length, days: daysUntil(subjectExamDate(subject.id, exams)) };
     })
     .filter((r) => r.total > 0)
     .sort(
@@ -42,15 +42,17 @@ function rows(subjects: Subject[], cards: Card[], now: number): Row[] {
 export function ReviewHubView({
   subjects,
   cards,
+  exams,
   now = Date.now(),
   onStart,
 }: {
   subjects: Subject[];
   cards: Card[];
+  exams: Exam[];
   now?: number;
   onStart?: () => void;
 }) {
-  const list = rows(subjects, cards, now);
+  const list = rows(subjects, cards, exams, now);
   const totalDue = list.reduce((n, r) => n + r.due, 0);
 
   return (
@@ -152,6 +154,7 @@ export function ReviewHubPage() {
     <ReviewHubView
       subjects={data.subjects}
       cards={data.cards}
+      exams={data.exams}
       now={now}
       onStart={dueCards.length > 0 ? () => setActive(true) : undefined}
     />
@@ -161,9 +164,12 @@ export function ReviewHubPage() {
 function contextFor(data: DashboardData, card: Card): ReviewCardContext {
   const subject = data.subjects.find((s) => s.id === card.subject_id)!;
   const entries = data.gradeEntries.filter((e) => e.subject_id === subject.id);
+  // Compress this card's schedule toward its own exam's date (a card outlives its exam and may be
+  // unassigned → "General" → no exam date → no compression).
+  const exam = card.exam_id ? data.exams.find((e) => e.id === card.exam_id) : undefined;
   return {
     subject,
-    examDate: subject.exam_date,
+    examDate: exam?.exam_date ?? null,
     strength: subjectStrength(subject.grading_scale, subject.current_grade, entries),
   };
 }

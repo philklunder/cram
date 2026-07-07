@@ -6,6 +6,7 @@
 import type {
   Attempt,
   Card,
+  Exam,
   Question,
   Quiz,
   ReviewLog,
@@ -166,19 +167,42 @@ export function subjectQuizAverages(
   return out;
 }
 
+// --- Exam dates (derived from a subject's exams) -----------------------------------------
+
+// The date (ISO) of a subject's soonest upcoming exam — today or later. Returns null when the
+// subject has no dated future exam. The per-subject exam date lives on Exam now (a subject holds
+// many), so every subject-level countdown/date in the UI derives from this.
+export function subjectExamDate(subjectId: string, exams: Exam[]): string | null {
+  let best: string | null = null;
+  let bestDays = Infinity;
+  for (const e of exams) {
+    if (e.subject_id !== subjectId || !e.exam_date) continue;
+    const days = daysUntil(e.exam_date);
+    if (days === null || days < 0) continue; // past exams don't drive a countdown
+    if (days < bestDays) {
+      bestDays = days;
+      best = e.exam_date;
+    }
+  }
+  return best;
+}
+
 // --- Nearest exam ------------------------------------------------------------------------
 
 export interface NearestExam {
   subject: Subject;
   days: number;
+  examDate: string; // ISO of the subject's soonest upcoming exam
 }
 
-export function nearestExam(subjects: Subject[]): NearestExam | null {
+// The single closest upcoming exam across all subjects, derived from their exams.
+export function nearestExam(subjects: Subject[], exams: Exam[]): NearestExam | null {
   let best: NearestExam | null = null;
   for (const s of subjects) {
-    const days = daysUntil(s.exam_date);
-    if (days === null || days < 0) continue;
-    if (!best || days < best.days) best = { subject: s, days };
+    const examDate = subjectExamDate(s.id, exams);
+    if (examDate === null) continue;
+    const days = daysUntil(examDate)!; // non-negative by construction
+    if (!best || days < best.days) best = { subject: s, days, examDate };
   }
   return best;
 }

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Double, String
+from sqlalchemy import Double, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -24,8 +23,9 @@ class Subject(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
     __tablename__ = "subjects"
 
     name: Mapped[str] = mapped_column(String(512), nullable=False)
-    # iOS `examDate` is a Date (timestamp), so this is timestamptz, not a SQL date.
-    exam_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # NOTE: the exam date lives on Exam now, not Subject — a subject holds many exams, each with
+    # its own date (migration 0006 dropped subjects.exam_date). The UI derives a subject-level
+    # countdown from its soonest upcoming exam.
     grading_scale: Mapped[GradingScale] = mapped_column(
         checked_text_enum(GradingScale, "grading_scale"),
         nullable=False,

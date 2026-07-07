@@ -27,6 +27,7 @@ import {
   formatDueIn,
   formatMinutes,
   nearestExam,
+  subjectExamDate,
   subjectQuizAverages,
   upcomingReviews,
   weeklyActivity,
@@ -41,19 +42,23 @@ import { useCountUp } from "@/lib/useCountUp";
 // pure helpers in lib/dashboard.ts, so this file stays layout + markup. `now` is injectable for
 // deterministic previews/tests.
 export function DashboardView({ data, now = Date.now(), name }: { data: DashboardData; now?: number; name?: string | null }) {
-  const { subjects, cards, quizzes, questions, attempts, reviewLogs, studySessions } = data;
+  const { subjects, exams, cards, quizzes, questions, attempts, reviewLogs, studySessions } = data;
 
   const streak = computeStreak(reviewLogs, now);
   const due = computeDue(cards, now);
   const quiz = computeQuizStats(attempts, now);
-  const exam = nearestExam(subjects);
+  const exam = nearestExam(subjects, exams);
   const quizAvgs = subjectQuizAverages(attempts, questions, quizzes);
   const areas = focusAreas(cards, subjects);
   const upcoming = upcomingReviews(cards, subjects, { now });
   const activity = weeklyActivity(studySessions, now);
 
   const topSubjects = [...subjects]
-    .sort((a, b) => (daysUntil(a.exam_date) ?? 1e9) - (daysUntil(b.exam_date) ?? 1e9))
+    .sort(
+      (a, b) =>
+        (daysUntil(subjectExamDate(a.id, exams)) ?? 1e9) -
+        (daysUntil(subjectExamDate(b.id, exams)) ?? 1e9),
+    )
     .slice(0, 4);
 
   return (
@@ -322,7 +327,7 @@ function ExamStatTile({ exam }: { exam: ReturnType<typeof nearestExam> }) {
       subNode={
         <span className="flex items-baseline gap-1">
           <span className="max-w-[10ch] truncate font-medium text-ink-2">{exam.subject.name}</span>
-          <span>· {formatDate(exam.subject.exam_date)}</span>
+          <span>· {formatDate(exam.examDate)}</span>
         </span>
       }
     />
@@ -379,6 +384,7 @@ function SubjectsSection({
             <SubjectMiniCard
               key={s.id}
               subject={s}
+              examDate={subjectExamDate(s.id, data.exams)}
               cards={data.cards.filter((c) => c.subject_id === s.id)}
               quizAvg={quizAvgs.get(s.id) ?? null}
               now={now}
@@ -392,17 +398,19 @@ function SubjectsSection({
 
 function SubjectMiniCard({
   subject,
+  examDate,
   cards,
   quizAvg,
   now,
 }: {
   subject: Subject;
+  examDate: string | null;
   cards: DashboardData["cards"];
   quizAvg: number | null;
   now: number;
 }) {
   const p = computeProgress(cards);
-  const days = daysUntil(subject.exam_date);
+  const days = daysUntil(examDate);
   const examTone =
     days === null ? "muted" : days < 0 ? "muted" : days <= 3 ? "red" : days <= 10 ? "amber" : "brand";
   const examChip: Record<string, string> = {
