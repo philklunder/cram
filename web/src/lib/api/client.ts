@@ -353,21 +353,24 @@ export async function createStudySession(body: StudySessionCreate): Promise<Stud
 
 export interface LibraryData {
   subjects: Subject[];
+  exams: Exam[];
   cards: Card[];
   quizzes: Quiz[];
   questions: Question[];
 }
 
-// The subjects/cards/quizzes/questions the Review, Quizzes, Flashcards and Progress pages browse.
-// Fetched in parallel; aggregation is client-side, matching the rest of the app.
+// The subjects/exams/cards/quizzes/questions the Review, Quizzes, Flashcards and Progress pages
+// browse. Exams let those pages scope study to a single assessment. Fetched in parallel;
+// aggregation is client-side, matching the rest of the app.
 export async function loadLibrary(): Promise<LibraryData> {
-  const [subjects, cards, quizzes, questions] = await Promise.all([
+  const [subjects, exams, cards, quizzes, questions] = await Promise.all([
     listSubjects(),
+    listExams(),
     listAll<Card>("cards").then(alive),
     listAll<Quiz>("quizzes").then(alive),
     listAll<Question>("questions").then(alive),
   ]);
-  return { subjects, cards, quizzes, questions };
+  return { subjects, exams, cards, quizzes, questions };
 }
 
 // --- Dashboard ---------------------------------------------------------------------------

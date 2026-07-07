@@ -215,6 +215,30 @@ to `main` once both halves are done.
   `ThemeToggle` so there's one theme source of truth); **AI Decks** preview pipeline redrawn as a
   horizontal connected stepper; **Quizzes hub** rows widened to full-width with a "Practice" CTA to
   match the Review hub. Verified typecheck + 34 tests + prod build + light/dark screenshots.
+- **Information-architecture cleanup — thin "funnel" pages made self-contained (2026-07-08).** The
+  owner's audit found several sidebar pages were **redundant funnels**: Quizzes' "Practice" and
+  Flashcards' "Study" only linked back to `/subjects/[id]`, and Calendar showed **fabricated**
+  review/quiz suggestions (no scheduling backend). Chosen direction (owner): **don't delete pages —
+  make the thin ones do their job in place** via a consistent **Subject → Exam scope picker**. New
+  [`web/src/lib/scope.ts`](../web/src/lib/scope.ts) (`WHOLE_SUBJECT`/`GENERAL_SCOPE` sentinels +
+  `examsForSubject`/`inExamScope`/`scopeLabel`) + a shared `ScopePicker` in
+  [`components/pages/shared.tsx`](../web/src/components/pages/shared.tsx) are the single source of
+  scoping; `loadLibrary` now also pages **`/v1/exams`** so the hubs can scope. Changes: **(1) AI Decks
+  is the single "add material" surface** — Subject is a dropdown (+ "New subject") that reveals an Exam
+  dropdown, reads a `?subject=<name>&exam=<id>` **deep-link** to pre-select, and passes `exam_id` to
+  `/v1/generate`. **(2) Subject page** — all three "Add material" buttons now `router.push` to AI Decks
+  pre-filled; the inline upload modal + `GenerateMaterialForm.tsx` were **deleted**. **(3) Quizzes** —
+  scope picker → launches the existing `QuizRunner` in place (merges all in-scope questions), no more
+  funnel-to-subject. **(4) Flashcards** — added exam scope + a new **free cram flip-through**
+  ([`FlashcardCram.tsx`](../web/src/components/FlashcardCram.tsx)): a self-check that **does NOT mutate
+  SM-2** (deliberately distinct from Review/subject-study). **(5) Grades** — the **Grades page is now
+  the single editor**: each subject row expands into the full `GradesPanel` (targets/add/delete moved
+  off the subject page); the subject page shows a read-only `SubjectGradesSummary` + a "Manage in
+  Grades" link. **(6) Calendar** — removed the fabricated suggestions; shows **real exam dates** + user-
+  added study blocks persisted **localStorage-only** (`cram:planner:blocks`, flagged "not synced to
+  iOS"); "Plan with Claude" is a labelled coming-soon stub. **Presentational/IA only — the sole data-
+  layer change is `loadLibrary` adding `exams`; `loadDashboard`/`loadSubjectBundle`/auth are untouched.**
+  Verified typecheck + prod build + light/dark preview screenshots of all five rebuilt surfaces.
 
 ## Reasoning
 
@@ -311,6 +335,28 @@ to `main` once both halves are done.
   figures (readiness, mastery %, exam weight, pass rate) are deliberately **excluded** because they
   aren't grades — pinning them to a 1–6 axis would be misleading, and the owner explicitly wanted
   weight/pass-rate to stay `%`.
+- **Why scope-in-place beats the funnel, and why the cram mode is schedule-neutral (2026-07-08).**
+  The hubs previously *were* just alternate indexes into `/subjects/[id]`, so Quizzes/Flashcards
+  earned their sidebar slot back only by doing the actual task (pick subject+exam → quiz/cram right
+  there), with the subject page kept as the deep per-exam view. Chosen over **deleting** them (owner
+  wanted the entry points) and over **leaving them as funnels** (the redundancy the audit flagged).
+  The Flashcards "cram" is deliberately a **practice flip-through that never writes SM-2**: the app
+  already has two scheduled-review surfaces (the Review hub + the subject-page "Study"), and a third
+  that mutated `due_date` would both duplicate them and let the *same* card advance from multiple
+  entry points — exactly the multi-writer hazard the scheduler-parity work guards against. Cram fits
+  the product's name (last-minute practice over any cards, due or not) while SM-2 mutation stays owned
+  by Review.
+- **Why Grades consolidated to one editor.** Grades were editable in two places (the subject page's
+  `GradesPanel` *and* the global page), so target-setting/entry-deletion had two homes. Making the
+  **Grades page the sole editor** (expandable rows) and the subject view **read-only** removes the
+  duplicate editor while keeping an at-a-glance read in subject context — and `grade-strength.ts`
+  stays the one grade derivation (unchanged).
+- **Why the calendar's study blocks are localStorage-only, not faked or backend-backed.** There is no
+  planned-sessions backend yet. Fabricated suggestions (the old behaviour) are misleading; a new owned
+  resource is out of scope for a presentational pass. So real exams are shown truthfully and the
+  learner's own study blocks persist **locally, clearly flagged as not-synced** — an honest interim
+  that survives refresh without pretending to be real synced data. "Plan with Claude" ships as a
+  labelled stub rather than a fake feature.
 - **Why gate the HTTPS headers on `NODE_ENV`, not drop them or exempt localhost.** HSTS and
   `upgrade-insecure-requests` are correct and wanted in production, so removing them outright would
   weaken the live site. A per-host exemption in `headers()` doesn't help: `source` matches the path, not
@@ -381,6 +427,17 @@ to `main` once both halves are done.
   overwrites the dev server's static chunks, so the running dev server then 404s its CSS and serves
   **unstyled** pages (looks like "CSS broke"). Stop dev first (or build elsewhere); recover with
   `rm -rf .next` + restart `npm run dev`, then hard-refresh the browser past the cached 404.
+- **Adding material is now centralized in AI Decks (2026-07-08).** Any new "add material" entry point
+  must **deep-link to `/upload?subject=<name>&exam=<id>`**, not re-embed an upload form — the inline
+  `GenerateMaterialForm` is deleted. **Scoping semantics live only in `lib/scope.ts`**; Quizzes,
+  Flashcards, and AI Decks all read it, so change scoping there once. **Grades editing lives only on
+  the Grades page** — the subject page is read-only for grades. **The Flashcards cram mode must never
+  write `/v1/cards` or `/v1/review-logs`** (schedule mutation is Review's job alone).
+- **Calendar study blocks are device-local and unsynced (2026-07-08).** They live in
+  `localStorage['cram:planner:blocks']` — lost if storage is cleared, invisible to iOS, and gone on
+  another browser. A real **planned-study-sessions owned resource** (like `study_sessions`, but future-
+  dated/mutable) is the follow-up that would also unlock the "Plan with Claude" generation and iOS
+  parity.
 
 ## Open questions
 
@@ -437,7 +494,15 @@ to `main` once both halves are done.
   empty-placeholder `.env.example` tracked; no service-role key anywhere in `web/`). Production CSP/HSTS
   unchanged. Open: the login "Need help?" `mailto:` to the owner's personal address is still a
   placeholder on the public login page — swap or remove before it matters.
+- **IA cleanup pass built 2026-07-08** (see Decisions): thin funnel pages made self-contained via a
+  shared Subject→Exam scope picker; add-material centralized in AI Decks; Grades consolidated to one
+  editor; Calendar de-faked with localStorage study blocks. Typecheck + prod build green; five rebuilt
+  surfaces verified light/dark in the `preview/` harness. **Not yet verified against a live signed-in
+  session** (the data is auth-gated). Follow-ups: a synced planned-study-sessions resource (to replace
+  the localStorage blocks + power "Plan with Claude"), and **iOS parity for the new IA** (subject→exam
+  scoping, cram mode). *Dev note: for local web work, point `NEXT_PUBLIC_CRAM_BACKEND_URL` at the live
+  Railway backend — a local backend built from HEAD 500'd against the prod DB this session.*
 
 ## Last updated
 
-2026-07-07
+2026-07-08
