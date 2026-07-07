@@ -14,10 +14,12 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
+import { FlashcardCram } from "@/components/FlashcardCram";
 import { PageHeader } from "@/components/pages/shared";
 import { Badge, Button, EmptyState, ErrorBox, Skeleton, cn, difficultyTone, inputClass } from "@/components/ui";
 import { listSources, loadLibrary } from "@/lib/api/client";
-import type { Card, Source, Subject } from "@/lib/api/types";
+import type { Card, Exam, Source, Subject } from "@/lib/api/types";
+import { WHOLE_SUBJECT, examsForSubject, inExamScope, scopeLabel } from "@/lib/scope";
 import { subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
@@ -36,21 +38,24 @@ const MASTERY_META: Record<Mastery, { label: string; bar: string; text: string; 
 
 const PAGE_SIZE = 8;
 
-export function FlashcardsView({ subjects, cards, sources }: { subjects: Subject[]; cards: Card[]; sources: Source[] }) {
+export function FlashcardsView({ subjects, exams, cards, sources }: { subjects: Subject[]; exams: Exam[]; cards: Card[]; sources: Source[] }) {
   const subjectsWithCards = useMemo(
     () => subjects.filter((s) => cards.some((c) => c.subject_id === s.id)),
     [subjects, cards],
   );
   const [subjectId, setSubjectId] = useState(subjectsWithCards[0]?.id ?? "");
+  const [examScope, setExamScope] = useState(WHOLE_SUBJECT);
   const [deckId, setDeckId] = useState("all");
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState("all");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(0);
+  const [cramming, setCramming] = useState<Card[] | null>(null);
 
   const subject = subjects.find((s) => s.id === subjectId) ?? subjectsWithCards[0];
   const subjectCards = useMemo(() => cards.filter((c) => c.subject_id === subject?.id), [cards, subject]);
+  const subjectExams = useMemo(() => examsForSubject(exams, subject?.id ?? null), [exams, subject]);
   const decks = useMemo(() => sources.filter((s) => s.subject_id === subject?.id), [sources, subject]);
 
   const reset = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(0); };
@@ -58,6 +63,7 @@ export function FlashcardsView({ subjects, cards, sources }: { subjects: Subject
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let out = subjectCards.filter((c) => {
+      if (!inExamScope(c.exam_id, examScope)) return false;
       if (deckId !== "all" && c.source_id !== deckId) return false;
       if (difficulty !== "all" && String(c.difficulty) !== difficulty) return false;
       if (status !== "all" && cardMastery(c) !== status) return false;
@@ -70,7 +76,7 @@ export function FlashcardsView({ subjects, cards, sources }: { subjects: Subject
       return sort === "oldest" ? d : -d;
     });
     return out;
-  }, [subjectCards, deckId, difficulty, status, query, sort]);
+  }, [subjectCards, examScope, deckId, difficulty, status, query, sort]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -94,30 +100,53 @@ export function FlashcardsView({ subjects, cards, sources }: { subjects: Subject
     );
   }
 
+  if (cramming) {
+    return (
+      <section style={subjectVars(subject!.id)}>
+        <FlashcardCram
+          cards={cramming}
+          title={`${subject!.name} — Cram`}
+          subtitle={scopeLabel(subjectExams, examScope) ?? "All cards in this subject"}
+          onClose={() => setCramming(null)}
+        />
+      </section>
+    );
+  }
+
   return (
     <section style={subjectVars(subject!.id)}>
-      <PageHeader title="Flashcards" subtitle="Study your decks, track mastery, and remember more." />
+      <PageHeader title="Flashcards" subtitle="Pick a subject and exam, then cram the deck or browse and search your cards." />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-5 lg:col-span-2">
           {/* Selectors + actions */}
           <div className="flex flex-wrap items-end gap-3">
-            <label className="min-w-[140px] flex-1">
+            <label className="min-w-[130px] flex-1">
               <span className="mb-1 block text-xs font-medium text-muted">Subject</span>
-              <select value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setDeckId("all"); setPage(0); }} className={cn(inputClass, "mt-0")}>
+              <select value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setExamScope(WHOLE_SUBJECT); setDeckId("all"); setPage(0); }} className={cn(inputClass, "mt-0")}>
                 {subjectsWithCards.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
-            <label className="min-w-[140px] flex-1">
+            {subjectExams.length > 0 ? (
+              <label className="min-w-[130px] flex-1">
+                <span className="mb-1 block text-xs font-medium text-muted">Exam</span>
+                <select value={examScope} onChange={(e) => { setExamScope(e.target.value); setPage(0); }} className={cn(inputClass, "mt-0")}>
+                  <option value={WHOLE_SUBJECT}>Whole subject</option>
+                  {subjectExams.map((ex) => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
+                  <option value="__general__">General (no exam)</option>
+                </select>
+              </label>
+            ) : null}
+            <label className="min-w-[130px] flex-1">
               <span className="mb-1 block text-xs font-medium text-muted">Deck</span>
               <select value={deckId} onChange={(e) => { setDeckId(e.target.value); setPage(0); }} className={cn(inputClass, "mt-0")}>
                 <option value="all">All decks</option>
                 {decks.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
             </label>
-            <Link href={`/subjects/${subject!.id}`} className="flex-none">
-              <Button><Play className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Study deck</Button>
-            </Link>
+            <Button className="flex-none" onClick={() => filtered.length > 0 && setCramming(filtered)} disabled={filtered.length === 0}>
+              <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Cram {filtered.length}
+            </Button>
             <Link href="/upload" className="flex-none">
               <Button variant="secondary"><Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden /> Generate</Button>
             </Link>
@@ -325,7 +354,7 @@ export function FlashcardsHubPage() {
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
   const [lib, sources] = data;
-  return <FlashcardsView subjects={lib.subjects} cards={lib.cards} sources={sources} />;
+  return <FlashcardsView subjects={lib.subjects} exams={lib.exams} cards={lib.cards} sources={sources} />;
 }
 
 // Back-compat export name used by the route + preview.

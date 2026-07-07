@@ -1,99 +1,157 @@
 "use client";
 
-import Link from "next/link";
-import { ChevronRight, HelpCircle, Play } from "lucide-react";
+import { useMemo, useState } from "react";
+import { HelpCircle, Layers, Play } from "lucide-react";
 
-import { EmptyState } from "@/components/ui";
-import { LibraryLoader, PageHeader } from "@/components/pages/shared";
+import { QuizRunner } from "@/components/QuizRunner";
+import { LibraryLoader, PageHeader, ScopePicker } from "@/components/pages/shared";
+import { Badge, Button, EmptyState } from "@/components/ui";
 import type { LibraryData } from "@/lib/api/client";
-import type { Quiz, Subject } from "@/lib/api/types";
+import type { Question, Quiz } from "@/lib/api/types";
+import { WHOLE_SUBJECT, inExamScope, scopeLabel } from "@/lib/scope";
 import { subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
 
 export function QuizzesHubView({ data }: { data: LibraryData }) {
-  const questionCount = new Map<string, number>();
-  for (const q of data.questions) {
-    questionCount.set(q.quiz_id, (questionCount.get(q.quiz_id) ?? 0) + 1);
-  }
+  // Only subjects that actually have quiz questions can be practised.
+  const subjectsWithQuizzes = useMemo(() => {
+    const withQuestions = new Set(
+      data.quizzes
+        .filter((q) => data.questions.some((qn) => qn.quiz_id === q.id))
+        .map((q) => q.subject_id),
+    );
+    return data.subjects.filter((s) => withQuestions.has(s.id));
+  }, [data]);
 
-  const groups = data.subjects
-    .map((subject) => ({
-      subject,
-      quizzes: data.quizzes.filter((q) => q.subject_id === subject.id),
-    }))
-    .filter((g) => g.quizzes.length > 0);
+  const [subjectId, setSubjectId] = useState(subjectsWithQuizzes[0]?.id ?? "");
+  const [scope, setScope] = useState(WHOLE_SUBJECT);
+  const [active, setActive] = useState(false);
 
-  const total = data.quizzes.length;
+  const subject = data.subjects.find((s) => s.id === subjectId) ?? subjectsWithQuizzes[0];
+  const subjectExams = useMemo(() => data.exams.filter((e) => e.subject_id === subject?.id), [data.exams, subject]);
 
-  return (
-    <section>
-      <PageHeader
-        title="Quizzes"
-        subtitle="Practice quizzes generated from your material. Multiple-choice is graded instantly; short answers are graded by Claude."
-      />
+  // Quizzes for the chosen subject, narrowed to the chosen exam scope, plus their questions.
+  const quizzesInScope = useMemo<Quiz[]>(
+    () => data.quizzes.filter((q) => q.subject_id === subject?.id && inExamScope(q.exam_id, scope)),
+    [data.quizzes, subject, scope],
+  );
+  const questionsInScope = useMemo<Question[]>(() => {
+    const ids = new Set(quizzesInScope.map((q) => q.id));
+    return data.questions.filter((qn) => ids.has(qn.quiz_id));
+  }, [data.questions, quizzesInScope]);
 
-      {total === 0 ? (
+  if (subjectsWithQuizzes.length === 0) {
+    return (
+      <section>
+        <PageHeader
+          title="Quizzes"
+          subtitle="Pick a subject and exam, then test yourself. Multiple-choice is graded instantly; short answers are graded by Claude."
+        />
         <EmptyState
           title="No quizzes yet"
-          hint="Generating material for a subject also creates a quiz. Upload something to get started."
+          hint="Generating a deck in AI Decks also creates a quiz. Upload some material to get started."
         />
-      ) : (
-        <div className="space-y-8">
-          {groups.map(({ subject, quizzes }) => (
-            <div key={subject.id} style={subjectVars(subject.id)}>
-              <div className="mb-3 flex items-center gap-2.5">
-                <span
-                  aria-hidden
-                  className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
-                >
-                  {subjectInitials(subject.name)}
-                </span>
-                <h2 className="text-base font-semibold tracking-tight text-ink">{subject.name}</h2>
-              </div>
-              <ul className="space-y-3">
-                {quizzes.map((quiz) => (
-                  <QuizCard
-                    key={quiz.id}
-                    quiz={quiz}
-                    subject={subject}
-                    count={questionCount.get(quiz.id) ?? 0}
-                  />
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+      </section>
+    );
+  }
 
-function QuizCard({ quiz, subject, count }: { quiz: Quiz; subject: Subject; count: number }) {
+  // Practising: hand the in-scope questions to the runner (which reveals answers + accuracy).
+  if (active && subject && questionsInScope.length > 0) {
+    const label = scopeLabel(subjectExams, scope);
+    return (
+      <QuizRunner
+        title={subject.name}
+        subtitle={label ? `${subject.name} · ${label}` : `${subject.name} · all exams`}
+        questions={questionsInScope}
+        subjectId={subject.id}
+        onClose={() => setActive(false)}
+      />
+    );
+  }
+
   return (
-    <li>
-      <Link
-        href={`/subjects/${subject.id}`}
-        className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 shadow-card transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--sc-line)] hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:border-[color:var(--sc-solid)]/45"
-      >
-        <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25">
-          <HelpCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-ink">{quiz.title}</p>
-          <p className="text-sm text-muted">Multiple choice · graded instantly</p>
+    <section style={subjectVars(subject!.id)}>
+      <PageHeader
+        title="Quizzes"
+        subtitle="Pick a subject and exam, then test yourself. Multiple-choice is graded instantly; short answers are graded by Claude."
+      />
+
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div className="rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
+          <ScopePicker
+            subjects={subjectsWithQuizzes}
+            exams={data.exams}
+            subjectId={subjectId}
+            scope={scope}
+            onChange={(sid, sc) => {
+              setSubjectId(sid);
+              setScope(sc);
+            }}
+          />
+
+          <div className="mt-5 flex flex-col gap-4 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span
+                aria-hidden
+                className="flex h-11 w-11 flex-none items-center justify-center rounded-xl text-sm font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
+              >
+                {subjectInitials(subject!.name)}
+              </span>
+              <div>
+                <p className="font-semibold text-ink">
+                  {questionsInScope.length} question{questionsInScope.length === 1 ? "" : "s"} ready
+                </p>
+                <p className="text-sm text-muted">
+                  {quizzesInScope.length} quiz{quizzesInScope.length === 1 ? "" : "zes"}
+                  {scopeLabel(subjectExams, scope) ? ` · ${scopeLabel(subjectExams, scope)}` : " · all exams"}
+                </p>
+              </div>
+            </div>
+            <Button
+              className="flex-none"
+              onClick={() => setActive(true)}
+              disabled={questionsInScope.length === 0}
+            >
+              <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+              Start quiz
+            </Button>
+          </div>
+
+          {questionsInScope.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-dashed border-line-strong/80 bg-surface/50 px-4 py-6 text-center text-sm text-muted">
+              No quiz questions for this exam yet. Add material to it in AI Decks, or pick another exam.
+            </p>
+          ) : null}
         </div>
-        <span className="flex-none text-sm font-medium tabular-nums text-ink-2">
-          {count} question{count === 1 ? "" : "s"}
-        </span>
-        <span className="hidden flex-none rounded-lg bg-[var(--sc-soft)] px-3 py-1.5 text-sm font-medium text-[color:var(--sc-ink)] transition group-hover:bg-[var(--sc-solid)] group-hover:text-white sm:inline-flex dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:group-hover:text-white">
-          <span className="inline-flex items-center gap-1.5">
-            <Play className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
-            Practice
-          </span>
-        </span>
-        <ChevronRight className="h-4 w-4 flex-none text-subtle transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
-      </Link>
-    </li>
+
+        {/* What's included — the quizzes folded into this session. */}
+        {quizzesInScope.length > 0 ? (
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-ink-2">Included in this session</h2>
+            <ul className="space-y-2">
+              {quizzesInScope.map((quiz) => {
+                const n = questionsInScope.filter((qn) => qn.quiz_id === quiz.id).length;
+                return (
+                  <li
+                    key={quiz.id}
+                    className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 shadow-card"
+                  >
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
+                      <HelpCircle className="h-4 w-4" strokeWidth={2} aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{quiz.title}</span>
+                    <Badge tone="neutral">
+                      <Layers className="h-3 w-3" strokeWidth={2} aria-hidden />
+                      {n}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

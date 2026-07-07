@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { BarChart3, CheckCircle2, ChevronRight, GraduationCap, LayoutGrid, TrendingUp } from "lucide-react";
 
+import { GradesPanel } from "@/components/GradesPanel";
 import { PageHeader } from "@/components/pages/shared";
 import {
   Badge,
@@ -150,7 +151,7 @@ export function GradesView({
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <SubjectRow key={r.subject.id} row={r} displayScale={displayScale} />
+                      <SubjectRow key={r.subject.id} row={r} displayScale={displayScale} onChanged={onChanged} />
                     ))}
                   </tbody>
                 </table>
@@ -213,11 +214,13 @@ const STATUS: Record<Status, { label: string; className: string }> = {
   none: { label: "No target", className: "text-muted" },
 };
 
-function SubjectRow({ row, displayScale }: { row: Row; displayScale: GradingScale }) {
+function SubjectRow({ row, displayScale, onChanged }: { row: Row; displayScale: GradingScale; onChanged: () => void }) {
   const { subject, current, currentPct, latest, count, status, trend } = row;
   const scale = subject.grading_scale;
+  const [open, setOpen] = useState(false);
   return (
-    <tr style={subjectVars(subject.id)} className="border-b border-line last:border-0 transition-colors hover:bg-surface-2/50">
+    <>
+    <tr style={subjectVars(subject.id)} className={cn("border-b border-line transition-colors hover:bg-surface-2/50", open && "bg-surface-2/40")}>
       <td className="px-5 py-3">
         <Link href={`/subjects/${subject.id}`} className="flex items-center gap-3 focus-visible:outline-none">
           <span aria-hidden className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25">
@@ -257,9 +260,25 @@ function SubjectRow({ row, displayScale }: { row: Row; displayScale: GradingScal
         <Sparkline values={trend} />
       </td>
       <td className="px-3 py-3 text-right">
-        <ChevronRight className="ml-auto h-4 w-4 text-subtle" strokeWidth={2} aria-hidden />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={open ? `Hide ${subject.name} grades` : `Edit ${subject.name} grades`}
+          className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-subtle transition hover:bg-surface-2 hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-90")} strokeWidth={2} aria-hidden />
+        </button>
       </td>
     </tr>
+    {open ? (
+      <tr style={subjectVars(subject.id)} className="border-b border-line">
+        <td colSpan={7} className="bg-surface-2/30 px-5 py-5">
+          <GradesPanel subject={subject} entries={row.entries} onChanged={onChanged} />
+        </td>
+      </tr>
+    ) : null}
+    </>
   );
 }
 

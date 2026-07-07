@@ -109,7 +109,7 @@ const QUESTIONS: Question[] = QUIZZES.flatMap((q, qi) =>
   })),
 );
 
-const DATA: LibraryData = { subjects: SUBJECTS, cards: CARDS, quizzes: QUIZZES, questions: QUESTIONS };
+const DATA: LibraryData = { subjects: SUBJECTS, exams: EXAMS, cards: CARDS, quizzes: QUIZZES, questions: QUESTIONS };
 
 // Sources = "decks" on the Flashcards page.
 function source(id: string, subjectId: string, title: string): Source {
@@ -271,7 +271,7 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
       />
     ),
   },
-  flashcards: { href: "/flashcards", node: <FlashcardsHubView subjects={SUBJECTS} cards={FLASHCARD_CARDS} sources={SOURCES} /> },
+  flashcards: { href: "/flashcards", node: <FlashcardsHubView subjects={SUBJECTS} exams={EXAMS} cards={FLASHCARD_CARDS} sources={SOURCES} /> },
   aidecks: {
     href: "/upload",
     node: (

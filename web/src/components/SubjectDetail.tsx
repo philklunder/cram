@@ -7,9 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CalendarClock, ChevronDown, Pencil, Play, Plus } from "lucide-react";
 
 import { ExamFormModal } from "@/components/ExamFormModal";
-import { GenerateMaterialForm } from "@/components/GenerateMaterialForm";
-import { GradesPanel } from "@/components/GradesPanel";
-import { Modal } from "@/components/Modal";
+import { SubjectGradesSummary } from "@/components/GradesPanel";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuizRunner } from "@/components/QuizRunner";
 import { ReviewSession } from "@/components/ReviewSession";
@@ -23,8 +21,6 @@ import {
   Panel,
   cn,
   difficultyTone,
-  labelClass,
-  selectClass,
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
 import type { Card, Exam, Question, Quiz, Source, Subject } from "@/lib/api/types";
@@ -69,7 +65,6 @@ export function SubjectDetail({ id }: { id: string }) {
 
   // What we're studying right now (a bucket of cards), or null when browsing.
   const [studyCards, setStudyCards] = useState<Card[] | null>(null);
-  const [material, setMaterial] = useState<{ open: boolean; examId: string | null }>({ open: false, examId: null });
   const [editSubjectOpen, setEditSubjectOpen] = useState(false);
   const [examModal, setExamModal] = useState<{ open: boolean; exam: Exam | null }>({ open: false, exam: null });
 
@@ -117,7 +112,13 @@ export function SubjectDetail({ id }: { id: string }) {
   const sortedExams = [...exams].sort(byExamOrder);
   const totalDue = dueCount(cards);
 
-  const openMaterial = (examId: string | null) => setMaterial({ open: true, examId });
+  // Adding material happens in AI Decks, not here — deep-link there with this subject (and exam)
+  // pre-selected so the upload flow lands ready to go.
+  const goAddMaterial = (examId: string | null) => {
+    const params = new URLSearchParams({ subject: subject.name });
+    if (examId) params.set("exam", examId);
+    router.push(`/upload?${params.toString()}`);
+  };
   const openExamModal = (exam: Exam | null) => setExamModal({ open: true, exam });
 
   return (
@@ -133,7 +134,7 @@ export function SubjectDetail({ id }: { id: string }) {
               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
               New exam
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => openMaterial(null)}>
+            <Button variant="secondary" size="sm" onClick={() => goAddMaterial(null)}>
               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
               Add material
             </Button>
@@ -165,7 +166,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
                     New exam
                   </Button>
-                  <Button variant="secondary" onClick={() => openMaterial(null)}>
+                  <Button variant="secondary" onClick={() => goAddMaterial(null)}>
                     Add material
                   </Button>
                 </div>
@@ -219,7 +220,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     quizzes={quizzesByBucket.get(exam.id) ?? []}
                     questions={questions}
                     onStudy={(c) => setStudyCards(c)}
-                    onAddMaterial={() => openMaterial(exam.id)}
+                    onAddMaterial={() => goAddMaterial(exam.id)}
                     onEdit={() => openExamModal(exam)}
                   />
                 ))}
@@ -230,7 +231,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     quizzes={generalQuizzes}
                     questions={questions}
                     onStudy={(c) => setStudyCards(c)}
-                    onAddMaterial={() => openMaterial(null)}
+                    onAddMaterial={() => goAddMaterial(null)}
                   />
                 ) : null}
               </div>
@@ -243,41 +244,11 @@ export function SubjectDetail({ id }: { id: string }) {
               <SourcesTab sources={sources} />
             </Section>
             <Section title="Grades" count={gradeEntries.length}>
-              <GradesPanel subject={subject} entries={gradeEntries} onChanged={reload} />
+              <SubjectGradesSummary subject={subject} entries={gradeEntries} />
             </Section>
           </div>
         </>
       )}
-
-      {/* Add material — choose which exam it belongs to (or General). */}
-      <Modal
-        open={material.open}
-        onClose={() => setMaterial((m) => ({ ...m, open: false }))}
-        title="Add material"
-        description="Upload a PDF or photos — Cram builds flashcards and a quiz."
-      >
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="material-exam" className={labelClass}>
-              Exam
-            </label>
-            <select
-              id="material-exam"
-              value={material.examId ?? ""}
-              onChange={(e) => setMaterial((m) => ({ ...m, examId: e.target.value || null }))}
-              className={selectClass}
-            >
-              <option value="">General (no exam)</option>
-              {sortedExams.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <GenerateMaterialForm subjectName={subject.name} hideHeader examId={material.examId} onGenerated={reload} />
-        </div>
-      </Modal>
 
       {/* Edit / delete this subject. */}
       <SubjectFormModal

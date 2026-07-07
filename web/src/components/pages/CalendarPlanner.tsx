@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Plus, Sparkles, Target } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Sparkles, Trash2 } from "lucide-react";
 
-import { PageHeader } from "@/components/pages/shared";
-import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
+import { Modal } from "@/components/Modal";
+import { PageHeader, SelectChevron } from "@/components/pages/shared";
+import { Button, EmptyState, ErrorBox, Skeleton, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, StudySession, Subject } from "@/lib/api/types";
 import { masteryBuckets, subjectExamDate, weeklyActivity } from "@/lib/dashboard";
@@ -20,13 +21,27 @@ interface PlannerData {
   studySessions: StudySession[];
 }
 
-type EventKind = "review" | "quiz" | "exam";
+type EventKind = "exam" | "study";
 interface CalEvent {
+  id: string;
   subject: Subject;
   kind: EventKind;
   label: string;
   time: string; // "10:00" or "All day"
+  note?: string;
 }
+
+// A user-added study block. Local-only (browser localStorage) until a planning backend exists —
+// so it survives refresh but does not sync to iOS. Kept deliberately simple.
+interface StudyBlock {
+  id: string;
+  date: string; // "YYYY-MM-DD" (local day)
+  subjectId: string;
+  time: string; // "" for all-day, else "HH:MM"
+  note: string;
+}
+
+const BLOCKS_KEY = "cram:planner:blocks";
 
 const DAY_MS = 86_400_000;
 function startOfLocalDay(ts: number) {
@@ -37,10 +52,15 @@ function dayKey(ts: number) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
+// Parse a "YYYY-MM-DD" as a local day.
+function parseLocalDate(s: string): number {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).getTime();
+}
 
-// Illustrative plan: real exam events on their dates, plus deterministic suggested review/quiz
-// sessions across the month (no scheduling backend yet — these are suggestions, flagged in the UI).
-function buildEvents(subjects: Subject[], exams: Exam[], monthStart: number): Map<string, CalEvent[]> {
+// Real exam events on their dates, plus the learner's own study blocks. No fabricated suggestions —
+// everything on the calendar is either a real exam or something the user added.
+function buildEvents(subjects: Subject[], exams: Exam[], blocks: StudyBlock[], monthStart: number): Map<string, CalEvent[]> {
   const map = new Map<string, CalEvent[]>();
   const push = (ts: number, e: CalEvent) => {
     const k = dayKey(ts);
@@ -58,29 +78,53 @@ function buildEvents(subjects: Subject[], exams: Exam[], monthStart: number): Ma
     if (!subject) continue;
     const ed = new Date(exam.exam_date);
     if (ed.getMonth() === month && ed.getFullYear() === year) {
-      push(startOfLocalDay(ed.getTime()), { subject, kind: "exam", label: `${subject.name}: ${exam.title}`, time: "All day" });
+      push(startOfLocalDay(ed.getTime()), { id: exam.id, subject, kind: "exam", label: `${subject.name}: ${exam.title}`, time: "All day" });
     }
   }
 
-  // Suggested sessions ~ every 6 days, alternating review/quiz, at staggered times.
-  subjects.forEach((subject, si) => {
-    for (let d = 2 + si; d < 28; d += 6) {
-      const ts = monthStart + d * DAY_MS;
-      const kind: EventKind = d % 12 < 6 ? "review" : "quiz";
-      push(ts, { subject, kind, label: `${subject.name} ${kind}`, time: `${9 + (si % 6)}:00` });
+  // User-added study blocks in this month.
+  for (const b of blocks) {
+    const subject = subjectById.get(b.subjectId);
+    if (!subject) continue;
+    const ts = parseLocalDate(b.date);
+    const d = new Date(ts);
+    if (d.getMonth() === month && d.getFullYear() === year) {
+      push(startOfLocalDay(ts), { id: b.id, subject, kind: "study", label: `${subject.name} study`, time: b.time || "All day", note: b.note });
     }
-  });
+  }
   return map;
 }
 
-const KIND_LABEL: Record<EventKind, string> = { review: "Review", quiz: "Quiz", exam: "Exam" };
+const KIND_LABEL: Record<EventKind, string> = { exam: "Exam", study: "Study" };
 
 export function CalendarPlanner({ subjects, exams, cards, studySessions, now = Date.now() }: PlannerData & { now?: number }) {
   const today = new Date(now);
   const [view, setView] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
+  // The learner's own study blocks, persisted locally (see StudyBlock). Loaded once on mount.
+  const [blocks, setBlocks] = useState<StudyBlock[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BLOCKS_KEY);
+      if (raw) setBlocks(JSON.parse(raw) as StudyBlock[]);
+    } catch {
+      // ignore malformed / unavailable storage
+    }
+  }, []);
+  const persist = (next: StudyBlock[]) => {
+    setBlocks(next);
+    try {
+      localStorage.setItem(BLOCKS_KEY, JSON.stringify(next));
+    } catch {
+      // ignore quota / unavailable storage
+    }
+  };
+  const addBlock = (b: StudyBlock) => persist([...blocks, b]);
+  const removeBlock = (id: string) => persist(blocks.filter((b) => b.id !== id));
+
   const monthStart = view.getTime();
-  const events = useMemo(() => buildEvents(subjects, exams, monthStart), [subjects, exams, monthStart]);
+  const events = useMemo(() => buildEvents(subjects, exams, blocks, monthStart), [subjects, exams, blocks, monthStart]);
 
   // Build the 6×7 Monday-first grid for the visible month.
   const firstDow = (new Date(monthStart).getDay() + 6) % 7; // Mon=0
@@ -101,6 +145,15 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
     .sort((a, b) => (a.days as number) - (b.days as number))
     .slice(0, 4);
 
+  // The learner's own upcoming study blocks (today onward), resolved to their subject.
+  const subjectById = useMemo(() => new Map(subjects.map((s) => [s.id, s] as const)), [subjects]);
+  const todayStart = startOfLocalDay(now);
+  const upcomingBlocks = blocks
+    .map((block) => ({ block, subject: subjectById.get(block.subjectId) }))
+    .filter((x): x is { block: StudyBlock; subject: Subject } => !!x.subject && parseLocalDate(x.block.date) >= todayStart)
+    .sort((a, b) => a.block.date.localeCompare(b.block.date))
+    .slice(0, 6);
+
   const activity = weeklyActivity(studySessions, now);
   const goalHours = 10;
   const doneHours = activity.totalMinutes / 60;
@@ -113,13 +166,13 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
     <section>
       <PageHeader
         title="Study planner"
-        subtitle="Plan your study, stay consistent, ace your exams."
+        subtitle="See every exam date at a glance and block out your own study time."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" disabled title="Auto-planning is coming soon">
-              <Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden /> Auto-plan
+            <Button variant="secondary" size="sm" disabled title="Claude-generated study plans are coming soon">
+              <Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden /> Plan with Claude
             </Button>
-            <Button size="sm" disabled title="Session scheduling is coming soon">
+            <Button size="sm" onClick={() => setAddOpen(true)} disabled={subjects.length === 0}>
               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Add session
             </Button>
           </div>
@@ -138,9 +191,8 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
               </div>
               <h2 className="text-lg font-semibold tracking-tight text-ink">{monthLabel}</h2>
               <div className="flex gap-3 text-xs text-muted">
-                <Legend color="var(--legend-review)" label="Review" style={{ ["--legend-review" as string]: "#7c4dff" }} />
-                <Legend color="#0ea5e9" label="Quiz" />
                 <Legend color="#f59e0b" label="Exam" />
+                <Legend color="#7c4dff" label="Study" />
               </div>
             </div>
 
@@ -165,7 +217,9 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
                 );
               })}
             </div>
-            <p className="mt-3 text-xs text-muted">Suggested sessions are illustrative — session scheduling is coming soon.</p>
+            <p className="mt-3 text-xs text-muted">
+              Exam dates come from your subjects. Study sessions you add are saved on this device only (not yet synced to iOS).
+            </p>
           </div>
 
           {/* Upcoming exams */}
@@ -241,30 +295,134 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
             </div>
           </div>
 
+          {/* Your study sessions — the blocks the learner has added (local to this device). */}
+          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold tracking-tight text-ink">Your study sessions</h2>
+              <Button variant="ghost" size="sm" onClick={() => setAddOpen(true)} disabled={subjects.length === 0}>
+                <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Add
+              </Button>
+            </div>
+            {upcomingBlocks.length === 0 ? (
+              <p className="text-sm text-muted">No study sessions yet. Add one to block out time before an exam.</p>
+            ) : (
+              <ul className="space-y-2">
+                {upcomingBlocks.map(({ block, subject }) => (
+                  <li key={block.id} className="flex items-center gap-3" style={subjectVars(subject.id)}>
+                    <span className="h-2 w-2 flex-none rounded-full bg-[var(--sc-solid)]" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-ink">{subject.name}{block.note ? <span className="font-normal text-muted"> · {block.note}</span> : null}</p>
+                      <p className="text-xs text-muted">{formatDate(block.date)}{block.time ? ` · ${block.time}` : ""}</p>
+                    </div>
+                    <button type="button" onClick={() => removeBlock(block.id)} aria-label="Remove session" className="flex-none rounded-lg p-1.5 text-subtle transition hover:bg-surface-2 hover:text-red-600 dark:hover:text-red-400">
+                      <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/30 p-5 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
-            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden /><h2 className="text-base font-semibold tracking-tight text-ink">AI recommended</h2></div>
-            <ul className="mt-3 space-y-2">
-              {[{ i: Target, t: "Focus on your weakest subject", s: "Lower retention needs attention" }, { i: CalendarDays, t: "Review before your nearest exam", s: "High-impact this week" }, { i: Clock, t: "Take a quiz tomorrow", s: "Strengthen recall" }].map((r, k) => (
-                <li key={k} className="flex items-center gap-3 rounded-lg bg-surface/70 p-2.5">
-                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><r.i className="h-4 w-4" strokeWidth={2} aria-hidden /></span>
-                  <div className="min-w-0"><p className="truncate text-sm font-medium text-ink">{r.t}</p><p className="truncate text-xs text-muted">{r.s}</p></div>
-                </li>
-              ))}
-            </ul>
+            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden /><h2 className="text-base font-semibold tracking-tight text-ink">Plan with Claude</h2></div>
+            <p className="mt-2 text-sm text-ink-2">Soon, Claude will build a study plan across your subjects — weighted by exam dates, your grades, and what&rsquo;s weakest — and drop the sessions straight onto this calendar.</p>
+            <p className="mt-2 text-xs font-medium text-muted">Coming soon</p>
           </div>
         </aside>
       </div>
+
+      <AddSessionModal
+        open={addOpen}
+        subjects={subjects}
+        defaultDate={new Date(now).toISOString().slice(0, 10)}
+        onClose={() => setAddOpen(false)}
+        onAdd={(b) => { addBlock(b); setAddOpen(false); }}
+      />
     </section>
   );
 }
 
-const KIND_COLOR: Record<EventKind, string> = { review: "#7c4dff", quiz: "#0ea5e9", exam: "#f59e0b" };
-function EventPill({ event }: { event: CalEvent }) {
-  const color = event.kind === "exam" ? KIND_COLOR.exam : undefined;
+// Add a local study block. Minimal by design: which subject, which day, optional time + note.
+function AddSessionModal({
+  open,
+  subjects,
+  defaultDate,
+  onClose,
+  onAdd,
+}: {
+  open: boolean;
+  subjects: Subject[];
+  defaultDate: string;
+  onClose: () => void;
+  onAdd: (b: StudyBlock) => void;
+}) {
+  const [subjectId, setSubjectId] = useState("");
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!subjectId) { setError("Pick a subject."); return; }
+    if (!date) { setError("Pick a date."); return; }
+    const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `blk-${Date.now()}`;
+    onAdd({ id, subjectId, date, time, note: note.trim() });
+    setSubjectId("");
+    setTime("");
+    setNote("");
+    setError(null);
+  }
+
   return (
-    <div style={color ? undefined : subjectVars(event.subject.id)} className="flex items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-medium" >
-      <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ backgroundColor: color ?? "var(--sc-solid)" }} />
-      <span className="truncate text-ink-2">{event.kind === "exam" ? event.label : `${event.subject.name} ${KIND_LABEL[event.kind]}`}</span>
+    <Modal open={open} onClose={onClose} title="Add a study session" description="Block out study time before an exam. Saved on this device.">
+      {subjects.length === 0 ? (
+        <EmptyState title="No subjects yet" hint="Create a subject first, then plan study time for it." />
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label htmlFor="sess-subject" className={labelClass}>Subject</label>
+            <div className="relative mt-1.5">
+              <select id="sess-subject" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={cn(selectClass, "mt-0")}>
+                <option value="" disabled>Select a subject…</option>
+                {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <SelectChevron />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="sess-date" className={labelClass}>Date</label>
+              <input id="sess-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="sess-time" className={labelClass}>Time <span className="font-normal text-muted">(optional)</span></label>
+              <input id="sess-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="sess-note" className={labelClass}>Note <span className="font-normal text-muted">(optional)</span></label>
+            <input id="sess-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Chapters 4–6" className={inputClass} />
+          </div>
+          {error ? <ErrorBox message={error} /> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit">Add session</Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+const KIND_COLOR: Record<EventKind, string> = { exam: "#f59e0b", study: "#7c4dff" };
+function EventPill({ event }: { event: CalEvent }) {
+  const color = KIND_COLOR[event.kind];
+  const text = event.kind === "exam" ? event.label : `${event.subject.name}${event.note ? `: ${event.note}` : " study"}`;
+  return (
+    <div className="flex items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-medium" title={text}>
+      <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ backgroundColor: color }} />
+      <span className="truncate text-ink-2">{text}</span>
     </div>
   );
 }

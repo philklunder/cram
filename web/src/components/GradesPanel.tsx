@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 import { Badge, Button, EmptyState, ErrorBox, Panel, cn, inputClass, labelClass } from "@/components/ui";
 import { createGradeEntry, deleteGradeEntry, updateSubject } from "@/lib/api/client";
@@ -15,6 +17,68 @@ import {
   isPassing,
   scaleRange,
 } from "@/lib/grades";
+
+// Read-only grades view for the subject page. The Grades page is the editor (single source of
+// truth); here the learner just sees where they stand, with a link to manage marks.
+export function SubjectGradesSummary({ subject, entries }: { subject: Subject; entries: GradeEntry[] }) {
+  const scale = subject.grading_scale;
+  const current = currentGrade(subject.current_grade, entries);
+  const target = subject.target_grade;
+  const recent = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+
+  return (
+    <div className="space-y-4">
+      <Panel className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted">Current</div>
+            <div className="mt-1">
+              {current == null ? (
+                <span className="text-2xl font-semibold text-subtle">—</span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <span className="text-2xl font-semibold tabular-nums text-ink">{formatGrade(scale, current)}</span>
+                  <Badge tone={isPassing(scale, current) ? "green" : "red"}>{isPassing(scale, current) ? "Pass" : "Fail"}</Badge>
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted">Target</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums text-ink">
+              {target == null ? <span className="text-subtle">—</span> : formatGrade(scale, target)}
+            </div>
+          </div>
+          <Link href="/grades" className="ml-auto">
+            <Button variant="secondary" size="sm">
+              Manage in Grades
+              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+            </Button>
+          </Link>
+        </div>
+
+        {recent.length === 0 ? (
+          <p className="text-sm text-muted">
+            No grades recorded yet. Add real marks in the Grades page — Cram factors them into your study pacing.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {recent.map((e) => (
+              <li key={e.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{e.title}</span>
+                <span className="hidden text-xs text-muted sm:block">{gradeKindLabel[e.kind]}</span>
+                <span className="text-xs text-muted">{formatDate(e.date)}</span>
+                <span className={cn("w-14 flex-none text-right text-sm font-semibold tabular-nums", isPassing(scale, e.score) ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                  {formatGrade(scale, e.score)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
+  );
+}
 
 // The Grades tab: record real-world marks per subject and see the current vs. target picture.
 // Cram uses these grades to focus study time on weaker subjects and to pace toward the target

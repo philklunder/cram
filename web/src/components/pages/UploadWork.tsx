@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlignLeft,
@@ -14,13 +14,15 @@ import {
   X,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/pages/shared";
-import { Button, ErrorBox, cn, inputClass, labelClass } from "@/components/ui";
-import { generateDeck, listSubjects, updateSubject } from "@/lib/api/client";
+import { PageHeader, SelectChevron } from "@/components/pages/shared";
+import { Button, ErrorBox, cn, inputClass, labelClass, selectClass } from "@/components/ui";
+import { generateDeck, listExams, listSubjects, updateSubject } from "@/lib/api/client";
 import type { GeneratedDeck } from "@/lib/api/types";
+import { examsForSubject } from "@/lib/scope";
 import { useAsync } from "@/lib/useAsync";
 
 const ACCEPT = ".pdf,image/jpeg,image/png,image/gif,image/webp";
+const NEW_SUBJECT = "__new__";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,8 +31,10 @@ function formatSize(bytes: number): string {
 }
 
 // AI Decks: upload material, choose a subject + exam target, and let Claude generate a study deck.
-// The generation call is real (POST /v1/generate → flashcards + quiz); the "AI preview" rail shows
-// the pipeline + example output format (illustrative — the backend runs one call, not a live stream).
+// The subject page's "Add material" buttons deep-link here with ?subject=<name>&exam=<id> so the
+// right subject/exam are pre-selected. The generation call is real (POST /v1/generate → flashcards
+// + quiz); the "AI preview" rail shows the pipeline + example output (illustrative — the backend
+// runs one call, not a live stream).
 export function UploadWork({
   demoFiles,
   demoSubject,
@@ -38,9 +42,15 @@ export function UploadWork({
   demoFiles?: { name: string; size: number }[]; // dev/preview only
   demoSubject?: string; // dev/preview only
 }) {
-  const { data: subjects, reload } = useAsync(() => listSubjects(), []);
+  const { data, reload } = useAsync(() => Promise.all([listSubjects(), listExams()]), []);
+  const subjects = data?.[0] ?? [];
+  const exams = data?.[1] ?? [];
+
   const [files, setFiles] = useState<File[]>([]);
-  const [subjectName, setSubjectName] = useState(demoSubject ?? "");
+  // subjectSel is a subject id, or NEW_SUBJECT for a brand-new subject, or "" before a choice.
+  const [subjectSel, setSubjectSel] = useState<string>(demoSubject ? NEW_SUBJECT : "");
+  const [newName, setNewName] = useState(demoSubject ?? "");
+  const [examId, setExamId] = useState<string>(""); // "" = General (no exam)
   const [targetGrade, setTargetGrade] = useState("");
   const [gen, setGen] = useState({ flashcards: true, quiz: true, summary: false });
   const [dragOver, setDragOver] = useState(false);
@@ -49,8 +59,42 @@ export function UploadWork({
   const [deck, setDeck] = useState<GeneratedDeck | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Deep-link pre-fill: ?subject=<name>&exam=<examId>. Runs once, after subjects have loaded, so a
+  // name can be matched to an existing subject (else it seeds a new-subject entry).
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || subjects.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const wantSubject = params.get("subject");
+    const wantExam = params.get("exam");
+    if (!wantSubject) {
+      prefilled.current = true;
+      return;
+    }
+    prefilled.current = true;
+    const match = subjects.find((s) => s.name.toLowerCase() === wantSubject.toLowerCase());
+    if (match) {
+      setSubjectSel(match.id);
+      if (wantExam && exams.some((e) => e.id === wantExam && e.subject_id === match.id)) {
+        setExamId(wantExam);
+      }
+    } else {
+      setSubjectSel(NEW_SUBJECT);
+      setNewName(wantSubject);
+    }
+  }, [subjects, exams]);
+
+  const isNew = subjectSel === NEW_SUBJECT;
+  const selectedSubject = subjects.find((s) => s.id === subjectSel);
+  const subjectExams = useMemo(
+    () => (selectedSubject ? examsForSubject(exams, selectedSubject.id) : []),
+    [exams, selectedSubject],
+  );
+  const subjectName = (isNew ? newName : selectedSubject?.name ?? "").trim();
+  const examToSend = !isNew && examId ? examId : null;
+
   const displayFiles = demoFiles ?? files.map((f) => ({ name: f.name, size: f.size }));
-  const canGenerate = subjectName.trim() !== "" && (files.length > 0 || !!demoFiles);
+  const canGenerate = subjectName !== "" && (files.length > 0 || !!demoFiles);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -60,14 +104,14 @@ export function UploadWork({
 
   async function generate() {
     if (files.length === 0) { setError("Choose at least one PDF or image."); return; }
-    if (subjectName.trim() === "") { setError("Name the subject this material belongs to."); return; }
+    if (subjectName === "") { setError("Pick a subject (or name a new one) for this material."); return; }
     setBusy(true);
     setError(null);
     setDeck(null);
     try {
-      const result = await generateDeck({ subjectName: subjectName.trim(), title: files[0].name, files });
-      // Persist the target grade onto the (possibly new) subject. Exam dates live on exams now and
-      // are set on the subject page — the AI Decks flow just files cards under the subject.
+      const result = await generateDeck({ subjectName, title: files[0].name, files, examId: examToSend });
+      // Persist the target grade onto the (possibly new) subject. Exam dates live on exams and are
+      // set on the subject page — the AI Decks flow just files cards under the subject + chosen exam.
       if (result.subject_id && targetGrade) {
         await updateSubject(result.subject_id, {
           target_grade: Number(targetGrade.replace(",", ".")) || null,
@@ -92,7 +136,7 @@ export function UploadWork({
             AI Decks
           </span>
         }
-        subtitle="Upload your materials and let Claude turn them into a study deck."
+        subtitle="Upload your materials, choose the subject and exam they belong to, and let Claude turn them into a study deck."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -144,14 +188,72 @@ export function UploadWork({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="ad-subject" className={labelClass}>Subject</label>
-                <input id="ad-subject" list="ad-subjects" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="e.g. ABU" autoComplete="off" className={inputClass} />
-                <datalist id="ad-subjects">{(subjects ?? []).map((s) => <option key={s.id} value={s.name} />)}</datalist>
+                <div className="relative mt-1.5">
+                  <select
+                    id="ad-subject"
+                    value={subjectSel}
+                    onChange={(e) => { setSubjectSel(e.target.value); setExamId(""); }}
+                    className={cn(selectClass, "mt-0")}
+                  >
+                    <option value="" disabled>Select a subject…</option>
+                    {subjects.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                    <option value={NEW_SUBJECT}>+ New subject…</option>
+                  </select>
+                  <SelectChevron />
+                </div>
+                {isNew ? (
+                  <input
+                    aria-label="New subject name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Name the new subject — e.g. Biology 101"
+                    autoComplete="off"
+                    className={inputClass}
+                  />
+                ) : null}
               </div>
-              <div>
-                <label htmlFor="ad-target" className={labelClass}>Target grade <span className="font-normal text-muted">(optional)</span></label>
-                <input id="ad-target" inputMode="decimal" value={targetGrade} onChange={(e) => setTargetGrade(e.target.value)} placeholder="e.g. 5.5" className={inputClass} />
-              </div>
+
+              {!isNew && selectedSubject && subjectExams.length > 0 ? (
+                <div>
+                  <label htmlFor="ad-exam" className={labelClass}>Exam</label>
+                  <div className="relative mt-1.5">
+                    <select
+                      id="ad-exam"
+                      value={examId}
+                      onChange={(e) => setExamId(e.target.value)}
+                      className={cn(selectClass, "mt-0")}
+                    >
+                      <option value="">General (no exam)</option>
+                      {subjectExams.map((e) => (
+                        <option key={e.id} value={e.id}>{e.title}</option>
+                      ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="ad-target" className={labelClass}>Target grade <span className="font-normal text-muted">(optional)</span></label>
+                  <input id="ad-target" inputMode="decimal" value={targetGrade} onChange={(e) => setTargetGrade(e.target.value)} placeholder="e.g. 5.5" className={inputClass} />
+                </div>
+              )}
             </div>
+
+            {/* When the exam picker took the second column, target grade moves to its own row. */}
+            {!isNew && selectedSubject && subjectExams.length > 0 ? (
+              <div className="mt-4 sm:max-w-[calc(50%-0.5rem)]">
+                <label htmlFor="ad-target-2" className={labelClass}>Target grade <span className="font-normal text-muted">(optional)</span></label>
+                <input id="ad-target-2" inputMode="decimal" value={targetGrade} onChange={(e) => setTargetGrade(e.target.value)} placeholder="e.g. 5.5" className={inputClass} />
+              </div>
+            ) : null}
+
+            {!isNew && selectedSubject && subjectExams.length === 0 ? (
+              <p className="mt-3 text-xs text-muted">
+                No exams in {selectedSubject.name} yet — this deck files under “General”. Create exams on the subject page to target one.
+              </p>
+            ) : null}
 
             <p className="mb-2 mt-5 text-sm font-medium text-ink-2">What should Claude generate?</p>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -175,7 +277,12 @@ export function UploadWork({
                 <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-green-500 text-white"><Check className="h-4 w-4" strokeWidth={3} aria-hidden /></span>
                 <p className="text-sm font-medium text-green-800 dark:text-green-200">Generated {deck.cards.length} cards and {deck.questions.length} questions from “{deck.source_title}”. Saved to your account.</p>
               </div>
-              <Link href="/flashcards" className="mt-3 inline-block"><Button size="sm" variant="secondary">Open deck <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden /></Button></Link>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {deck.subject_id ? (
+                  <Link href={`/subjects/${deck.subject_id}`}><Button size="sm" variant="secondary">Open subject <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden /></Button></Link>
+                ) : null}
+                <Link href="/flashcards"><Button size="sm" variant="secondary">Browse flashcards</Button></Link>
+              </div>
             </div>
           ) : null}
         </div>
