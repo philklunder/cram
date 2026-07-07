@@ -30,11 +30,14 @@ def persist_generation(
     kind: str,
     files: list[UploadedFile],
     deck: dict,
+    exam_id: uuid.UUID | None = None,
 ) -> dict:
     """Persist a generated deck and its source, returning ``deck`` enriched with the
     created row ids (so the client can sync immediately). Find-or-creates the subject by
     name; uploads the source files to Storage (when configured) before recording the
-    ``storage_paths`` on the source row."""
+    ``storage_paths`` on the source row. When ``exam_id`` is given the deck's cards and quiz
+    are filed under that exam (its ownership is validated by the repository parent check);
+    otherwise they land in the subject's unsorted "General" bucket."""
     subject = repo.find_first(Subject, name=subject_name)
     if subject is None:
         subject = repo.create(Subject, {"name": subject_name})
@@ -74,6 +77,7 @@ def persist_generation(
                 Card,
                 {
                     "subject_id": subject.id,
+                    "exam_id": exam_id,
                     "source_id": source.id,
                     "front": c["front"],
                     "back": c["back"],
@@ -83,7 +87,7 @@ def persist_generation(
             )
         )
 
-    quiz = repo.create(Quiz, {"subject_id": subject.id, "title": title})
+    quiz = repo.create(Quiz, {"subject_id": subject.id, "exam_id": exam_id, "title": title})
     question_rows = []
     for q in deck.get("questions", []):
         question_rows.append(
@@ -103,6 +107,7 @@ def persist_generation(
     # Enrich the response with the persisted ids (deck shape is otherwise unchanged).
     enriched = dict(deck)
     enriched["subject_id"] = str(subject.id)
+    enriched["exam_id"] = str(exam_id) if exam_id is not None else None
     enriched["source_id"] = str(source.id)
     enriched["quiz_id"] = str(quiz.id)
     enriched["cards"] = [

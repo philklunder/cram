@@ -13,9 +13,13 @@ const ACCEPT = ".pdf,image/jpeg,image/png,image/gif,image/webp";
 export function GenerateMaterialForm({
   subjectName,
   onGenerated,
+  hideHeader = false,
+  examId = null,
 }: {
   subjectName: string;
   onGenerated?: () => void;
+  hideHeader?: boolean; // the embedding modal already shows a title/description
+  examId?: string | null; // file the generated deck under this exam (else "General")
 }) {
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -33,7 +37,7 @@ export function GenerateMaterialForm({
     setError(null);
     setDeck(null);
     try {
-      const result = await generateDeck({ subjectName, title: title || files[0].name, files });
+      const result = await generateDeck({ subjectName, title: title || files[0].name, files, examId });
       setDeck(result);
       setTitle("");
       setFiles([]);
@@ -47,12 +51,14 @@ export function GenerateMaterialForm({
 
   return (
     <div className="space-y-5">
-      <div>
-        <h3 className="text-base font-semibold text-ink">Add material</h3>
-        <p className="mt-0.5 text-sm text-muted">
-          Upload a PDF or photos — Cram generates flashcards and a quiz from them.
-        </p>
-      </div>
+      {hideHeader ? null : (
+        <div>
+          <h3 className="text-base font-semibold text-ink">Add material</h3>
+          <p className="mt-0.5 text-sm text-muted">
+            Upload a PDF or photos — Cram generates flashcards and a quiz from them.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-4">
         <div>

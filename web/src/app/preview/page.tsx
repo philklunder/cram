@@ -7,11 +7,11 @@ import { notFound } from "next/navigation";
 
 import { GradesPanel } from "@/components/GradesPanel";
 import { ProgressPanel } from "@/components/ProgressPanel";
-import { Hero } from "@/components/SubjectDetail";
+import { ExamSection, SubjectHero } from "@/components/SubjectDetail";
 import { SubjectCard } from "@/components/SubjectsList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { subjectVars } from "@/lib/subjectColor";
-import type { Card, GradeEntry, GradingScale, Subject } from "@/lib/api/types";
+import type { Card, Exam, GradeEntry, GradingScale, Subject } from "@/lib/api/types";
 
 function mockSubject(
   i: number,
@@ -55,6 +55,7 @@ function mockCard(i: number, reps: number, intervalDays: number, dueOffsetDays: 
     updated_at: ISO,
     deleted_at: null,
     subject_id: "mock-0-Organic Chemistry",
+    exam_id: null,
     source_id: null,
     front: `Card ${i}`,
     back: "…",
@@ -91,6 +92,18 @@ function mockGrade(i: number, title: string, kind: GradeEntry["kind"], score: nu
   };
 }
 
+function mockExam(id: string, title: string, inDays: number): Exam {
+  return {
+    id,
+    created_at: ISO,
+    updated_at: ISO,
+    deleted_at: null,
+    subject_id: SUBJECTS[0].id,
+    title,
+    exam_date: new Date(NOW + inDays * 86_400_000).toISOString(),
+  };
+}
+
 const MOCK_GRADES: GradeEntry[] = [
   mockGrade(0, "Midterm", "exam", 2.0, 0.4, 20),
   mockGrade(1, "Case brief", "assignment", 2.7, 0.3, 40),
@@ -107,7 +120,7 @@ export default function PreviewPage() {
           <header>
             <h1 className="text-3xl font-bold tracking-tight text-ink">Subjects</h1>
             <p className="mt-2 max-w-prose text-[0.95rem] text-ink-2">
-              Your courses, ordered by the nearest exam.
+              Your courses. Open one to study it, add material, or track grades.
             </p>
             <dl className="mt-6 flex flex-wrap items-stretch gap-x-8 gap-y-4">
               <div>
@@ -115,17 +128,14 @@ export default function PreviewPage() {
                 <dd className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{SUBJECTS.length}</dd>
               </div>
               <div className="border-l border-line pl-8">
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Next exam</dt>
-                <dd className="mt-0.5 flex items-baseline gap-2 text-sm">
-                  <span className="max-w-[16ch] truncate font-semibold text-ink">Organic Chemistry</span>
-                  <span className="tabular-nums text-muted">in 2 days</span>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Due now</dt>
+                <dd className="mt-0.5 inline-flex items-center gap-2 text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                  <span aria-hidden className="h-2 w-2 rounded-full bg-amber-500" />24
                 </dd>
               </div>
               <div className="border-l border-line pl-8">
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Within 3 days</dt>
-                <dd className="mt-0.5 inline-flex items-center gap-2 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
-                  <span aria-hidden className="h-2 w-2 rounded-full bg-red-500" />1
-                </dd>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted">Mastery</dt>
+                <dd className="mt-0.5 text-2xl font-bold tabular-nums text-ink">43%</dd>
               </div>
             </dl>
           </header>
@@ -134,7 +144,7 @@ export default function PreviewPage() {
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {SUBJECTS.map((s, i) => (
-            <SubjectCard key={s.id} subject={s} index={i} />
+            <SubjectCard key={s.id} subject={s} cards={i === 0 ? MOCK_CARDS : []} index={i} />
           ))}
         </div>
 
@@ -143,10 +153,45 @@ export default function PreviewPage() {
             Preview · subject detail hero
           </span>
           <div style={subjectVars(SUBJECTS[0].id)}>
-            <Hero subject={SUBJECTS[0]} cards={mockArr(42)} quizzes={mockArr(3)} sources={mockArr(5)} due={7} />
+            <SubjectHero subject={SUBJECTS[0]} cards={MOCK_CARDS} />
           </div>
           <div className="mt-4" style={subjectVars(SUBJECTS[2].id)}>
-            <Hero subject={SUBJECTS[2]} cards={mockArr(18)} quizzes={mockArr(1)} sources={mockArr(2)} due={0} />
+            <SubjectHero subject={SUBJECTS[2]} cards={[]} />
+          </div>
+        </div>
+
+        <div className="mt-12" style={subjectVars(SUBJECTS[0].id)}>
+          <span className="mb-4 block text-xs font-medium uppercase tracking-wide text-subtle">
+            Preview · subject exams (one expanded)
+          </span>
+          <div className="border-b border-line">
+            <ExamSection
+              exam={mockExam("ex-1", "Midterm — Chapters 1–4", 5)}
+              cards={MOCK_CARDS.slice(0, 20)}
+              quizzes={[]}
+              questions={[]}
+              onStudy={() => {}}
+              onAddMaterial={() => {}}
+              onEdit={() => {}}
+              defaultOpen
+            />
+            <ExamSection
+              exam={mockExam("ex-2", "Final exam", 24)}
+              cards={MOCK_CARDS.slice(20, 32)}
+              quizzes={[]}
+              questions={[]}
+              onStudy={() => {}}
+              onAddMaterial={() => {}}
+              onEdit={() => {}}
+            />
+            <ExamSection
+              exam={null}
+              cards={MOCK_CARDS.slice(32)}
+              quizzes={[]}
+              questions={[]}
+              onStudy={() => {}}
+              onAddMaterial={() => {}}
+            />
           </div>
         </div>
 
@@ -166,9 +211,4 @@ export default function PreviewPage() {
       </div>
     </div>
   );
-}
-
-// Cheap length-only stand-ins — Hero only reads `.length` off these arrays.
-function mockArr(n: number): never[] {
-  return Array.from({ length: n }) as never[];
 }

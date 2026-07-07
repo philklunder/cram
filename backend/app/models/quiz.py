@@ -20,6 +20,7 @@ from .enums import QuestionKind, checked_text_enum
 from .mixins import OwnedMixin, SyncMixin, TimestampMixin, UUIDPkMixin
 
 if TYPE_CHECKING:
+    from .exam import Exam
     from .subject import Subject
 
 
@@ -29,9 +30,15 @@ class Quiz(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
     subject_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # The exam this quiz belongs to (a generated deck's quiz follows its cards). Nullable —
+    # an unassigned quiz belongs to the subject's "General" bucket; ON DELETE SET NULL.
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
 
     subject: Mapped["Subject"] = relationship(back_populates="quizzes")
+    exam: Mapped["Exam | None"] = relationship(back_populates="quizzes")
     questions: Mapped[list["Question"]] = relationship(
         back_populates="quiz", cascade="all, delete-orphan", passive_deletes=True
     )

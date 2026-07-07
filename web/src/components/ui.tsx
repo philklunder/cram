@@ -87,6 +87,9 @@ export function Button({
 export const labelClass = "block text-sm font-medium text-ink-2";
 export const inputClass =
   "mt-1.5 w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink shadow-sm transition duration-200 placeholder:text-subtle hover:border-line-strong focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15";
+// Native <select> styled to match inputClass. The platform arrow is hidden via appearance-none so
+// callers can overlay a matching chevron (see SelectField); `pr-10` reserves room for it.
+export const selectClass = cn(inputClass, "cursor-pointer appearance-none pr-10");
 
 // --- Spinner / loaders -----------------------------------------------------------------
 

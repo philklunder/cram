@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..db import Base
 from .card import Card
 from .enums import GradeKind, GradingScale, QuestionKind, SourceKind, StudyKind
+from .exam import Exam
 from .grade_entry import GradeEntry
 from .internal import AiCallKind, AiUsageEvent, RateLimitBucket
 from .quiz import Attempt, Question, Quiz
@@ -21,6 +22,7 @@ from .subject import Subject
 __all__ = [
     "Base",
     "Subject",
+    "Exam",
     "Source",
     "Card",
     "Quiz",

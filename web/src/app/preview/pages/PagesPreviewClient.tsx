@@ -55,6 +55,7 @@ function card(subjectId: string, topic: string, front: string, back: string, sha
     updated_at: iso(NOW),
     deleted_at: null,
     subject_id: subjectId,
+    exam_id: null,
     source_id: null,
     front,
     back,
@@ -80,7 +81,7 @@ const CARDS: Card[] = [
 ];
 
 function quiz(id: string, subjectId: string, title: string): Quiz {
-  return { id, created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: subjectId, title };
+  return { id, created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: subjectId, exam_id: null, title };
 }
 const QUIZZES: Quiz[] = [
   quiz("qz-abu", "s-abu", "ABU — Recht & Staat"),

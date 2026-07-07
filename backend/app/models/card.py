@@ -18,6 +18,7 @@ from ..db import Base
 from .mixins import OwnedMixin, SyncMixin, UUIDPkMixin
 
 if TYPE_CHECKING:
+    from .exam import Exam
     from .review_log import ReviewLog
     from .source import Source
     from .subject import Subject
@@ -28,6 +29,11 @@ class Card(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
 
     subject_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # The exam this card is studied for. Nullable — an unassigned card belongs to the
+    # subject's "General" bucket; a card outlives its exam (ON DELETE SET NULL).
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Cards outlive the source they came from; null the link rather than delete the card.
     source_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -50,6 +56,7 @@ class Card(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
     )
 
     subject: Mapped["Subject"] = relationship(back_populates="cards")
+    exam: Mapped["Exam | None"] = relationship(back_populates="cards")
     source: Mapped["Source | None"] = relationship(back_populates="cards")
     review_logs: Mapped[list["ReviewLog"]] = relationship(
         back_populates="card", cascade="all, delete-orphan", passive_deletes=True

@@ -21,8 +21,18 @@ const statusTone: Record<TrackStatus, "green" | "amber" | "neutral"> = {
 };
 
 // Progress overview for one subject: mastery breakdown, due-now count, exam countdown, and a
-// simple on-track readout (see lib/progress.ts for the exact rules).
-export function ProgressPanel({ subject, cards }: { subject: Subject; cards: Card[] }) {
+// simple on-track readout (see lib/progress.ts for the exact rules). `hideStatus` drops the top
+// status/countdown row when the surrounding page already conveys that (e.g. the subject overview,
+// which has its own study band) — leaving just the metric breakdown and mastery bar.
+export function ProgressPanel({
+  subject,
+  cards,
+  hideStatus = false,
+}: {
+  subject: Subject;
+  cards: Card[];
+  hideStatus?: boolean;
+}) {
   const p = computeProgress(cards);
   const days = daysUntil(subject.exam_date);
   const pct = (n: number) => (p.total === 0 ? 0 : (n / p.total) * 100);
@@ -37,15 +47,17 @@ export function ProgressPanel({ subject, cards }: { subject: Subject; cards: Car
 
   return (
     <div className="space-y-6">
-      <div className="animate-fade-up flex flex-wrap items-center gap-3">
-        <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
-        <span className="text-sm text-muted">{formatCountdown(days)}</span>
-        {p.dueNow > 0 ? (
-          <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
-            {p.dueNow} {p.dueNow === 1 ? "card" : "cards"} due now
-          </span>
-        ) : null}
-      </div>
+      {hideStatus ? null : (
+        <div className="animate-fade-up flex flex-wrap items-center gap-3">
+          <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
+          <span className="text-sm text-muted">{formatCountdown(days)}</span>
+          {p.dueNow > 0 ? (
+            <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              {p.dueNow} {p.dueNow === 1 ? "card" : "cards"} due now
+            </span>
+          ) : null}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric value={p.total} label="Total cards" dotClass="bg-line-strong" delay={0} />

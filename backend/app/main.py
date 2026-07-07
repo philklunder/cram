@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import uuid
 
 from dotenv import load_dotenv
 
@@ -108,6 +109,7 @@ async def generate(
     subject_name: str = Form(...),
     title: str = Form(...),
     kind: str = Form(...),
+    exam_id: str | None = Form(default=None),
     files: list[UploadFile] = File(...),
     repo: OwnedRepository = Depends(get_repo),
     storage: Storage | None = Depends(storage_dependency),
@@ -122,6 +124,15 @@ async def generate(
             raise HTTPException(status_code=413, detail=f"Field '{name}' is too long.")
     if kind not in ("pdf", "photo"):
         raise HTTPException(status_code=422, detail="Field 'kind' must be 'pdf' or 'photo'.")
+
+    # Optional target exam. Parse here so a malformed id is a clean 422, not a 500 deep in
+    # persistence; ownership of the exam is enforced by the repository parent check.
+    exam_uuid: uuid.UUID | None = None
+    if exam_id not in (None, ""):
+        try:
+            exam_uuid = uuid.UUID(exam_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Field 'exam_id' must be a UUID.") from None
 
     if len(files) > settings.max_files:
         raise HTTPException(status_code=413, detail=f"Too many files (max {settings.max_files}).")
@@ -175,6 +186,7 @@ async def generate(
     enriched = persist_generation(
         repo, storage,
         subject_name=subject_name, title=title, kind=kind, files=uploads, deck=deck,
+        exam_id=exam_uuid,
     )
     repo.session.commit()
     return enriched
