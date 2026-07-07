@@ -11,6 +11,7 @@ import type { DashboardData } from "@/lib/api/client";
 import type {
   Attempt,
   Card,
+  Exam,
   GradeEntry,
   Question,
   Quiz,
@@ -28,14 +29,13 @@ const startOfDay = (ms: number) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 
-function subject(id: string, name: string, examInDays: number | null, scale: Subject["grading_scale"], target: number | null): Subject {
+function subject(id: string, name: string, scale: Subject["grading_scale"], target: number | null): Subject {
   return {
     id,
     created_at: iso(NOW),
     updated_at: iso(NOW),
     deleted_at: null,
     name,
-    exam_date: examInDays === null ? null : iso(NOW + examInDays * DAY),
     grading_scale: scale,
     target_grade: target,
     current_grade: null,
@@ -43,9 +43,15 @@ function subject(id: string, name: string, examInDays: number | null, scale: Sub
 }
 
 const SUBJECTS: Subject[] = [
-  subject("s-abu", "ABU", 8, "swiss", 5.5),
-  subject("s-kripo", "Kripo", null, "swiss", null),
-  subject("s-recht", "Strafrecht", 3, "german", 1.7),
+  subject("s-abu", "ABU", "swiss", 5.5),
+  subject("s-kripo", "Kripo", "swiss", null),
+  subject("s-recht", "Strafrecht", "german", 1.7),
+];
+
+// Exam dates live on exams now. Kripo has none (its countdown shows "No exam").
+const EXAMS: Exam[] = [
+  { id: "ex-abu", created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: "s-abu", title: "ABU final", exam_date: iso(NOW + 8 * DAY) },
+  { id: "ex-recht", created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: "s-recht", title: "Strafrecht AT exam", exam_date: iso(NOW + 3 * DAY) },
 ];
 
 type CardShape = "mastered" | "learning" | "due";
@@ -182,6 +188,7 @@ const GRADES: GradeEntry[] = [];
 
 const DATA: DashboardData = {
   subjects: SUBJECTS,
+  exams: EXAMS,
   cards: CARDS,
   quizzes: QUIZZES,
   questions: QUESTIONS,

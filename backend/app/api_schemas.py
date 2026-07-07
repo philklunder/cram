@@ -71,7 +71,6 @@ class _AppendRead(_Read):
 
 class SubjectRead(_SyncRead):
     name: str
-    exam_date: datetime | None = None
     grading_scale: GradingScale
     target_grade: float | None = None
     current_grade: float | None = None
@@ -80,7 +79,6 @@ class SubjectRead(_SyncRead):
 class SubjectCreate(BaseModel):
     id: uuid.UUID | None = None
     name: str
-    exam_date: datetime | None = None
     grading_scale: GradingScale = GradingScale.german
     target_grade: float | None = None
     current_grade: float | None = None
@@ -88,7 +86,6 @@ class SubjectCreate(BaseModel):
 
 class SubjectUpdate(BaseModel):
     name: str | None = None
-    exam_date: datetime | None = None
     grading_scale: GradingScale | None = None
     target_grade: float | None = None
     current_grade: float | None = None

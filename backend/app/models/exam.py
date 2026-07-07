@@ -33,7 +33,8 @@ class Exam(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
         ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
-    # Optional target date; like Subject.exam_date it is a timestamp, not a SQL date.
+    # Optional target date (iOS maps this to a `Date`), so timestamptz, not a SQL date. This is the
+    # only exam-date column now — the subject no longer carries one (migration 0006).
     exam_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     subject: Mapped["Subject"] = relationship(back_populates="exams")

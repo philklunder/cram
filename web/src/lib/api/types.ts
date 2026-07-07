@@ -17,7 +17,6 @@ export interface SyncRow {
 
 export interface Subject extends SyncRow {
   name: string;
-  exam_date: string | null;
   grading_scale: GradingScale;
   target_grade: number | null;
   current_grade: number | null;
@@ -104,7 +103,6 @@ export interface GradeEntryCreate {
 // PATCH /v1/subjects/{id} body (SubjectUpdate). Every field optional; only sent fields change.
 export interface SubjectUpdate {
   name?: string;
-  exam_date?: string | null;
   grading_scale?: GradingScale;
   target_grade?: number | null;
   current_grade?: number | null;

@@ -17,13 +17,14 @@ import {
 import { PageHeader } from "@/components/pages/shared";
 import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
-import type { GradeEntry, GradingScale, StudySession, Subject } from "@/lib/api/types";
+import type { Exam, GradeEntry, GradingScale, StudySession, Subject } from "@/lib/api/types";
 import {
   activityHeatmap,
   computeStreak,
   formatMinutes,
   masteryBuckets,
   nearestExam,
+  subjectExamDate,
 } from "@/lib/dashboard";
 import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
 import {
@@ -40,6 +41,7 @@ import { useDisplayScale } from "@/lib/useDisplayScale";
 
 interface ProgressData {
   subjects: Subject[];
+  exams: Exam[];
   cards: DashboardData["cards"];
   gradeEntries: GradeEntry[];
   reviewLogs: DashboardData["reviewLogs"];
@@ -64,14 +66,14 @@ function trendPoints(entries: GradeEntry[], scaleOf: Map<string, Subject["gradin
 }
 
 export function ProgressOverviewView({ data, now = Date.now() }: { data: ProgressData; now?: number }) {
-  const { subjects, cards, gradeEntries, reviewLogs, studySessions } = data;
+  const { subjects, exams, cards, gradeEntries, reviewLogs, studySessions } = data;
   const displayScale = useDisplayScale();
   const scaleOf = useMemo(() => new Map(subjects.map((s) => [s.id, s.grading_scale] as const)), [subjects]);
 
   const streak = computeStreak(reviewLogs, now);
   const buckets = masteryBuckets(cards);
   const readiness = readinessScore(cards);
-  const exam = nearestExam(subjects);
+  const exam = nearestExam(subjects, exams);
 
   const allPoints = useMemo(() => trendPoints(gradeEntries, scaleOf), [gradeEntries, scaleOf]);
   const currentAvg = allPoints.length ? Math.round(allPoints.reduce((s, p) => s + p.pct, 0) / allPoints.length) : null;
@@ -342,7 +344,7 @@ function SubjectPerfCard({ subject, data, now, displayScale }: { subject: Subjec
   }
   let weak = 0;
   for (const [, arr] of topics) if (computeProgress(arr).masteredPct < 50) weak++;
-  const days = daysUntil(subject.exam_date);
+  const days = daysUntil(subjectExamDate(subject.id, data.exams));
   const spark = entries.map((e) => gradePercent(subject.grading_scale, e.score));
 
   return (
@@ -428,7 +430,7 @@ function UpcomingExam({ exam, readiness }: { exam: ReturnType<typeof nearestExam
             </span>
             <div className="min-w-0">
               <p className="truncate font-semibold text-ink">{exam.subject.name}</p>
-              <p className="text-xs text-muted">{formatDate(exam.subject.exam_date)}</p>
+              <p className="text-xs text-muted">{formatDate(exam.examDate)}</p>
             </div>
           </div>
           <div className="mt-4 flex items-center gap-4">

@@ -7,14 +7,15 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clock, Plus, Sparkles, Target 
 import { PageHeader } from "@/components/pages/shared";
 import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
-import type { StudySession, Subject } from "@/lib/api/types";
-import { masteryBuckets, weeklyActivity } from "@/lib/dashboard";
+import type { Exam, StudySession, Subject } from "@/lib/api/types";
+import { masteryBuckets, subjectExamDate, weeklyActivity } from "@/lib/dashboard";
 import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
 
 interface PlannerData {
   subjects: Subject[];
+  exams: Exam[];
   cards: DashboardData["cards"];
   studySessions: StudySession[];
 }
@@ -39,23 +40,30 @@ function dayKey(ts: number) {
 
 // Illustrative plan: real exam events on their dates, plus deterministic suggested review/quiz
 // sessions across the month (no scheduling backend yet — these are suggestions, flagged in the UI).
-function buildEvents(subjects: Subject[], monthStart: number): Map<string, CalEvent[]> {
+function buildEvents(subjects: Subject[], exams: Exam[], monthStart: number): Map<string, CalEvent[]> {
   const map = new Map<string, CalEvent[]>();
   const push = (ts: number, e: CalEvent) => {
     const k = dayKey(ts);
     map.set(k, [...(map.get(k) ?? []), e]);
   };
-  const month = new Date(monthStart).getMonth();
+  const view = new Date(monthStart);
+  const month = view.getMonth();
+  const year = view.getFullYear();
+  const subjectById = new Map(subjects.map((s) => [s.id, s] as const));
 
-  subjects.forEach((subject, si) => {
-    // Real exam event.
-    if (subject.exam_date) {
-      const ed = new Date(subject.exam_date);
-      if (ed.getMonth() === month && ed.getFullYear() === new Date(monthStart).getFullYear()) {
-        push(startOfLocalDay(ed.getTime()), { subject, kind: "exam", label: `${subject.name} exam`, time: "All day" });
-      }
+  // Real exam events — a subject can have several exams, each on its own date.
+  for (const exam of exams) {
+    if (!exam.exam_date) continue;
+    const subject = subjectById.get(exam.subject_id);
+    if (!subject) continue;
+    const ed = new Date(exam.exam_date);
+    if (ed.getMonth() === month && ed.getFullYear() === year) {
+      push(startOfLocalDay(ed.getTime()), { subject, kind: "exam", label: `${subject.name}: ${exam.title}`, time: "All day" });
     }
-    // Suggested sessions ~ every 6 days, alternating review/quiz, at staggered times.
+  }
+
+  // Suggested sessions ~ every 6 days, alternating review/quiz, at staggered times.
+  subjects.forEach((subject, si) => {
     for (let d = 2 + si; d < 28; d += 6) {
       const ts = monthStart + d * DAY_MS;
       const kind: EventKind = d % 12 < 6 ? "review" : "quiz";
@@ -67,12 +75,12 @@ function buildEvents(subjects: Subject[], monthStart: number): Map<string, CalEv
 
 const KIND_LABEL: Record<EventKind, string> = { review: "Review", quiz: "Quiz", exam: "Exam" };
 
-export function CalendarPlanner({ subjects, cards, studySessions, now = Date.now() }: PlannerData & { now?: number }) {
+export function CalendarPlanner({ subjects, exams, cards, studySessions, now = Date.now() }: PlannerData & { now?: number }) {
   const today = new Date(now);
   const [view, setView] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
   const monthStart = view.getTime();
-  const events = useMemo(() => buildEvents(subjects, monthStart), [subjects, monthStart]);
+  const events = useMemo(() => buildEvents(subjects, exams, monthStart), [subjects, exams, monthStart]);
 
   // Build the 6×7 Monday-first grid for the visible month.
   const firstDow = (new Date(monthStart).getDay() + 6) % 7; // Mon=0
@@ -85,7 +93,10 @@ export function CalendarPlanner({ subjects, cards, studySessions, now = Date.now
 
   const monthLabel = view.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const upcoming = subjects
-    .map((s) => ({ s, days: daysUntil(s.exam_date) }))
+    .map((s) => {
+      const examDate = subjectExamDate(s.id, exams);
+      return { s, examDate, days: daysUntil(examDate) };
+    })
     .filter((x) => x.days != null && x.days >= 0)
     .sort((a, b) => (a.days as number) - (b.days as number))
     .slice(0, 4);
@@ -162,14 +173,14 @@ export function CalendarPlanner({ subjects, cards, studySessions, now = Date.now
             <div>
               <h2 className="mb-3 text-lg font-semibold tracking-tight text-ink">Upcoming exams</h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {upcoming.map(({ s, days }) => {
+                {upcoming.map(({ s, days, examDate }) => {
                   const readiness = masteryBuckets(cards.filter((c) => c.subject_id === s.id)).masteredPct;
                   return (
                     <Link key={s.id} href={`/subjects/${s.id}`} style={subjectVars(s.id)} className="rounded-xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <span aria-hidden className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">{subjectInitials(s.name)}</span>
-                          <div><p className="font-semibold text-ink">{s.name} exam</p><p className="text-xs text-muted">{formatDate(s.exam_date)}</p></div>
+                          <div><p className="font-semibold text-ink">{s.name} exam</p><p className="text-xs text-muted">{formatDate(examDate)}</p></div>
                         </div>
                         <div className="text-right"><p className={cn("text-lg font-bold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-ink")}>{days}</p><p className="text-[10px] uppercase text-muted">days left</p></div>
                       </div>
@@ -284,5 +295,5 @@ export function CalendarPlannerPage() {
   }
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
-  return <CalendarPlanner subjects={data.subjects} cards={data.cards} studySessions={data.studySessions} />;
+  return <CalendarPlanner subjects={data.subjects} exams={data.exams} cards={data.cards} studySessions={data.studySessions} />;
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Badge, cn } from "@/components/ui";
-import type { Card, Subject } from "@/lib/api/types";
+import type { Card } from "@/lib/api/types";
 import { daysUntil, formatCountdown } from "@/lib/format";
 import { computeProgress, type TrackStatus } from "@/lib/progress";
 import { useCountUp } from "@/lib/useCountUp";
@@ -23,18 +23,19 @@ const statusTone: Record<TrackStatus, "green" | "amber" | "neutral"> = {
 // Progress overview for one subject: mastery breakdown, due-now count, exam countdown, and a
 // simple on-track readout (see lib/progress.ts for the exact rules). `hideStatus` drops the top
 // status/countdown row when the surrounding page already conveys that (e.g. the subject overview,
-// which has its own study band) — leaving just the metric breakdown and mastery bar.
+// which has its own study band) — leaving just the metric breakdown and mastery bar. `examDate` is
+// the subject's soonest upcoming exam (derived from its exams); only used for the countdown row.
 export function ProgressPanel({
-  subject,
+  examDate = null,
   cards,
   hideStatus = false,
 }: {
-  subject: Subject;
+  examDate?: string | null;
   cards: Card[];
   hideStatus?: boolean;
 }) {
   const p = computeProgress(cards);
-  const days = daysUntil(subject.exam_date);
+  const days = daysUntil(examDate);
   const pct = (n: number) => (p.total === 0 ? 0 : (n / p.total) * 100);
   const masteredPct = useCountUp(p.masteredPct);
 

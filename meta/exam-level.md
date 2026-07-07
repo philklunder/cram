@@ -32,6 +32,15 @@ the cards (and generated quiz) studied for one assessment and carries its own op
 - **Migration `0005_exams`** follows the Supabase-specific pattern of `0002`/`0004`: raw-SQL
   `auth.users` FK + RLS policy, and a documented autogenerate-drift note (autogenerate wants to DROP
   the cross-schema `fk_exams_user` — always discard that diff).
+- **`subject.exam_date` retired (2026-07-07, migration `0006`).** The pre-existing per-subject exam
+  date is dropped now that exams carry their own — it couldn't express more than one exam and
+  duplicated the authoritative per-exam date. Removed from the `subjects` column, `SubjectRead/
+  Create/Update`, and the web `Subject`/`SubjectUpdate` types + `createSubject`. The web now derives
+  a subject-level countdown from the subject's **soonest upcoming exam** (`subjectExamDate()` /
+  `nearestExam(subjects, exams)` in `lib/dashboard.ts`); `loadDashboard` fetches `exams` so the
+  dashboard/calendar/review/progress surfaces can compute it. The AI-Decks upload form dropped its
+  "Exam date" input (exams are dated on the subject page). Review-session SM-2 compression now uses
+  each **card's own exam** date (`card.exam_id → exam.exam_date`), not a subject-wide date.
 - **Web: a reusable accessible `Modal` primitive** (`components/Modal.tsx`) — `position: fixed`,
   Escape/backdrop close, body-scroll lock, focus-move, `motion` enter/exit, reduced-motion aware.
   Built once, then used by new **`ExamFormModal`** and **`SubjectFormModal`** (create/edit with an
@@ -66,6 +75,12 @@ the cards (and generated quiz) studied for one assessment and carries its own op
 - The **iOS** client (Phase 5) must add a matching `Exam @Model`, the `exams` resource to its sync
   push/pull set, and the nullable `exam_id` on Card/Quiz — see [[ios-sync-client]]. The backend
   contract is already in place and green.
+- **iOS still references `Subject.examDate`** (model + `daysUntilExam`, sync DTOs, `SyncService`, and
+  the exam-compression path in `Scheduler.swift`). This retire was **backend + web only** (a
+  deliberate scope call — iOS builds/tests on a Mac and has no `Exam` model yet). After migration
+  `0006` the backend neither stores nor returns `subjects.exam_date`, so iOS's `examDate` is now a
+  **dead field** (never persisted; decodes to `nil` on pull). Phase 5 must, on the Mac, drop
+  `Subject.examDate` and move iOS exam compression onto the new `Exam` model to match the contract.
 - Exam-scoped countdown + SM-2 exam compression can now be built against `exam.exam_date` on either
   client without further backend work.
 - Any future "list cards for exam X" view filters client-side on `exam_id` over the existing delta
@@ -73,8 +88,9 @@ the cards (and generated quiz) studied for one assessment and carries its own op
   [[web-dashboard]]).
 
 ## Open questions
-- Should `subject.exam_date` (the pre-existing per-subject date) be retired now that exams carry
-  their own date, or kept as a subject-wide default? Currently both exist.
+- ~~Should `subject.exam_date` be retired now that exams carry their own date?~~ **Resolved
+  2026-07-07:** retired on backend + web (migration `0006`); iOS reconciliation deferred to Phase 5
+  (see Implications).
 - No UI yet for *moving* an existing card between exams / into "General" (the FK supports it via
   `PATCH /v1/cards {exam_id}`; the surface isn't built).
 - Exam-mode SM-2 compression is described in the contract (per-exam `exam_date`) but the scheduler

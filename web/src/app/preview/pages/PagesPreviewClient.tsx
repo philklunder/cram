@@ -18,7 +18,8 @@ import { ReviewHubView } from "@/components/pages/ReviewHub";
 import { SettingsView } from "@/components/pages/SettingsView";
 import { UploadWork } from "@/components/pages/UploadWork";
 import type { LibraryData } from "@/lib/api/client";
-import type { Card, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
+import type { Card, Exam, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
+import { subjectExamDate } from "@/lib/dashboard";
 import { setDisplayScale } from "@/lib/useDisplayScale";
 
 const NOW = Date.now();
@@ -26,14 +27,13 @@ const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const iso = (ms: number) => new Date(ms).toISOString();
 
-function subject(id: string, name: string, examInDays: number | null, scale: GradingScale): Subject {
+function subject(id: string, name: string, scale: GradingScale): Subject {
   return {
     id,
     created_at: iso(NOW),
     updated_at: iso(NOW),
     deleted_at: null,
     name,
-    exam_date: examInDays === null ? null : iso(NOW + examInDays * DAY),
     grading_scale: scale,
     target_grade: null,
     current_grade: null,
@@ -41,9 +41,15 @@ function subject(id: string, name: string, examInDays: number | null, scale: Gra
 }
 
 const SUBJECTS: Subject[] = [
-  subject("s-abu", "ABU", 8, "swiss"),
-  subject("s-kripo", "Kripo", null, "swiss"),
-  subject("s-recht", "Strafrecht", 3, "german"),
+  subject("s-abu", "ABU", "swiss"),
+  subject("s-kripo", "Kripo", "swiss"),
+  subject("s-recht", "Strafrecht", "german"),
+];
+
+// Exam dates live on exams now (a subject can hold several). Kripo has none.
+const EXAMS: Exam[] = [
+  { id: "ex-abu", created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: "s-abu", title: "ABU final", exam_date: iso(NOW + 8 * DAY) },
+  { id: "ex-recht", created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: "s-recht", title: "Strafrecht AT exam", exam_date: iso(NOW + 3 * DAY) },
 ];
 
 type Shape = "mastered" | "learning" | "due";
@@ -184,6 +190,7 @@ const STUDY_SESSIONS: StudySession[] = Array.from({ length: 56 })
 
 const PROGRESS_DATA = {
   subjects: GRADE_SUBJECTS,
+  exams: EXAMS,
   cards: CARDS,
   gradeEntries: GRADES,
   reviewLogs: REVIEW_LOGS,
@@ -229,7 +236,7 @@ const QUIZ_SEED = [seedResult("Microeconomics"), seedResult("Microeconomics"), s
 const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
   review: {
     href: "/review",
-    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} now={NOW} onStart={() => {}} />,
+    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} now={NOW} onStart={() => {}} />,
   },
   reviewsession: {
     href: "/review",
@@ -240,7 +247,7 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
         initialFlipped
         contextFor={(card) => {
           const subject = REVIEW_SUBJECT_BY_ID.get(card.subject_id) ?? GRADE_SUBJECTS[0];
-          return { subject, examDate: subject.exam_date, strength: 0.6 };
+          return { subject, examDate: subjectExamDate(subject.id, EXAMS), strength: 0.6 };
         }}
         onClose={() => {}}
         onReviewed={() => {}}
@@ -279,7 +286,7 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
     ),
   },
   grades: { href: "/grades", node: <GradesView subjects={GRADE_SUBJECTS} entries={GRADES} /> },
-  calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} cards={CARDS} studySessions={STUDY_SESSIONS} now={NOW} /> },
+  calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} exams={EXAMS} cards={CARDS} studySessions={STUDY_SESSIONS} now={NOW} /> },
   settings: { href: "/settings", node: <SettingsView email="philipp@cram.study" /> },
 };
 

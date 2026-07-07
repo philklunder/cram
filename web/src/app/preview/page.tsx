@@ -16,7 +16,6 @@ import type { Card, Exam, GradeEntry, GradingScale, Subject } from "@/lib/api/ty
 function mockSubject(
   i: number,
   name: string,
-  examInDays: number | null,
   scale: GradingScale,
   current: number | null,
   target: number | null,
@@ -29,7 +28,6 @@ function mockSubject(
     updated_at: iso,
     deleted_at: null,
     name,
-    exam_date: examInDays === null ? null : new Date(now + examInDays * 86_400_000).toISOString(),
     grading_scale: scale,
     target_grade: target,
     current_grade: current,
@@ -37,12 +35,12 @@ function mockSubject(
 }
 
 const SUBJECTS: Subject[] = [
-  mockSubject(0, "Organic Chemistry", 2, "swiss", 4.5, 5.5),
-  mockSubject(1, "Linear Algebra", 6, "swiss", 5.0, 5.5),
-  mockSubject(2, "Constitutional Law", 12, "german", 2.3, 1.7),
-  mockSubject(3, "Molecular Biology", 27, "percentage", 78, 90),
-  mockSubject(4, "Macroeconomics", null, "letter", null, null),
-  mockSubject(5, "Art History", -3, "gpa", 3.4, 3.8),
+  mockSubject(0, "Organic Chemistry", "swiss", 4.5, 5.5),
+  mockSubject(1, "Linear Algebra", "swiss", 5.0, 5.5),
+  mockSubject(2, "Constitutional Law", "german", 2.3, 1.7),
+  mockSubject(3, "Molecular Biology", "percentage", 78, 90),
+  mockSubject(4, "Macroeconomics", "letter", null, null),
+  mockSubject(5, "Art History", "gpa", 3.4, 3.8),
 ];
 
 const NOW = Date.now();
@@ -199,7 +197,7 @@ export default function PreviewPage() {
           <span className="mb-4 block text-xs font-medium uppercase tracking-wide text-subtle">
             Preview · progress panel
           </span>
-          <ProgressPanel subject={SUBJECTS[0]} cards={MOCK_CARDS} />
+          <ProgressPanel examDate={new Date(NOW + 2 * 86_400_000).toISOString()} cards={MOCK_CARDS} />
         </div>
 
         <div className="mt-12" style={subjectVars(SUBJECTS[2].id)}>

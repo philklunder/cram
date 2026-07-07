@@ -130,7 +130,6 @@ export async function listSources(): Promise<Source[]> {
 export async function createSubject(body: {
   name: string;
   grading_scale: Subject["grading_scale"];
-  exam_date?: string | null;
   target_grade?: number | null;
 }): Promise<Subject> {
   return request<Subject>("/v1/subjects", {
@@ -375,6 +374,7 @@ export async function loadLibrary(): Promise<LibraryData> {
 
 export interface DashboardData {
   subjects: Subject[];
+  exams: Exam[];
   cards: Card[];
   quizzes: Quiz[];
   questions: Question[];
@@ -390,9 +390,10 @@ export interface DashboardData {
 // `study-sessions` is tolerated as empty until its backend resource ships (migration 0004), so the
 // dashboard renders fully before duration tracking is live.
 export async function loadDashboard(): Promise<DashboardData> {
-  const [subjects, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions] =
+  const [subjects, exams, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions] =
     await Promise.all([
       listSubjects(),
+      listExams(),
       listAll<Card>("cards").then(alive),
       listAll<Quiz>("quizzes").then(alive),
       listAll<Question>("questions").then(alive),
@@ -401,5 +402,5 @@ export async function loadDashboard(): Promise<DashboardData> {
       listAll<GradeEntry>("grade-entries").then(alive),
       listStudySessions().catch(() => [] as StudySession[]),
     ]);
-  return { subjects, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions };
+  return { subjects, exams, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions };
 }
