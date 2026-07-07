@@ -2,10 +2,26 @@
 
 import { useEffect, useState } from "react";
 
+import { cn } from "@/components/ui";
+
 // Light/dark toggle. The initial class is set pre-paint by the inline script in app/layout.tsx;
 // this component just reads the resolved state on mount and lets the user flip + persist it.
 // Persisting to localStorage("cram-theme") is what the no-flash script reads next load.
 type Theme = "light" | "dark";
+
+// Single source of truth for reading/writing the theme, shared by the toggle and the Settings
+// segmented control so the two can never drift.
+function readTheme(): Theme {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+function applyTheme(next: Theme) {
+  document.documentElement.classList.toggle("dark", next === "dark");
+  try {
+    localStorage.setItem("cram-theme", next);
+  } catch {
+    /* private mode / storage disabled — the change still applies for this session. */
+  }
+}
 
 // `label` renders a subtle text button ("Dark mode" / "Light mode" + icon) for placements like the
 // login top bar; the default is the compact icon-only button used in the app nav.
@@ -18,13 +34,8 @@ export function ThemeToggle({ label = false }: { label?: boolean }) {
   }, []);
 
   function toggle() {
-    const next: Theme = document.documentElement.classList.contains("dark") ? "light" : "dark";
-    document.documentElement.classList.toggle("dark", next === "dark");
-    try {
-      localStorage.setItem("cram-theme", next);
-    } catch {
-      /* private mode / storage disabled — the toggle still works for this session. */
-    }
+    const next: Theme = readTheme() === "dark" ? "light" : "dark";
+    applyTheme(next);
     setTheme(next);
   }
 
@@ -69,6 +80,72 @@ export function ThemeToggle({ label = false }: { label?: boolean }) {
     >
       {theme === undefined ? null : isDark ? <SunIcon /> : <MoonIcon />}
     </button>
+  );
+}
+
+// An explicit Light / Dark segmented control for the Settings surface. Each option is a radio-style
+// button showing a small preview swatch; the current theme carries a brand-tinted selected state.
+// Reads the resolved theme on mount (undefined before → nothing selected, avoids a hydration flip).
+export function ThemeChoice() {
+  const [theme, setTheme] = useState<Theme | undefined>(undefined);
+
+  useEffect(() => {
+    setTheme(readTheme());
+  }, []);
+
+  function choose(next: Theme) {
+    applyTheme(next);
+    setTheme(next);
+  }
+
+  const options: { value: Theme; label: string; icon: React.ReactNode }[] = [
+    { value: "light", label: "Light", icon: <SunIcon /> },
+    { value: "dark", label: "Dark", icon: <MoonIcon /> },
+  ];
+
+  return (
+    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-2 sm:w-72">
+      {options.map((o) => {
+        const selected = theme === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => choose(o.value)}
+            className={cn(
+              "flex items-center gap-2.5 rounded-xl border p-3 text-sm font-medium transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              selected
+                ? "border-brand-300 bg-brand-50/60 text-brand-700 ring-1 ring-inset ring-brand-600/10 dark:border-brand-500/40 dark:bg-brand-500/12 dark:text-brand-200 dark:ring-brand-400/20"
+                : "border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2/60",
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "flex h-8 w-8 flex-none items-center justify-center rounded-lg",
+                o.value === "light" ? "bg-amber-100 text-amber-600" : "bg-slate-800 text-slate-100",
+              )}
+            >
+              {o.icon}
+            </span>
+            <span>{o.label}</span>
+            <span
+              aria-hidden
+              className={cn(
+                "ml-auto flex h-4 w-4 flex-none items-center justify-center rounded-full border transition-colors",
+                selected ? "border-brand-500 bg-brand-500 text-white" : "border-line-strong text-transparent",
+              )}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-2.5 w-2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 6 9 17l-5-5" />
+              </svg>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

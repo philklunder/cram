@@ -29,6 +29,23 @@ export function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// A first name to greet the user with. Prefers an OAuth display name (`full_name`/`name` from the
+// provider), else derives a plausible name from the email local-part (before the first separator),
+// capitalized — but only when it reads like a name (all letters, ≥2 chars) so we never greet
+// "Good to see you, Pk123". Returns null when nothing usable is found (caller drops the name).
+export function greetingName(
+  metadata: Record<string, unknown> | undefined | null,
+  email: string | null | undefined,
+): string | null {
+  const raw = metadata?.full_name ?? metadata?.name;
+  const full = typeof raw === "string" ? raw.trim() : "";
+  if (full) return full.split(/\s+/)[0];
+
+  const local = (email ?? "").split("@")[0]?.split(/[.+_\-0-9]/)[0] ?? "";
+  if (/^[a-zA-Z]{2,}$/.test(local)) return local[0].toUpperCase() + local.slice(1).toLowerCase();
+  return null;
+}
+
 // Two-letter monogram for a subject: first + last word initial, or the first two letters of a
 // single word. Used for the subject avatar on cards and the detail hero.
 export function subjectInitials(name: string): string {

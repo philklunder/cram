@@ -7,14 +7,14 @@ import { useAsync } from "@/lib/useAsync";
 
 // Authenticated dashboard home: fetches everything in parallel, then hands the rows to the pure
 // DashboardView. Loading shows a layout-matched skeleton (not a spinner), errors surface inline.
-export function DashboardHome() {
+export function DashboardHome({ name }: { name?: string | null }) {
   const { loading, error, data } = useAsync(() => loadDashboard(), []);
 
   if (loading) return <DashboardSkeleton />;
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
 
-  return <DashboardView data={data} />;
+  return <DashboardView data={data} name={name} />;
 }
 
 function DashboardSkeleton() {

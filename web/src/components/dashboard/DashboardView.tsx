@@ -40,7 +40,7 @@ import { useCountUp } from "@/lib/useCountUp";
 // Presentational dashboard. Takes the already-fetched rows and derives every widget through the
 // pure helpers in lib/dashboard.ts, so this file stays layout + markup. `now` is injectable for
 // deterministic previews/tests.
-export function DashboardView({ data, now = Date.now() }: { data: DashboardData; now?: number }) {
+export function DashboardView({ data, now = Date.now(), name }: { data: DashboardData; now?: number; name?: string | null }) {
   const { subjects, cards, quizzes, questions, attempts, reviewLogs, studySessions } = data;
 
   const streak = computeStreak(reviewLogs, now);
@@ -60,7 +60,7 @@ export function DashboardView({ data, now = Date.now() }: { data: DashboardData;
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Main column */}
       <div className="min-w-0 space-y-6 lg:col-span-2">
-        <HeroBanner due={due.due} />
+        <HeroBanner due={due.due} name={name} />
 
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <StatTile
@@ -99,11 +99,13 @@ export function DashboardView({ data, now = Date.now() }: { data: DashboardData;
 
 // --- Hero --------------------------------------------------------------------------------
 
-function HeroBanner({ due }: { due: number }) {
+function HeroBanner({ due, name }: { due: number; name?: string | null }) {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/40 p-6 sm:p-8 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
       <div className="relative z-10 max-w-lg">
-        <p className="text-sm font-semibold text-brand-600 dark:text-brand-300">Good to see you 👋</p>
+        <p className="text-sm font-semibold text-brand-600 dark:text-brand-300">
+          {name ? `Good to see you, ${name}` : "Good to see you"} 👋
+        </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
           Ready for today&rsquo;s review?
         </h1>

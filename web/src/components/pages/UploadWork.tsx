@@ -188,13 +188,16 @@ export function UploadWork({
         {/* AI preview rail */}
         <aside className="min-w-0 space-y-4">
           <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-1 flex items-center justify-between">
               <h2 className="text-base font-semibold tracking-tight text-ink">AI preview</h2>
               <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", busy ? "text-brand-600 dark:text-brand-300" : "text-muted")}>
                 <span className={cn("h-1.5 w-1.5 rounded-full", busy ? "animate-pulse bg-brand-500" : "bg-line-strong")} />
-                {busy ? "Live" : "Example"}
+                {busy ? "Live" : deck ? "Done" : "Example"}
               </span>
             </div>
+            <p className="mb-5 text-xs text-muted">
+              {busy ? "Claude is analyzing your materials…" : deck ? "Your study deck is ready." : "How Claude turns your files into a deck."}
+            </p>
             <Pipeline busy={busy} done={!!deck} />
           </div>
 
@@ -238,19 +241,36 @@ function Toggle({ icon: Icon, label, hint, on, disabled, onClick }: { icon: type
 
 const STEPS = ["Ingest", "Extract", "Generate", "Review"] as const;
 function Pipeline({ busy, done }: { busy: boolean; done: boolean }) {
-  // Illustrative progress: static at "Ingest" when idle, animates while busy, complete when done.
-  const active = done ? 4 : busy ? 2 : 0;
+  // Horizontal stepper. Illustrative: an "example" run paused at Generate when idle, the live run
+  // while busy (Generate pulses), all four complete when done. The connector into each reached node
+  // fills brand so progress reads left-to-right.
+  const active = done ? 4 : 2;
   return (
-    <ol className="space-y-3">
+    <ol className="flex items-start">
       {STEPS.map((s, i) => {
-        const state = i < active ? "done" : i === active && busy ? "active" : "idle";
+        const state = i < active ? "done" : i === active ? "active" : "idle";
+        const reached = i <= active;
         return (
-          <li key={s} className="flex items-center gap-3">
-            <span className={cn("flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold transition-colors", state === "done" ? "bg-green-500 text-white" : state === "active" ? "bg-brand-500 text-white" : "bg-surface-2 text-muted")}>
-              {state === "done" ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
+          <li key={s} className="relative flex flex-1 flex-col items-center">
+            {i > 0 ? (
+              <span
+                aria-hidden
+                className={cn("absolute right-1/2 top-3.5 h-0.5 w-full -translate-y-1/2 rounded-full transition-colors", reached ? "bg-brand-400 dark:bg-brand-500/60" : "bg-line")}
+              />
+            ) : null}
+            <span
+              className={cn(
+                "relative z-10 flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold transition-colors",
+                state === "done"
+                  ? "bg-green-500 text-white"
+                  : state === "active"
+                    ? cn("bg-brand-500 text-white ring-4 ring-brand-500/15", busy && "animate-pulse")
+                    : "bg-surface-2 text-muted ring-1 ring-inset ring-line",
+              )}
+            >
+              {state === "done" ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : i + 1}
             </span>
-            <span className={cn("text-sm", state === "idle" ? "text-muted" : "font-medium text-ink")}>{s}</span>
-            {state === "active" ? <span className="ml-auto h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" /> : null}
+            <span className={cn("mt-2 text-center text-xs", state === "idle" ? "text-muted" : "font-medium text-ink")}>{s}</span>
           </li>
         );
       })}
