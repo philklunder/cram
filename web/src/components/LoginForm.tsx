@@ -520,9 +520,9 @@ function BrandIllustration() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute right-4 top-1/2 hidden h-[27rem] w-[23rem] -translate-y-1/2 min-[1400px]:block"
-      style={{ perspective: "1500px" }}
+      className="pointer-events-none absolute inset-y-0 left-1/2 right-0 hidden items-center justify-center min-[1400px]:flex"
     >
+      <div className="relative h-[27rem] w-[23rem]" style={{ perspective: "1500px" }}>
       {/* Sparkles shining behind the cards. */}
       <Sparkles />
 
@@ -601,6 +601,7 @@ function BrandIllustration() {
 
       {/* Graduation cap — painted last so it sits in front, bridging the two cards on the left. */}
       <GradCap />
+      </div>
     </div>
   );
 }
