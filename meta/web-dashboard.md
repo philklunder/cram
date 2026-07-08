@@ -239,6 +239,35 @@ to `main` once both halves are done.
   iOS"); "Plan with Claude" is a labelled coming-soon stub. **Presentational/IA only — the sole data-
   layer change is `loadLibrary` adding `exams`; `loadDashboard`/`loadSubjectBundle`/auth are untouched.**
   Verified typecheck + prod build + light/dark preview screenshots of all five rebuilt surfaces.
+- **Quizzes + Review hubs rebuilt to owner reference mocks (2026-07-08).** Both hub *pickers* (not the
+  in-session runners) were rebuilt to match new reference images, continuing the reference-driven pattern.
+  **Quizzes** ([`QuizzesHub.tsx`](../web/src/components/pages/QuizzesHub.tsx)): a target-headed practice
+  card with a two-step **①Subject → ②Exam** selector (always shows both dropdowns, unlike the shared
+  `ScopePicker` which hides the exam one), a preview strip (subject-accent initials tile + chips: quiz
+  count · scope · ~time · question types), and an "Included in this practice set" list of **quiz titles**
+  (deliberately quiz titles, not source files — `Question` has no `source_id`, so a source list would need
+  a backend change; owner chose titles). **Review** ([`ReviewHub.tsx`](../web/src/components/pages/ReviewHub.tsx)):
+  4 stat cards, a per-subject due list with subject-accent progress bars, a "Ready to review?" CTA panel,
+  a tips row, and a **self-contained inline-SVG illustration** (stacked cards + sync glyph) top-right — no
+  asset request, one purple gradient that reads on both themes. **Dual-color discipline kept:** `brand`
+  (electric-violet) is app chrome (CTAs, step badges, stat icons); `subjectVars` (`--sc-*`) is the content
+  accent (subject tiles, per-subject bars). **Review stats are client-derived heuristics, no new backend:**
+  accuracy = share of the last-7-day `review_logs` rated ≥3 (again=1 is the only miss); estimated time =
+  fixed per-card second constants (~47s review, ~36s quiz). `ReviewHubView` gained `reviewLogs`+`streak`
+  props (page computes streak via `computeStreak`, passes `data.reviewLogs`).
+- **Review settings = a device-local preference store, NOT backend-synced (2026-07-08).** The Review hub's
+  "Review settings" opens a real dialog (reusing the a11y `Modal`), not a jump to the global Settings page.
+  Two knobs, both **genuinely wired into the session queue** (rejected fake/decorative toggles):
+  **cards-per-session** (10/20/50/All → caps the queue) and **card order** (due-first / shuffle). Persisted
+  via [`lib/reviewSettings.ts`](../web/src/lib/reviewSettings.ts) — the **same `localStorage` +
+  `useSyncExternalStore` pattern as `useDisplayScale`/theme**, so it survives reload + syncs across tabs and
+  needs no server round-trip. `getSnapshot` returns a **reference-cached** object keyed on the raw string
+  (a fresh object each read would loop `useSyncExternalStore`). `ReviewSession` gained `order`+`limit` props
+  that its `buildQueue` honours (Fisher–Yates for shuffle, `slice` for the cap); `ReviewHubPage` reads the
+  store and feeds both the cross-subject **Start review** and **Review all cards** paths. **Rejected:**
+  backend-synced review prefs — there is no `review_settings` field and inventing one silently was out of
+  scope; noted as a follow-up if cross-device sync is wanted. **Scope:** governs only the Review hub's
+  cross-subject session; per-subject review (SubjectDetail) is a separate screen, not yet wired.
 
 ## Reasoning
 
@@ -502,6 +531,10 @@ to `main` once both halves are done.
   the localStorage blocks + power "Plan with Claude"), and **iOS parity for the new IA** (subject→exam
   scoping, cram mode). *Dev note: for local web work, point `NEXT_PUBLIC_CRAM_BACKEND_URL` at the live
   Railway backend — a local backend built from HEAD 500'd against the prod DB this session.*
+- **Review settings are device-local only (2026-07-08).** Session-size + card-order live in `localStorage`
+  (no `review_settings` backend field), so they don't follow the user across devices and iOS has no parity.
+  Also **not applied to per-subject review** (SubjectDetail runs its own `ReviewSession`). Open: promote to
+  a synced resource + wire per-subject review if cross-device / whole-app consistency is wanted.
 
 ## Last updated
 

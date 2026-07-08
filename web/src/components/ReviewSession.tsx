@@ -24,6 +24,7 @@ import { createReviewLog, createStudySession, updateCard } from "@/lib/api/clien
 import type { Card, Subject } from "@/lib/api/types";
 import { subjectInitials } from "@/lib/format";
 import { applyReview, REVIEW_RATINGS, type ReviewRating } from "@/lib/srs/scheduler";
+import type { ReviewOrder } from "@/lib/reviewSettings";
 import { subjectVars } from "@/lib/subjectColor";
 
 export interface ReviewCardContext {
@@ -32,13 +33,28 @@ export interface ReviewCardContext {
   strength: number | null;
 }
 
-// Due cards first (due_date <= now), sorted by due_date; if none are due, fall back to the whole
-// deck so review is always possible. Mirrors StudySessionView.buildQueue.
-function buildQueue(cards: Card[]): Card[] {
+// Fisher–Yates shuffle (a fresh copy; never mutates the input).
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Due cards first (due_date <= now); if none are due, fall back to the whole deck so review is
+// always possible. `order` walks earliest-due first ("due") or randomises ("shuffle"); `limit`
+// caps the session length (0 = no cap). The user's Review settings feed both. Mirrors iOS's queue.
+function buildQueue(cards: Card[], order: ReviewOrder = "due", limit = 0): Card[] {
   const now = Date.now();
   const due = cards.filter((c) => new Date(c.due_date).getTime() <= now);
   const pool = due.length > 0 ? due : cards;
-  return [...pool].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  const ordered =
+    order === "shuffle"
+      ? shuffled(pool)
+      : [...pool].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  return limit > 0 ? ordered.slice(0, limit) : ordered;
 }
 
 // Compact interval label from whole days (our scheduler works in days).
@@ -62,6 +78,8 @@ export function ReviewSession({
   cards,
   contextFor,
   streak,
+  order = "due",
+  limit = 0,
   initialFlipped = false,
   onClose,
   onReviewed,
@@ -69,11 +87,13 @@ export function ReviewSession({
   cards: Card[];
   contextFor: (card: Card) => ReviewCardContext;
   streak?: number;
+  order?: ReviewOrder; // from the user's Review settings
+  limit?: number; // max cards this session serves (0 = all); from Review settings
   initialFlipped?: boolean; // dev/preview only — start with the answer + ratings shown
   onClose: () => void;
   onReviewed: () => void;
 }) {
-  const [queue] = useState(() => buildQueue(cards));
+  const [queue] = useState(() => buildQueue(cards, order, limit));
   const [idx, setIdx] = useState(0);
   const [showBack, setShowBack] = useState(initialFlipped);
   const [pendingRating, setPendingRating] = useState<ReviewRating | null>(null);
