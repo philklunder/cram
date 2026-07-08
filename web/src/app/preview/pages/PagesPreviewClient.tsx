@@ -237,7 +237,11 @@ const QUIZ_SEED = [seedResult("Microeconomics"), seedResult("Microeconomics"), s
 const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
   review: {
     href: "/review",
-    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} now={NOW} onStart={() => {}} />,
+    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} reviewLogs={REVIEW_LOGS} streak={2} now={NOW} onStart={() => {}} />,
+  },
+  reviewsettings: {
+    href: "/review",
+    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} reviewLogs={REVIEW_LOGS} streak={2} now={NOW} onStart={() => {}} initialSettingsOpen />,
   },
   reviewsession: {
     href: "/review",
