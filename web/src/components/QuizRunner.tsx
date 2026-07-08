@@ -227,6 +227,8 @@ export function QuizRunner({
 
             {error ? <div className="mt-4"><ErrorBox message={error} /></div> : null}
 
+            {result && !isMC ? <AnswerResult result={result} /> : null}
+
             <div className="mt-6">
               {result == null ? (
                 <>
@@ -358,6 +360,41 @@ function TopicBreakdown({ questions, results }: { questions: Question[]; results
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+// Shown at the bottom of the question card after a typed answer is checked:
+// the accuracy of the match (Claude-graded) plus the correct answer to learn from.
+function AnswerResult({ result }: { result: Graded }) {
+  const pct = Math.round(result.score * 100);
+  const tone = result.is_correct
+    ? { label: "Correct", text: "text-green-700 dark:text-green-300", ring: "border-green-500/60 bg-green-50 dark:bg-green-500/10", bar: "bg-green-500", Icon: Check }
+    : result.score >= 0.5
+      ? { label: "Partially correct", text: "text-amber-700 dark:text-amber-300", ring: "border-amber-500/60 bg-amber-50 dark:bg-amber-500/10", bar: "bg-amber-500", Icon: Target }
+      : { label: "Not quite", text: "text-red-700 dark:text-red-300", ring: "border-red-400/60 bg-red-50 dark:bg-red-500/10", bar: "bg-red-500", Icon: X };
+  const { Icon } = tone;
+  return (
+    <div className={cn("mt-6 animate-rise rounded-xl border p-5", tone.ring)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className={cn("flex h-7 w-7 flex-none items-center justify-center rounded-full text-white", tone.bar)}>
+            <Icon className="h-4 w-4" strokeWidth={3} aria-hidden />
+          </span>
+          <span className={cn("text-sm font-semibold", tone.text)}>{tone.label}</span>
+        </div>
+        <div className="text-right">
+          <span className={cn("text-2xl font-bold tabular-nums leading-none", tone.text)}>{pct}%</span>
+          <span className="ml-1 text-xs text-muted">match</span>
+        </div>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+        <div className={cn("h-full rounded-full transition-[width] duration-700 ease-out", tone.bar)} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-4 border-t border-line/70 pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-subtle">Correct answer</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink">{result.answerKey}</p>
+      </div>
     </div>
   );
 }
