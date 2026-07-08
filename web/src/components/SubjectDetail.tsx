@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { CalendarClock, ChevronDown, Pencil, Play, Plus } from "lucide-react";
+import { CalendarClock, CheckCircle2, ChevronDown, Pencil, Play, Plus } from "lucide-react";
 
 import { ExamFormModal } from "@/components/ExamFormModal";
 import { SubjectGradesSummary } from "@/components/GradesPanel";
@@ -23,9 +23,10 @@ import {
   difficultyTone,
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
-import type { Card, Exam, Question, Quiz, Source, Subject } from "@/lib/api/types";
+import type { Card, Exam, GradeEntry, Question, Quiz, Source, Subject } from "@/lib/api/types";
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
+import { formatGrade, isPassing } from "@/lib/grades";
 import { subjectVars } from "@/lib/subjectColor";
 import { subjectStrength as computeSubjectStrength } from "@/lib/srs/grade-strength";
 import { useAsync } from "@/lib/useAsync";
@@ -61,6 +62,9 @@ function byExamOrder(a: Exam, b: Exam): number {
 
 export function SubjectDetail({ id }: { id: string }) {
   const router = useRouter();
+  // A grade in the Grades page deep-links here as ?exam=<id> so the finished exam it belongs
+  // to opens straight to its material in "Past exams".
+  const focusExam = useSearchParams().get("exam");
   const { loading, error, data, reload } = useAsync<SubjectBundle>(() => loadSubjectBundle(id), [id]);
 
   // What we're studying right now (a bucket of cards), or null when browsing.
@@ -110,7 +114,16 @@ export function SubjectDetail({ id }: { id: string }) {
   const generalCards = cardsByBucket.get(GENERAL) ?? [];
   const generalQuizzes = quizzesByBucket.get(GENERAL) ?? [];
   const sortedExams = [...exams].sort(byExamOrder);
-  const totalDue = dueCount(cards);
+
+  // A graded exam is "done": a live grade entry points at it. Done exams drop out of the
+  // active list into "Past exams" — their cards/quiz survive, just out of active revision.
+  const gradeByExam = new Map<string, GradeEntry>();
+  for (const g of gradeEntries) if (g.exam_id) gradeByExam.set(g.exam_id, g);
+  const activeExams = sortedExams.filter((e) => !gradeByExam.has(e.id));
+  const pastExams = sortedExams.filter((e) => gradeByExam.has(e.id));
+  // Cards of a graded exam leave active revision with it; "General" + active-exam cards stay.
+  const activeCards = cards.filter((c) => !(c.exam_id && gradeByExam.has(c.exam_id)));
+  const totalDue = dueCount(activeCards);
 
   // Adding material happens in AI Decks, not here — deep-link there with this subject (and exam)
   // pre-selected so the upload flow lands ready to go.
@@ -155,7 +168,7 @@ export function SubjectDetail({ id }: { id: string }) {
         />
       ) : (
         <>
-          {/* Study the whole subject — pulls every card across all exams. */}
+          {/* Study everything that's still active — graded exams are excluded. */}
           {cards.length === 0 ? (
             <EmptyState
               title="No cards yet"
@@ -172,12 +185,12 @@ export function SubjectDetail({ id }: { id: string }) {
                 </div>
               }
             />
-          ) : (
+          ) : activeCards.length > 0 ? (
             <div className="flex flex-col gap-4 rounded-xl border border-[var(--sc-line)] bg-[var(--sc-soft)] p-5 sm:flex-row sm:items-center sm:justify-between dark:border-[color:var(--sc-solid)]/25 dark:bg-[color:var(--sc-soft-dark)]">
               <div>
                 <p className="text-base font-semibold text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]">
                   {totalDue > 0
-                    ? `${totalDue} ${totalDue === 1 ? "card" : "cards"} due across all exams`
+                    ? `${totalDue} ${totalDue === 1 ? "card" : "cards"} due`
                     : "You're all caught up"}
                 </p>
                 <p className="mt-0.5 text-sm text-muted">
@@ -186,12 +199,12 @@ export function SubjectDetail({ id }: { id: string }) {
                     : "Nothing's due — you can still review any exam below."}
                 </p>
               </div>
-              <Button onClick={() => setStudyCards(cards)} className="flex-none">
+              <Button onClick={() => setStudyCards(activeCards)} className="flex-none">
                 <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
                 {totalDue > 0 ? "Study whole subject" : "Review everything"}
               </Button>
             </div>
-          )}
+          ) : null}
 
           {/* Overall progress breakdown (status row hidden — the band above states what's due). */}
           {cards.length > 0 ? (
@@ -201,8 +214,8 @@ export function SubjectDetail({ id }: { id: string }) {
             </div>
           ) : null}
 
-          {/* Exams — the primary content. Each is a collapsible group of its own cards + quiz. */}
-          {exams.length > 0 || generalCards.length > 0 || generalQuizzes.length > 0 ? (
+          {/* Exams — the active ones. Each is a collapsible group of its own cards + quiz. */}
+          {activeExams.length > 0 || generalCards.length > 0 || generalQuizzes.length > 0 ? (
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-ink">Exams</h2>
@@ -212,7 +225,7 @@ export function SubjectDetail({ id }: { id: string }) {
                 </Button>
               </div>
               <div className="border-b border-line">
-                {sortedExams.map((exam) => (
+                {activeExams.map((exam) => (
                   <ExamSection
                     key={exam.id}
                     exam={exam}
@@ -236,6 +249,32 @@ export function SubjectDetail({ id }: { id: string }) {
                 ) : null}
               </div>
             </div>
+          ) : null}
+
+          {/* Past exams — graded and done. Kept for reference and revision, out of the way. */}
+          {pastExams.length > 0 ? (
+            <Section
+              title="Past exams"
+              count={pastExams.length}
+              defaultOpen={pastExams.some((e) => e.id === focusExam)}
+            >
+              <div>
+                {pastExams.map((exam) => (
+                  <ExamSection
+                    key={exam.id}
+                    exam={exam}
+                    cards={cardsByBucket.get(exam.id) ?? []}
+                    quizzes={quizzesByBucket.get(exam.id) ?? []}
+                    questions={questions}
+                    onStudy={(c) => setStudyCards(c)}
+                    onAddMaterial={() => goAddMaterial(exam.id)}
+                    onEdit={() => openExamModal(exam)}
+                    earned={{ subject, entry: gradeByExam.get(exam.id)! }}
+                    defaultOpen={exam.id === focusExam}
+                  />
+                ))}
+              </div>
+            </Section>
           ) : null}
 
           {/* Subject-level material that isn't per-exam. */}
@@ -337,6 +376,7 @@ export function ExamSection({
   onStudy,
   onAddMaterial,
   onEdit,
+  earned,
   defaultOpen = false,
 }: {
   exam: Exam | null;
@@ -346,6 +386,8 @@ export function ExamSection({
   onStudy: (cards: Card[]) => void;
   onAddMaterial: () => void;
   onEdit?: () => void;
+  // Set for a graded ("past") exam: the recorded mark, shown as a badge in the header.
+  earned?: { subject: Subject; entry: GradeEntry };
   defaultOpen?: boolean; // preview harness opens one to show the expanded state
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -354,6 +396,7 @@ export function ExamSection({
   const p = computeProgress(cards);
   const days = exam?.exam_date ? daysUntil(exam.exam_date) : null;
   const title = exam ? exam.title : "General";
+  const passed = earned ? isPassing(earned.subject.grading_scale, earned.entry.score) : false;
 
   return (
     <section className="border-t border-line">
@@ -377,9 +420,19 @@ export function ExamSection({
               <span className="rounded-full bg-line px-2 py-0.5 text-xs font-semibold tabular-nums text-muted">
                 {cards.length}
               </span>
+              {earned ? (
+                <Badge tone={passed ? "green" : "red"}>
+                  {formatGrade(earned.subject.grading_scale, earned.entry.score)}
+                </Badge>
+              ) : null}
             </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-              {exam?.exam_date ? (
+              {earned ? (
+                <span className="inline-flex items-center gap-1 font-medium text-green-700 dark:text-green-400">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden />
+                  Graded {formatDate(earned.entry.date)}
+                </span>
+              ) : exam?.exam_date ? (
                 <span className={cn("inline-flex items-center gap-1 font-medium tabular-nums", countdownClass(days))}>
                   <CalendarClock className="h-3 w-3" aria-hidden />
                   {formatCountdown(days)}
@@ -449,8 +502,18 @@ export function ExamSection({
 
 // --- Collapsible subject-level section --------------------------------------------------
 
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function Section({
+  title,
+  count,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const reduce = useReducedMotion();
   const panelId = useId();
 

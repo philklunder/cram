@@ -212,6 +212,7 @@ struct GradeEntryReadDTO: Decodable {
     let updatedAt: Date
     let deletedAt: Date?
     let subjectId: UUID
+    let examId: UUID?
     let title: String
     let kind: GradeKind
     let score: Double
@@ -222,6 +223,7 @@ struct GradeEntryReadDTO: Decodable {
 struct GradeEntryPushDTO: Encodable {
     let id: UUID
     let subjectId: UUID
+    let examId: UUID?
     let title: String
     let kind: GradeKind
     let score: Double

@@ -82,6 +82,7 @@ function mockGrade(i: number, title: string, kind: GradeEntry["kind"], score: nu
     updated_at: ISO,
     deleted_at: null,
     subject_id: "mock-2-Constitutional Law",
+    exam_id: null,
     title,
     kind,
     score,

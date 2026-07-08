@@ -176,8 +176,8 @@ final class SyncService {
             skip: { $0.subject == nil })
         try await pushSyncable(
             GradeEntry.self, resource: "grade-entries", client: client, context: context,
-            dto: { GradeEntryPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(), title: $0.title,
-                                     kind: $0.kind, score: $0.score, weight: $0.weight,
+            dto: { GradeEntryPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(), examId: $0.examId,
+                                     title: $0.title, kind: $0.kind, score: $0.score, weight: $0.weight,
                                      date: $0.date) },
             skip: { $0.subject == nil })
 
@@ -368,6 +368,7 @@ final class SyncService {
         row.score = dto.score
         row.weight = dto.weight
         row.date = dto.date
+        row.examId = dto.examId
         row.subject = subject(dto.subjectId, context)
         markSynced(row, id: dto.id, updatedAt: dto.updatedAt)
     }

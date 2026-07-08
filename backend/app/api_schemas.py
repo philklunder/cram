@@ -247,6 +247,7 @@ class QuestionUpdate(BaseModel):
 
 class GradeEntryRead(_SyncRead):
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     title: str
     kind: GradeKind
     score: float
@@ -257,6 +258,7 @@ class GradeEntryRead(_SyncRead):
 class GradeEntryCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
     title: str
     kind: GradeKind
     score: float
@@ -266,6 +268,7 @@ class GradeEntryCreate(BaseModel):
 
 class GradeEntryUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
+    exam_id: uuid.UUID | None = None
     title: str | None = None
     kind: GradeKind | None = None
     score: float | None = None

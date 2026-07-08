@@ -67,7 +67,8 @@ PARENTS: dict[type, dict[str, tuple[type, bool]]] = {
     Quiz: {"subject_id": (Subject, True), "exam_id": (Exam, False)},
     Question: {"quiz_id": (Quiz, True)},
     Attempt: {"question_id": (Question, True)},
-    GradeEntry: {"subject_id": (Subject, True)},
+    # exam_id is optional (a standalone grade has no exam); when present it must be owned.
+    GradeEntry: {"subject_id": (Subject, True), "exam_id": (Exam, False)},
     ReviewLog: {"card_id": (Card, True)},
     # subject_id is optional (a session can span subjects); when present it must be owned.
     StudySession: {"subject_id": (Subject, False)},

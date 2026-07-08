@@ -18,6 +18,7 @@ from .enums import GradeKind, checked_text_enum
 from .mixins import OwnedMixin, SyncMixin, UUIDPkMixin
 
 if TYPE_CHECKING:
+    from .exam import Exam
     from .subject import Subject
 
 
@@ -26,6 +27,13 @@ class GradeEntry(UUIDPkMixin, OwnedMixin, SyncMixin, Base):
 
     subject_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # The exam this grade is for, when it records an exam's result. Nullable — a standalone
+    # grade (homework, participation) has no exam. A grade outlives its exam (ON DELETE SET
+    # NULL), exactly like a card. Recording a grade against an exam is what "finishes" that
+    # exam on the client: it drops out of the subject's active list into "Past exams".
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("exams.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     kind: Mapped[GradeKind] = mapped_column(

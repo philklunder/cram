@@ -14,6 +14,10 @@ final class GradeEntry {
     var weight: Double
     var date: Date
     var subject: Subject?
+    /// The exam this grade records a result for, when it's an exam grade (nil for a standalone
+    /// mark like homework). Stored as a bare id — the iOS Exam model lands with the exams
+    /// feature; this carries the link through sync in the meantime (backend migration 0007).
+    var examId: UUID?
 
     // Sync metadata (v0.5 Phase 5).
     var updatedAt: Date = Date()
@@ -30,7 +34,8 @@ final class GradeEntry {
          score: Double,
          weight: Double = 1,
          date: Date = .now,
-         subject: Subject? = nil) {
+         subject: Subject? = nil,
+         examId: UUID? = nil) {
         self.id = UUID()
         self.title = title
         self.kindRaw = kind.rawValue
@@ -38,6 +43,7 @@ final class GradeEntry {
         self.weight = weight
         self.date = date
         self.subject = subject
+        self.examId = examId
         self.updatedAt = .now
         self.needsSync = true
     }

@@ -142,6 +142,7 @@ function grade(subjectId: string, title: string, kind: GradeEntry["kind"], score
     updated_at: iso(NOW - daysAgo * DAY),
     deleted_at: null,
     subject_id: subjectId,
+    exam_id: null,
     title,
     kind,
     score,
@@ -285,7 +286,7 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
       />
     ),
   },
-  grades: { href: "/grades", node: <GradesView subjects={GRADE_SUBJECTS} entries={GRADES} /> },
+  grades: { href: "/grades", node: <GradesView subjects={GRADE_SUBJECTS} exams={EXAMS} entries={GRADES} /> },
   calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} exams={EXAMS} cards={CARDS} studySessions={STUDY_SESSIONS} now={NOW} /> },
   settings: { href: "/settings", node: <SettingsView email="philipp@cram.study" /> },
 };

@@ -7,7 +7,6 @@ import { BarChart3, CheckCircle2, ChevronRight, GraduationCap, LayoutGrid, Trend
 import { GradesPanel } from "@/components/GradesPanel";
 import { PageHeader } from "@/components/pages/shared";
 import {
-  Badge,
   Button,
   EmptyState,
   ErrorBox,
@@ -19,11 +18,11 @@ import {
 } from "@/components/ui";
 import {
   createGradeEntry,
-  createSubject,
+  listExams,
   listGradeEntries,
   listSubjects,
 } from "@/lib/api/client";
-import type { GradeEntry, GradeKind, GradingScale, Subject } from "@/lib/api/types";
+import type { Exam, GradeEntry, GradeKind, GradingScale, Subject } from "@/lib/api/types";
 import { formatDate, subjectInitials } from "@/lib/format";
 import {
   currentGrade,
@@ -85,10 +84,12 @@ function buildRows(subjects: Subject[], entries: GradeEntry[]): Row[] {
 
 export function GradesView({
   subjects,
+  exams,
   entries,
   onChanged = () => {},
 }: {
   subjects: Subject[];
+  exams: Exam[];
   entries: GradeEntry[];
   onChanged?: () => void;
 }) {
@@ -133,7 +134,15 @@ export function GradesView({
             </div>
             {rows.length === 0 ? (
               <div className="p-5">
-                <EmptyState title="No subjects yet" hint="Create a subject on the right to start tracking grades." />
+                <EmptyState
+                  title="No subjects yet"
+                  hint="Create a subject in the Subjects section to start tracking grades."
+                  action={
+                    <Link href="/subjects">
+                      <Button variant="secondary" size="sm">Go to Subjects</Button>
+                    </Link>
+                  }
+                />
               </div>
             ) : (
               <div className="mt-3 overflow-x-auto">
@@ -169,7 +178,16 @@ export function GradesView({
                   const s = subjectById.get(e.subject_id);
                   return (
                     <li key={e.id} className="flex items-center gap-3 px-5 py-3">
-                      <span className="min-w-0 flex-1 truncate font-medium text-ink">{e.title}</span>
+                      {e.exam_id ? (
+                        <Link
+                          href={`/subjects/${e.subject_id}?exam=${e.exam_id}`}
+                          className="min-w-0 flex-1 truncate font-medium text-ink underline-offset-2 hover:text-brand-600 hover:underline dark:hover:text-brand-300"
+                        >
+                          {e.title}
+                        </Link>
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate font-medium text-ink">{e.title}</span>
+                      )}
                       {s ? (
                         <span style={subjectVars(s.id)} className="hidden flex-none rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] sm:inline dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
                           {s.name}
@@ -188,17 +206,22 @@ export function GradesView({
           </Panel>
         </div>
 
-        {/* Right rail: create subject + add grade */}
+        {/* Right rail: log a grade (subjects are created in the Subjects section, not here) */}
         <aside className="min-w-0 space-y-6">
-          <NewSubjectForm onCreated={onChanged} />
-          <AddGradeForm subjects={subjects} onAdded={onChanged} />
+          <AddGradeForm subjects={subjects} exams={exams} entries={entries} onAdded={onChanged} />
           <div className="rounded-xl border border-line bg-surface-2/40 p-4">
             <div className="flex items-center gap-2">
               <GraduationCap className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden />
-              <p className="text-sm font-semibold text-ink">Connected to your subjects</p>
+              <p className="text-sm font-semibold text-ink">How grades work</p>
             </div>
             <p className="mt-1 text-xs leading-relaxed text-muted">
-              Grades sync with subject pages and feed into your Progress and study pacing.
+              Grade an exam once it&apos;s over and it moves to that subject&apos;s{" "}
+              <span className="font-medium text-ink-2">Past exams</span> — its flashcards and quiz stay,
+              but it drops out of your active revision. New subjects are created in{" "}
+              <Link href="/subjects" className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300">
+                Subjects
+              </Link>
+              .
             </p>
           </div>
         </aside>
@@ -333,75 +356,87 @@ function StatCard({
   );
 }
 
-// --- New subject form --------------------------------------------------------------------
+// --- Log a grade (Subject → Exam → grade) ------------------------------------------------
+// The single place grades are recorded. Grading an exam is what "finishes" it: the grade
+// carries the exam's id, and the subject page then files that exam under "Past exams". A
+// "standalone" grade (homework, participation) carries no exam and stays free-form. Subjects
+// are created in the Subjects section — never here — so there is one home for that action.
 
-const SCALES: GradingScale[] = ["swiss", "german", "percentage", "letter", "gpa"];
+const STANDALONE = "__standalone__";
 
-function NewSubjectForm({ onCreated }: { onCreated: () => void }) {
-  const [name, setName] = useState("");
-  const [scale, setScale] = useState<GradingScale>("swiss");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (name.trim() === "") {
-      setError("Give the subject a name.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await createSubject({ name: name.trim(), grading_scale: scale });
-      setName("");
-      onCreated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the subject.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Panel className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight text-ink">New subject</h2>
-        <p className="mt-0.5 text-sm text-muted">Create a subject to start tracking.</p>
-      </div>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label htmlFor="new-subject-name" className={labelClass}>Subject name</label>
-          <input id="new-subject-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Biology 101" className={inputClass} />
-        </div>
-        <div>
-          <label htmlFor="new-subject-scale" className={labelClass}>Grading scale</label>
-          <select id="new-subject-scale" value={scale} onChange={(e) => setScale(e.target.value as GradingScale)} className={inputClass}>
-            {SCALES.map((s) => (
-              <option key={s} value={s}>{gradingScaleLabel[s]}</option>
-            ))}
-          </select>
-        </div>
-        {error ? <ErrorBox message={error} /> : null}
-        <Button type="submit" className="w-full" loading={busy}>Create subject</Button>
-      </form>
-    </Panel>
-  );
+// Exams still worth grading for a subject: this subject's exams that don't already have a
+// (live) grade pointing at them. Once graded, an exam drops out of the picker (and the
+// subject's active list) — you only grade an exam once.
+function ungradedExamsFor(subjectId: string, exams: Exam[], entries: GradeEntry[]): Exam[] {
+  const graded = new Set(entries.map((e) => e.exam_id).filter(Boolean));
+  return exams
+    .filter((e) => e.subject_id === subjectId && !graded.has(e.id))
+    .sort((a, b) => {
+      // Most-recently-dated first (that's the one you just sat); undated last.
+      const da = a.exam_date ? new Date(a.exam_date).getTime() : -Infinity;
+      const db = b.exam_date ? new Date(b.exam_date).getTime() : -Infinity;
+      return db - da;
+    });
 }
 
-// --- Add grade form (cross-subject) ------------------------------------------------------
-
-function AddGradeForm({ subjects, onAdded }: { subjects: Subject[]; onAdded: () => void }) {
+function AddGradeForm({
+  subjects,
+  exams,
+  entries,
+  onAdded,
+}: {
+  subjects: Subject[];
+  exams: Exam[];
+  entries: GradeEntry[];
+  onAdded: () => void;
+}) {
   const [subjectId, setSubjectId] = useState("");
+  const [examChoice, setExamChoice] = useState(""); // "" none yet · STANDALONE · an exam id
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<GradeKind>("exam");
   const [score, setScore] = useState("");
-  const [weight, setWeight] = useState("25");
+  const [weight, setWeight] = useState("100");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const subject = subjects.find((s) => s.id === subjectId);
   const range = subject ? scaleRange(subject.grading_scale) : null;
+  const ungraded = subject ? ungradedExamsFor(subject.id, exams, entries) : [];
+  const isStandalone = examChoice === STANDALONE;
+  const selectedExam = examChoice && !isStandalone ? ungraded.find((e) => e.id === examChoice) ?? null : null;
+  const detailsReady = examChoice !== "";
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function pickSubject(id: string) {
+    setSubjectId(id);
+    setExamChoice("");
+    setTitle("");
+    setKind("exam");
+    setScore("");
+    setDate(today());
+    setError(null);
+  }
+
+  // Choosing an exam prefills its name + date so grading is a two-tap job; choosing standalone
+  // clears back to a free-form entry.
+  function pickExam(choice: string) {
+    setExamChoice(choice);
+    setError(null);
+    if (choice === STANDALONE || choice === "") {
+      setTitle("");
+      setKind("exam");
+      setDate(today());
+      return;
+    }
+    const exam = ungraded.find((e) => e.id === choice);
+    setTitle(exam?.title ?? "");
+    setKind("exam");
+    setDate(exam?.exam_date ? exam.exam_date.slice(0, 10) : today());
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -409,8 +444,12 @@ function AddGradeForm({ subjects, onAdded }: { subjects: Subject[]; onAdded: () 
       setError("Choose a subject.");
       return;
     }
+    if (!detailsReady) {
+      setError("Choose the exam this grade is for.");
+      return;
+    }
     if (title.trim() === "") {
-      setError("Give the grade an assessment title.");
+      setError("Give the grade a title.");
       return;
     }
     const scoreVal = Number(score.replace(",", "."));
@@ -424,69 +463,132 @@ function AddGradeForm({ subjects, onAdded }: { subjects: Subject[]; onAdded: () 
     try {
       await createGradeEntry({
         subject_id: subject.id,
+        exam_id: isStandalone ? null : examChoice,
         title: title.trim(),
         kind,
         score: scoreVal,
         weight: weightVal / 100,
         date: new Date(date).toISOString(),
       });
+      // Keep the subject in context; reset the rest so a second grade is quick to log.
+      setExamChoice("");
       setTitle("");
       setScore("");
+      setKind("exam");
+      setDate(today());
       onAdded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the grade.");
+      setError(err instanceof Error ? err.message : "Could not save the grade.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Panel className="space-y-4">
+    <Panel className="space-y-5">
       <div>
-        <h2 className="text-base font-semibold tracking-tight text-ink">Add grade</h2>
-        <p className="mt-0.5 text-sm text-muted">Record a new grade for a subject.</p>
+        <h2 className="text-base font-semibold tracking-tight text-ink">Log a grade</h2>
+        <p className="mt-0.5 text-sm text-muted">Pick a subject, then the exam it&apos;s for.</p>
       </div>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label htmlFor="ag-subject" className={labelClass}>Subject</label>
-          <select id="ag-subject" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={inputClass}>
-            <option value="">Select subject</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="ag-title" className={labelClass}>Assessment title</label>
-          <input id="ag-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Midterm Exam" className={inputClass} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+
+      {subjects.length === 0 ? (
+        <EmptyState
+          title="No subjects yet"
+          hint="Create a subject first, then come back to record its grades."
+          action={
+            <Link href="/subjects">
+              <Button variant="secondary" size="sm">Go to Subjects</Button>
+            </Link>
+          }
+        />
+      ) : (
+        <form onSubmit={submit} className="space-y-5">
+          {/* Step 1 — subject */}
           <div>
-            <label htmlFor="ag-kind" className={labelClass}>Kind</label>
-            <select id="ag-kind" value={kind} onChange={(e) => setKind(e.target.value as GradeKind)} className={inputClass}>
-              {gradeKinds.map((k) => (
-                <option key={k} value={k}>{gradeKindLabel[k]}</option>
+            <label htmlFor="ag-subject" className={labelClass}>Subject</label>
+            <select id="ag-subject" value={subjectId} onChange={(e) => pickSubject(e.target.value)} className={inputClass}>
+              <option value="">Select subject…</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="ag-grade" className={labelClass}>Grade{range ? ` (${range[0]}–${range[1]})` : ""}</label>
-            <input id="ag-grade" inputMode="decimal" value={score} onChange={(e) => setScore(e.target.value)} placeholder="e.g. 5.5" className={inputClass} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="ag-weight" className={labelClass}>Weight (%)</label>
-            <input id="ag-weight" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="25" className={inputClass} />
-          </div>
-          <div>
-            <label htmlFor="ag-date" className={labelClass}>Date</label>
-            <input id="ag-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
-          </div>
-        </div>
-        {error ? <ErrorBox message={error} /> : null}
-        <Button type="submit" className="w-full" loading={busy}>Save grade</Button>
-      </form>
+
+          {/* Step 2 — exam (reveals once a subject is chosen) */}
+          {subject ? (
+            <div className="animate-fade-up">
+              <label htmlFor="ag-exam" className={labelClass}>Exam</label>
+              <select id="ag-exam" value={examChoice} onChange={(e) => pickExam(e.target.value)} className={inputClass}>
+                <option value="">Select exam…</option>
+                {ungraded.map((ex) => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.title}
+                    {ex.exam_date ? ` · ${formatDate(ex.exam_date)}` : ""}
+                  </option>
+                ))}
+                <option value={STANDALONE}>No specific exam (standalone grade)</option>
+              </select>
+              <p className="mt-1.5 text-xs text-muted">
+                {ungraded.length === 0
+                  ? "No ungraded exams here — record a standalone grade for homework or participation."
+                  : "Grading an exam moves it to Past exams and out of your active revision."}
+              </p>
+            </div>
+          ) : null}
+
+          {/* Step 3 — the mark (reveals once an exam or standalone is chosen) */}
+          {subject && detailsReady ? (
+            <div className="animate-fade-up space-y-4 border-t border-line pt-4">
+              <div>
+                <label htmlFor="ag-title" className={labelClass}>
+                  {isStandalone ? "Title" : "Exam"}
+                </label>
+                <input
+                  id="ag-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={isStandalone ? "e.g. Homework 3" : "e.g. Midterm"}
+                  readOnly={!isStandalone && selectedExam != null}
+                  className={cn(inputClass, !isStandalone && selectedExam != null && "text-muted")}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {isStandalone ? (
+                  <div>
+                    <label htmlFor="ag-kind" className={labelClass}>Kind</label>
+                    <select id="ag-kind" value={kind} onChange={(e) => setKind(e.target.value as GradeKind)} className={inputClass}>
+                      {gradeKinds.map((k) => (
+                        <option key={k} value={k}>{gradeKindLabel[k]}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                <div className={isStandalone ? "" : "col-span-2"}>
+                  <label htmlFor="ag-grade" className={labelClass}>Grade{range ? ` (${range[0]}–${range[1]})` : ""}</label>
+                  <input id="ag-grade" inputMode="decimal" value={score} onChange={(e) => setScore(e.target.value)} placeholder="e.g. 5.5" className={inputClass} autoFocus />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="ag-weight" className={labelClass}>Weight (%)</label>
+                  <input id="ag-weight" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="100" className={inputClass} />
+                </div>
+                <div>
+                  <label htmlFor="ag-date" className={labelClass}>Date</label>
+                  <input id="ag-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {error ? <ErrorBox message={error} /> : null}
+          <Button type="submit" className="w-full" loading={busy} disabled={!subject || !detailsReady}>
+            Save grade
+          </Button>
+        </form>
+      )}
     </Panel>
   );
 }
@@ -495,7 +597,7 @@ function AddGradeForm({ subjects, onAdded }: { subjects: Subject[]; onAdded: () 
 
 export function GradesPage() {
   const { loading, error, data, reload } = useAsync(
-    () => Promise.all([listSubjects(), listGradeEntries()]),
+    () => Promise.all([listSubjects(), listExams(), listGradeEntries()]),
     [],
   );
   if (loading) {
@@ -511,6 +613,6 @@ export function GradesPage() {
   }
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
-  const [subjects, entries] = data;
-  return <GradesView subjects={subjects} entries={entries} onChanged={reload} />;
+  const [subjects, exams, entries] = data;
+  return <GradesView subjects={subjects} exams={exams} entries={entries} onChanged={reload} />;
 }
