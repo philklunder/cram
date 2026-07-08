@@ -50,6 +50,29 @@ the cards (and generated quiz) studied for one assessment and carries its own op
   parallel fan-out and filters by `subject_id`. `GenerateMaterialForm` gains `examId` (file the deck
   under an exam) and `hideHeader` (so an embedding modal owns the title).
 
+### Grade ↔ exam link + "Past exams" archival (2026-07-08, migration `0007`)
+- **`grade_entries.exam_id` is a NULLABLE FK, `ON DELETE SET NULL`** — the same shape as
+  `cards.exam_id`/`quizzes.exam_id`. A grade that records an exam's result points at that exam; a
+  standalone mark (homework, participation) leaves it null. The grade *outlives* its exam.
+  `PARENTS[GradeEntry]` registers `exam_id` as an *optional* owned parent (owned when present).
+- **"Done" is DERIVED, not a stored flag.** An exam is finished ⇔ a live `grade_entries` row points
+  at it. There is no `status`/`archived_at` column and no explicit archive action: recording the
+  grade *is* the archive, and deleting the grade un-archives it (fully reversible). The client
+  computes active-vs-past exams from the grade set it already loads.
+- **Client archival behaviour (web):** a graded exam drops out of the subject page's active **Exams**
+  list into a collapsed **"Past exams"** section (still openable to study its cards/quiz, shows the
+  earned grade as a pass/fail badge). Its cards are also excluded from the subject's active due-count
+  and "Study whole subject" set, so grading actually *reduces* revision load. General (exam-less)
+  cards and active-exam cards are unaffected.
+- **Grades page is the single grade editor, exam-aware.** "New subject" was removed from Grades
+  (subjects are created only in the Subjects section — one home for that action). The logger is a
+  guided **Subject → Exam → grade**: the exam picker lists only that subject's *ungraded* exams plus
+  a "No specific exam (standalone)" option; picking an exam prefills its title + date. A grade in the
+  Grades list deep-links to `/subjects/{id}?exam=<id>`, which opens that exam in Past exams.
+- **iOS parity (data only):** `examId: UUID?` added to the `GradeEntry @Model` + `GradeEntryRead/
+  PushDTO` + `SyncService` mapping. Stored as a bare id — iOS has no `Exam @Model` yet — so the link
+  survives a sync round-trip. No iOS UI change.
+
 ## Reasoning
 - Users study for *specific exams*, not just a subject as a whole. Grouping cards per exam makes the
   countdown and exam-mode SRS compression meaningful at the granularity people actually revise at.
@@ -68,6 +91,14 @@ the cards (and generated quiz) studied for one assessment and carries its own op
 - **Contract-first for two clients:** the model docstring and migration explicitly mirror a future
   `ios/Cram/Models/Exam.swift @Model`, so the web and iOS clients push to one contract — the same
   discipline used across the sync layer ([[ios-sync-client]]).
+- **Why derived archival over a status flag:** "graded" is already the ground truth for "this exam is
+  behind me", so a separate `archived` flag would be a second source of truth that could drift from
+  the grade. Deriving it keeps one fact, makes un-archiving free (delete the grade), and adds no
+  migration surface beyond the FK. Same instinct as reading a card's due-ness from its SM-2 state
+  rather than storing a "due" boolean.
+- **Why the grade outlives its exam (SET NULL):** a recorded mark is real-world history; deleting the
+  exam (or it not yet having synced) must not erase the grade. Identical to why cards outlive exams
+  and sources ([[data-layer-and-sync]]).
 
 ## Implications
 - Sync clients must treat a card/quiz whose `exam_id` points at a missing (deleted or not-yet-pulled)
@@ -86,6 +117,13 @@ the cards (and generated quiz) studied for one assessment and carries its own op
 - Any future "list cards for exam X" view filters client-side on `exam_id` over the existing delta
   endpoints — no new endpoint needed (consistent with the fetch-and-filter approach in
   [[web-dashboard]]).
+- **Migration `0007` applied to prod 2026-07-08** (direct 5432 connection). The DB column exists, but
+  the change is **useless until the backend CODE ships** — the currently-deployed FastAPI predates
+  `0007`, and Pydantic silently drops the extra `exam_id` on create, so a grade's exam link won't
+  persist until the backend is redeployed. Migration-before-code is the safe order (a new nullable
+  column sits inert; the reverse would 422 every grade). See [[deployment]].
+- **iOS** must eventually add the `Exam @Model` and wire the grade-from-exam UI; the stored
+  `GradeEntry.examId` is a forward-compat placeholder until then ([[ios-sync-client]]).
 
 ## Open questions
 - ~~Should `subject.exam_date` be retired now that exams carry their own date?~~ **Resolved
@@ -95,6 +133,9 @@ the cards (and generated quiz) studied for one assessment and carries its own op
   `PATCH /v1/cards {exam_id}`; the surface isn't built).
 - Exam-mode SM-2 compression is described in the contract (per-exam `exam_date`) but the scheduler
   behaviour that consumes it is not yet wired on the web review flow.
+- Grade-linked archival allows only one grade per exam through the guided logger (a graded exam
+  leaves the picker). A second mark for the same exam can still be added as a standalone grade via
+  the per-subject panel; whether multiple weighted grades should attach to one exam is unresolved.
 
 ## Last updated
-2026-07-07
+2026-07-08

@@ -83,6 +83,10 @@ export interface Question extends SyncRow {
 
 export interface GradeEntry extends SyncRow {
   subject_id: string;
+  // The exam this grade records a result for, or null for a standalone grade (homework,
+  // participation). A live grade pointing at an exam is what "finishes" that exam: it moves
+  // out of the subject's active exam list into "Past exams".
+  exam_id: string | null;
   title: string;
   kind: GradeKind;
   score: number;
@@ -93,6 +97,7 @@ export interface GradeEntry extends SyncRow {
 // POST /v1/grade-entries body (GradeEntryCreate). `id`/`date` are server-defaulted when omitted.
 export interface GradeEntryCreate {
   subject_id: string;
+  exam_id?: string | null; // links the grade to an exam; omit/null for a standalone grade
   title: string;
   kind: GradeKind;
   score: number;

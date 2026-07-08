@@ -13,6 +13,7 @@ function entry(score: number, weight: number): GradeEntry {
     updated_at: "",
     deleted_at: null,
     subject_id: "s",
+    exam_id: null,
     title: "t",
     kind: "exam",
     score,
