@@ -159,6 +159,24 @@ class OwnedRepository:
             stmt = stmt.where(getattr(model, attr) == val)
         return self.session.execute(stmt.limit(1)).scalar_one_or_none()
 
+    def list_live(self, model: type) -> list[Any]:
+        """Every owned, non-tombstoned row of ``model``, oldest first.
+
+        Backs the aggregated ``GET /v1/dashboard`` read, which exists so a client can fetch its
+        whole working set in one request instead of one delta-pull per resource. Unlike
+        :meth:`list_delta` this excludes tombstones (a dashboard renders live rows, it does not
+        converge a replica) and is unpaged — the payload is one user's own data, exactly what the
+        client used to assemble by paging every resource itself.
+
+        Owner-scoped via :meth:`_owned`, like every other read here.
+        """
+        stmt = self._owned(model)
+        if self._is_soft_deletable(model):
+            stmt = stmt.where(model.deleted_at.is_(None))
+        ts_attr = model.updated_at if self._is_soft_deletable(model) else model.created_at
+        stmt = stmt.order_by(ts_attr.asc(), model.id.asc())
+        return list(self.session.execute(stmt).scalars().all())
+
     def list_delta(
         self, model: type, since: Cursor | None, limit: int
     ) -> tuple[list[Any], Cursor | None, bool]:

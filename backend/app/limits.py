@@ -4,9 +4,26 @@ Two independent cost controls, both backed by Postgres so they hold across multi
 and restarts (the user's explicit choice over an in-memory half-measure):
 
 * **Rate limit** — a fixed per-minute request ceiling on *every* ``/v1/*`` route, enforced as
-  a FastAPI dependency (:func:`enforce_rate_limit`). The per-minute counter is bumped with an
-  atomic ``INSERT ... ON CONFLICT DO UPDATE`` so concurrent workers can't race past it, and is
-  committed immediately so an attempt counts even if the request later fails.
+  a FastAPI dependency (:func:`enforce_rate_limit`). It is split by method:
+
+  - *Mutating* requests (POST/PATCH/DELETE) and the paid AI endpoints keep the original
+    Postgres-backed counter: an atomic ``INSERT ... ON CONFLICT DO UPDATE`` that concurrent
+    workers can't race past, committed immediately so an attempt counts even if the request
+    later fails. These are the requests that write, or cost money, so ADR 0009's requirement
+    that the ceiling survive restarts and span workers applies to them unchanged.
+
+  - *Safe* reads (GET/HEAD) are counted **in-process** instead (:func:`check_read_rate_limit`),
+    with their own, much higher ceiling. Charging a Postgres write + commit to every read was
+    the dominant per-request cost: all of one user's concurrent reads contend on the same
+    ``(subject, minute)`` bucket row, so they serialised on its row lock. A read is idempotent,
+    owner-scoped and free, so the weaker guarantee is an acceptable trade — and it is not the
+    only guard: nginx applies a per-IP ``limit_req`` (10r/s) and ``limit_conn`` in front of the
+    app (deploy/nginx.conf.template), which is what actually blunts an unauthenticated flood.
+
+  The in-process counter is per worker and resets on restart. The deploy runs a single uvicorn
+  worker (deploy/entrypoint.sh), so today that is per container; with N workers a client could
+  read N× the ceiling. That is deliberate for reads and **must not** be extended to the
+  mutating/AI path, whose cap protects real money.
 
 * **Spend cap** — a daily token ceiling, per user *and* global, checked *before* a Claude call
   (:func:`enforce_spend_cap`) and recorded *after* a successful one (:func:`record_usage`).
@@ -21,6 +38,7 @@ by at most the in-flight requests, which is acceptable and documented (ADR 0009)
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -48,6 +66,17 @@ _RATE_WINDOW_SECONDS = 60
 _BUCKET_RETENTION_SECONDS = 3600  # keep the last hour of counters
 _PRUNE_INTERVAL_SECONDS = 3600  # sweep at most hourly
 _last_prune_monotonic = 0.0
+
+# HTTP methods treated as safe reads — limited in-process, never with a DB write.
+_SAFE_METHODS = frozenset({"GET", "HEAD"})
+
+# In-process fixed-window counters for safe reads: {subject: (window_index, count)}. Guarded by a
+# lock because sync route dependencies run in uvicorn's threadpool, so several requests touch this
+# concurrently. Entries are self-expiring (a stale window resets to 0 on next use); the size cap
+# below bounds memory if many distinct subjects appear within one window.
+_read_buckets: dict[str, tuple[int, int]] = {}
+_read_lock = threading.Lock()
+_READ_BUCKET_MAX = 4096
 
 
 def _maybe_prune_buckets(session: Session) -> None:
@@ -134,15 +163,66 @@ def check_rate_limit(session: Session, subject: str, limit_per_min: int) -> None
         )
 
 
+def check_read_rate_limit(subject: str, limit_per_min: int) -> None:
+    """Bump ``subject``'s in-process read counter for the current minute and 429 if it exceeds
+    the limit. Disabled when ``limit_per_min <= 0``.
+
+    No database I/O: this is the whole point (see the module docstring). Per worker, resets on
+    restart — acceptable for idempotent, owner-scoped reads, and never used for writes.
+    """
+    if limit_per_min <= 0:
+        return
+
+    now = time.time()
+    window = int(now // _RATE_WINDOW_SECONDS)
+
+    with _read_lock:
+        # Bound memory: if a burst of distinct subjects fills the map, drop everything not in the
+        # current window. Only expired counters go, so no live limit decision is affected.
+        if len(_read_buckets) > _READ_BUCKET_MAX:
+            for key in [k for k, (w, _) in _read_buckets.items() if w != window]:
+                del _read_buckets[key]
+
+        prev_window, count = _read_buckets.get(subject, (window, 0))
+        count = count + 1 if prev_window == window else 1
+        _read_buckets[subject] = (window, count)
+
+    if count > limit_per_min:
+        retry_after = max(1, _RATE_WINDOW_SECONDS - int(now % _RATE_WINDOW_SECONDS))
+        logger.info("read rate limit hit: subject=%s count=%s limit=%s", subject, count, limit_per_min)
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please slow down and try again shortly.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def reset_read_rate_limit() -> None:
+    """Clear the in-process read counters. For tests — the module-level map would otherwise leak
+    counts across cases."""
+    with _read_lock:
+        _read_buckets.clear()
+
+
 def enforce_rate_limit(
     request: Request,
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(get_current_user),
 ) -> None:
     """FastAPI dependency applied to every ``/v1/*`` router (CRUD + the AI endpoints). Runs
-    after auth, so the caller is always identified; keyed per user (per IP for dev fallback)."""
+    after auth, so the caller is always identified; keyed per user (per IP for dev fallback).
+
+    Safe reads take the cheap in-process counter; everything that writes or costs money keeps the
+    Postgres-backed one. See the module docstring for why the guarantees differ.
+    """
     settings = get_settings()
-    check_rate_limit(session, _subject_key(user, request, settings), settings.rate_limit_per_min)
+    subject = _subject_key(user, request, settings)
+
+    if request.method in _SAFE_METHODS:
+        check_read_rate_limit(subject, settings.read_rate_limit_per_min)
+        return
+
+    check_rate_limit(session, subject, settings.rate_limit_per_min)
 
 
 # --- spend cap --------------------------------------------------------------------------

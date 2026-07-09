@@ -8,12 +8,13 @@
 import { BACKEND_URL } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 
+import { cached, invalidate } from "./cache";
+
 import type {
   Attempt,
   AttemptCreate,
   Card,
   CardSM2Update,
-  DeltaPage,
   Exam,
   ExamCreate,
   ExamUpdate,
@@ -79,50 +80,93 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-// Page through a delta-pull resource to get every row the user owns. The CRUD list endpoints
-// are not filtered server-side, so callers filter by subject/quiz client-side. Fine at a
-// single-user study app's scale.
-const PAGE_LIMIT = 1000;
+// --- the snapshot ------------------------------------------------------------------------
+//
+// Every read below is served from one request: `GET /v1/dashboard` returns all of the caller's
+// live rows in a single owner-scoped payload. Previously each loader paged each resource's
+// delta endpoint separately, so a dashboard render cost ten requests and a Dashboard → Review →
+// Progress walk cost thirty. The per-resource delta endpoints still exist — they are the sync
+// contract the iOS client depends on — but the web app no longer uses them for reading.
+//
+// The snapshot is cached under one key (see ./cache), so concurrent loaders on the same page
+// share one in-flight request and a navigation within the TTL costs nothing.
 
-// Page through every row the caller owns for a delta-pull resource. Works for both syncable rows
-// and append-only ones (attempts, review-logs, study-sessions) — tombstone filtering is a separate
-// concern applied by `alive` only where the resource has a `deleted_at`.
-async function pageAll<T>(resource: string): Promise<T[]> {
-  const out: T[] = [];
-  let cursor: string | null = null;
-  // Hard ceiling on iterations as a safety net against a misbehaving cursor.
-  for (let i = 0; i < 1000; i++) {
-    const qs = new URLSearchParams({ limit: String(PAGE_LIMIT) });
-    if (cursor) qs.set("since", cursor);
-    const page: DeltaPage<T> = await request<DeltaPage<T>>(`/v1/${resource}?${qs.toString()}`);
-    out.push(...page.items);
-    if (!page.has_more || !page.next_cursor) break;
-    cursor = page.next_cursor;
-  }
-  return out;
+const SNAPSHOT_KEY = "dashboard";
+
+// Wire shape of GET /v1/dashboard. Rows are identical to the delta endpoints' rows; only the
+// envelope keys differ (snake_case, one list per resource). Tombstones are excluded server-side.
+interface SnapshotPayload {
+  subjects: Subject[];
+  exams: Exam[];
+  sources: Source[];
+  cards: Card[];
+  quizzes: Quiz[];
+  questions: Question[];
+  grade_entries: GradeEntry[];
+  attempts: Attempt[];
+  review_logs: ReviewLog[];
+  study_sessions: StudySession[];
 }
 
-async function listAll<T extends { deleted_at: string | null }>(resource: string): Promise<T[]> {
-  return pageAll<T>(resource);
+export interface Snapshot {
+  subjects: Subject[];
+  exams: Exam[];
+  sources: Source[];
+  cards: Card[];
+  quizzes: Quiz[];
+  questions: Question[];
+  gradeEntries: GradeEntry[];
+  attempts: Attempt[];
+  reviewLogs: ReviewLog[];
+  studySessions: StudySession[];
 }
 
-// Drop tombstoned rows — a delta pull includes soft-deleted rows so clients can converge.
-function alive<T extends { deleted_at: string | null }>(rows: T[]): T[] {
-  return rows.filter((r) => !r.deleted_at);
+async function fetchSnapshot(): Promise<Snapshot> {
+  const p = await request<SnapshotPayload>("/v1/dashboard");
+  return {
+    subjects: p.subjects,
+    exams: p.exams,
+    sources: p.sources,
+    cards: p.cards,
+    quizzes: p.quizzes,
+    questions: p.questions,
+    gradeEntries: p.grade_entries,
+    attempts: p.attempts,
+    reviewLogs: p.review_logs,
+    studySessions: p.study_sessions,
+  };
+}
+
+function snapshot(): Promise<Snapshot> {
+  return cached(SNAPSHOT_KEY, fetchSnapshot);
+}
+
+// Every caller gets its own array, so a page that sorts or splices in place can't corrupt the
+// cached snapshot the other pages are reading.
+async function from<K extends keyof Snapshot>(key: K): Promise<Snapshot[K]> {
+  const snap = await snapshot();
+  return [...snap[key]] as Snapshot[K];
+}
+
+// Any write can change the snapshot, so it is dropped wholesale rather than per resource.
+function invalidateSnapshot(): void {
+  invalidate(SNAPSHOT_KEY);
 }
 
 export async function listSubjects(): Promise<Subject[]> {
-  return alive(await listAll<Subject>("subjects"));
+  return from("subjects");
 }
 
 export async function getSubject(id: string): Promise<Subject> {
-  return request<Subject>(`/v1/subjects/${id}`);
+  const subject = (await snapshot()).subjects.find((s) => s.id === id);
+  // Matches the old GET /v1/subjects/{id} behaviour: a tombstoned or foreign id reads as absent.
+  if (!subject) throw new ApiError(404, "subject not found");
+  return subject;
 }
 
-// All of the caller's sources (GET /v1/sources) — the uploaded materials, used as "decks" on the
-// Flashcards page.
+// The uploaded materials, used as "decks" on the Flashcards page.
 export async function listSources(): Promise<Source[]> {
-  return alive(await listAll<Source>("sources"));
+  return from("sources");
 }
 
 // Create a subject (POST /v1/subjects). Used by the Grades page's "New subject" form; the id is
@@ -132,57 +176,68 @@ export async function createSubject(body: {
   grading_scale: Subject["grading_scale"];
   target_grade?: number | null;
 }): Promise<Subject> {
-  return request<Subject>("/v1/subjects", {
+  const created = await request<Subject>("/v1/subjects", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // Patch a subject (PATCH /v1/subjects/{id}). Used by the Grades tab to set the target grade and
 // an optional manual current-grade override. Only the sent fields change.
 export async function updateSubject(id: string, patch: SubjectUpdate): Promise<Subject> {
-  return request<Subject>(`/v1/subjects/${id}`, {
+  const updated = await request<Subject>(`/v1/subjects/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return updated;
 }
 
-// Delete a subject (DELETE /v1/subjects/{id}). The backend tombstones the row; the subject then
-// stops appearing anywhere it's fetched by id or listed (tombstones are filtered by `alive`).
+// Delete a subject (DELETE /v1/subjects/{id}). The backend tombstones the row and cascades to its
+// exams, sources, cards, quizzes, questions and grade entries; the snapshot excludes tombstones,
+// so all of them stop appearing once it is refetched.
 export async function deleteSubject(id: string): Promise<void> {
   await request<void>(`/v1/subjects/${id}`, { method: "DELETE" });
+  invalidateSnapshot();
 }
 
 // --- exams (a subject's assessments) -----------------------------------------------------
 
 export async function listExams(): Promise<Exam[]> {
-  return alive(await listAll<Exam>("exams"));
+  return from("exams");
 }
 
 // Create an exam under a subject (POST /v1/exams).
 export async function createExam(body: ExamCreate): Promise<Exam> {
-  return request<Exam>("/v1/exams", {
+  const created = await request<Exam>("/v1/exams", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // Patch an exam (PATCH /v1/exams/{id}). Only the sent fields change.
 export async function updateExam(id: string, patch: ExamUpdate): Promise<Exam> {
-  return request<Exam>(`/v1/exams/${id}`, {
+  const updated = await request<Exam>(`/v1/exams/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return updated;
 }
 
 // Delete an exam (DELETE /v1/exams/{id}). Tombstoned server-side; its cards/quizzes survive and
 // fall back to the subject's "General" bucket (their exam_id keeps pointing at the gone exam).
 export async function deleteExam(id: string): Promise<void> {
   await request<void>(`/v1/exams/${id}`, { method: "DELETE" });
+  invalidateSnapshot();
 }
 
 export interface SubjectBundle {
@@ -197,18 +252,13 @@ export interface SubjectBundle {
   gradeEntries: GradeEntry[];
 }
 
-// Everything needed to render a subject detail page, fetched in parallel and filtered to the
-// subject. Questions are filtered via the subject's quiz ids.
+// Everything needed to render a subject detail page, sliced out of the snapshot. Questions are
+// filtered via the subject's quiz ids.
 export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
-  const [subject, exams, sources, cards, quizzes, questions, gradeEntries] = await Promise.all([
-    getSubject(id),
-    listAll<Exam>("exams").then(alive),
-    listAll<Source>("sources").then(alive),
-    listAll<Card>("cards").then(alive),
-    listAll<Quiz>("quizzes").then(alive),
-    listAll<Question>("questions").then(alive),
-    listAll<GradeEntry>("grade-entries").then(alive),
-  ]);
+  const { subjects, exams, sources, cards, quizzes, questions, gradeEntries } = await snapshot();
+
+  const subject = subjects.find((s) => s.id === id);
+  if (!subject) throw new ApiError(404, "subject not found");
 
   const subjectQuizzes = quizzes.filter((q) => q.subject_id === id);
   const quizIds = new Set(subjectQuizzes.map((q) => q.id));
@@ -249,7 +299,10 @@ export async function generateDeck({
   if (examId) form.append("exam_id", examId);
   for (const f of files) form.append("files", f);
   // Do NOT set Content-Type — the browser sets the multipart boundary.
-  return request<GeneratedDeck>("/v1/generate", { method: "POST", body: form });
+  const deck = await request<GeneratedDeck>("/v1/generate", { method: "POST", body: form });
+  // One generate writes across subjects (find-or-create), sources, cards, quizzes and questions.
+  invalidateSnapshot();
+  return deck;
 }
 
 // --- Quiz-taking -------------------------------------------------------------------------
@@ -258,21 +311,27 @@ export async function generateDeck({
 // spend cap). Passing `question_id` makes the backend persist the result as an Attempt, so the
 // caller must NOT also POST /v1/attempts for the same answer.
 export async function gradeShortAnswer(body: GradeRequest): Promise<GradeResult> {
-  return request<GradeResult>("/v1/grade", {
+  const result = await request<GradeResult>("/v1/grade", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  // With a question_id the backend persists an Attempt; without one nothing is written, but
+  // invalidating an already-absent key is a no-op so this stays unconditional.
+  invalidateSnapshot();
+  return result;
 }
 
 // Persist a locally-graded attempt (POST /v1/attempts). Used for multiple choice, which is
 // graded in the browser against `answer_key` and never touches the paid grading endpoint.
 export async function createAttempt(body: AttemptCreate): Promise<Attempt> {
-  return request<Attempt>("/v1/attempts", {
+  const created = await request<Attempt>("/v1/attempts", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // --- Card review (spaced repetition) -----------------------------------------------------
@@ -280,21 +339,25 @@ export async function createAttempt(body: AttemptCreate): Promise<Attempt> {
 // Write back a card's SM-2 state after a review (PATCH /v1/cards/{id}). The new state is computed
 // by the local scheduler (src/lib/srs/scheduler.ts), which is a faithful port of the iOS one.
 export async function updateCard(id: string, patch: CardSM2Update): Promise<Card> {
-  return request<Card>(`/v1/cards/${id}`, {
+  const updated = await request<Card>(`/v1/cards/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return updated;
 }
 
 // Record one review (POST /v1/review-logs, append-only). Mirrors the iOS client, which logs every
 // review for analytics / future SRS tuning.
 export async function createReviewLog(body: ReviewLogCreate): Promise<ReviewLog> {
-  return request<ReviewLog>("/v1/review-logs", {
+  const created = await request<ReviewLog>("/v1/review-logs", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // --- Grades ------------------------------------------------------------------------------
@@ -302,51 +365,56 @@ export async function createReviewLog(body: ReviewLogCreate): Promise<ReviewLog>
 // Record a real-world grade for a subject (POST /v1/grade-entries). Grades feed prioritization
 // and the SM-2 exam compression (the subject's strength), and surface in the Grades tab.
 export async function createGradeEntry(body: GradeEntryCreate): Promise<GradeEntry> {
-  return request<GradeEntry>("/v1/grade-entries", {
+  const created = await request<GradeEntry>("/v1/grade-entries", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // Soft-delete a grade entry (DELETE /v1/grade-entries/{id}) — a tombstone, so the deletion also
 // converges to the iOS client on its next pull rather than reappearing.
 export async function deleteGradeEntry(id: string): Promise<void> {
   await request<void>(`/v1/grade-entries/${id}`, { method: "DELETE" });
+  invalidateSnapshot();
 }
 
-// All of the caller's grade entries (GET /v1/grade-entries). Feeds the cross-subject Grades page.
+// All of the caller's grade entries. Feeds the cross-subject Grades page.
 export async function listGradeEntries(): Promise<GradeEntry[]> {
-  return alive(await listAll<GradeEntry>("grade-entries"));
+  return from("gradeEntries");
 }
 
 // --- Analytics reads (append-only rows) --------------------------------------------------
 
-// All of the caller's quiz attempts (GET /v1/attempts). Feeds the dashboard's quiz-average stat.
+// All of the caller's quiz attempts. Feeds the dashboard's quiz-average stat.
 export async function listAttempts(): Promise<Attempt[]> {
-  return pageAll<Attempt>("attempts");
+  return from("attempts");
 }
 
-// All of the caller's review logs (GET /v1/review-logs). Feeds the study streak.
+// All of the caller's review logs. Feeds the study streak.
 export async function listReviewLogs(): Promise<ReviewLog[]> {
-  return pageAll<ReviewLog>("review-logs");
+  return from("reviewLogs");
 }
 
 // --- Study sessions (duration tracking) --------------------------------------------------
 
-// All of the caller's study sessions (GET /v1/study-sessions). Feeds the weekly-activity chart.
+// All of the caller's study sessions. Feeds the weekly-activity chart.
 export async function listStudySessions(): Promise<StudySession[]> {
-  return pageAll<StudySession>("study-sessions");
+  return from("studySessions");
 }
 
 // Record a completed study block (POST /v1/study-sessions). Called by the review/quiz runners when
 // a session ends, so the weekly-activity chart reflects real elapsed study time.
 export async function createStudySession(body: StudySessionCreate): Promise<StudySession> {
-  return request<StudySession>("/v1/study-sessions", {
+  const created = await request<StudySession>("/v1/study-sessions", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+  invalidateSnapshot();
+  return created;
 }
 
 // --- Library (subjects + their decks/quizzes) --------------------------------------------
@@ -360,17 +428,17 @@ export interface LibraryData {
 }
 
 // The subjects/exams/cards/quizzes/questions the Review, Quizzes, Flashcards and Progress pages
-// browse. Exams let those pages scope study to a single assessment. Fetched in parallel;
+// browse. Exams let those pages scope study to a single assessment. Sliced from the snapshot;
 // aggregation is client-side, matching the rest of the app.
 export async function loadLibrary(): Promise<LibraryData> {
-  const [subjects, exams, cards, quizzes, questions] = await Promise.all([
-    listSubjects(),
-    listExams(),
-    listAll<Card>("cards").then(alive),
-    listAll<Quiz>("quizzes").then(alive),
-    listAll<Question>("questions").then(alive),
-  ]);
-  return { subjects, exams, cards, quizzes, questions };
+  const { subjects, exams, cards, quizzes, questions } = await snapshot();
+  return {
+    subjects: [...subjects],
+    exams: [...exams],
+    cards: [...cards],
+    quizzes: [...quizzes],
+    questions: [...questions],
+  };
 }
 
 // --- Dashboard ---------------------------------------------------------------------------
@@ -387,23 +455,20 @@ export interface DashboardData {
   studySessions: StudySession[];
 }
 
-// Everything the dashboard needs, fetched in parallel. Aggregation is done client-side (same
-// pattern as the SRS scheduler and progress heuristics) — see lib/dashboard.ts. Quizzes +
-// questions are needed only to attribute each attempt to a subject for the per-subject quiz average.
-// `study-sessions` is tolerated as empty until its backend resource ships (migration 0004), so the
-// dashboard renders fully before duration tracking is live.
+// Everything the dashboard needs, in one request. Aggregation is done client-side (same pattern as
+// the SRS scheduler and progress heuristics) — see lib/dashboard.ts. Quizzes + questions are needed
+// only to attribute each attempt to a subject for the per-subject quiz average.
 export async function loadDashboard(): Promise<DashboardData> {
-  const [subjects, exams, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions] =
-    await Promise.all([
-      listSubjects(),
-      listExams(),
-      listAll<Card>("cards").then(alive),
-      listAll<Quiz>("quizzes").then(alive),
-      listAll<Question>("questions").then(alive),
-      listAttempts(),
-      listReviewLogs(),
-      listAll<GradeEntry>("grade-entries").then(alive),
-      listStudySessions().catch(() => [] as StudySession[]),
-    ]);
-  return { subjects, exams, cards, quizzes, questions, attempts, reviewLogs, gradeEntries, studySessions };
+  const snap = await snapshot();
+  return {
+    subjects: [...snap.subjects],
+    exams: [...snap.exams],
+    cards: [...snap.cards],
+    quizzes: [...snap.quizzes],
+    questions: [...snap.questions],
+    attempts: [...snap.attempts],
+    reviewLogs: [...snap.reviewLogs],
+    gradeEntries: [...snap.gradeEntries],
+    studySessions: [...snap.studySessions],
+  };
 }

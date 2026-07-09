@@ -25,6 +25,16 @@ def _reset_settings_cache():
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_read_buckets():
+    """The read limiter's counters are module-level state; clear them between tests."""
+    from app.limits import reset_read_rate_limit
+
+    reset_read_rate_limit()
+    yield
+    reset_read_rate_limit()
+
+
 # --- rate limit -------------------------------------------------------------------------
 @requires_db
 def test_rate_limit_returns_429_past_threshold(client, monkeypatch):
@@ -44,6 +54,77 @@ def test_rate_limit_returns_429_past_threshold(client, monkeypatch):
     r = client.post("/v1/subjects", json={"name": "again"})
     assert r.status_code == 429
     assert int(r.headers["retry-after"]) >= 1
+
+
+def _bucket_rows() -> int:
+    """How many Postgres rate-limit bucket rows exist (the write-path counter's storage)."""
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
+
+    from app.db import get_engine
+    from app.models.internal import RateLimitBucket
+
+    with Session(get_engine()) as s:
+        return s.execute(select(func.count()).select_from(RateLimitBucket)).scalar_one()
+
+
+@requires_db
+def test_reads_are_limited_without_touching_postgres(client, monkeypatch):
+    """The perf fix: a GET must not cost an INSERT + COMMIT. Reads use the in-process counter."""
+    from app.config import get_settings
+    from app.models.internal import RateLimitBucket
+    from sqlalchemy import delete
+    from sqlalchemy.orm import Session
+
+    from app.db import get_engine
+
+    # Start from a clean slate: the write below is what should create the only bucket row.
+    with Session(get_engine()) as s:
+        s.execute(delete(RateLimitBucket))
+        s.commit()
+
+    monkeypatch.setenv("CRAM_READ_RATE_LIMIT_PER_MIN", "3")
+    monkeypatch.setenv("CRAM_RATE_LIMIT_PER_MIN", "50")
+    get_settings.cache_clear()
+
+    before = _bucket_rows()
+    codes = [client.get("/v1/subjects").status_code for _ in range(5)]
+    assert codes[:3] == [200, 200, 200], codes
+    assert codes[3] == 429, codes
+    assert int(client.get("/v1/subjects").headers["retry-after"]) >= 1
+
+    # Six GETs, zero rows written: no per-read Postgres write, no row-lock contention.
+    assert _bucket_rows() == before == 0
+
+    # A write still lands in the durable counter, proving the two paths are distinct.
+    assert client.post("/v1/subjects", json={"name": "W"}).status_code == 201
+    assert _bucket_rows() == 1
+
+
+@requires_db
+def test_read_and_write_ceilings_are_independent(client, monkeypatch):
+    """A tight write ceiling must not throttle reads, and vice versa — they are separate buckets."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("CRAM_RATE_LIMIT_PER_MIN", "1")  # writes: 1/min
+    monkeypatch.setenv("CRAM_READ_RATE_LIMIT_PER_MIN", "100")  # reads: plenty
+    get_settings.cache_clear()
+
+    assert client.post("/v1/subjects", json={"name": "A"}).status_code == 201
+    assert client.post("/v1/subjects", json={"name": "B"}).status_code == 429  # write cap hit
+
+    # ...but reads sail through, which is exactly the dashboard's access pattern.
+    assert [client.get("/v1/subjects").status_code for _ in range(20)] == [200] * 20
+
+
+@requires_db
+def test_read_limit_disabled_when_zero(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("CRAM_READ_RATE_LIMIT_PER_MIN", "0")
+    get_settings.cache_clear()
+
+    assert [client.get("/v1/subjects").status_code for _ in range(30)] == [200] * 30
 
 
 # --- spend cap --------------------------------------------------------------------------
@@ -181,6 +262,7 @@ def _prod_settings(**overrides):
         max_total_bytes=1,
         max_field_chars=1,
         rate_limit_per_min=60,
+        read_rate_limit_per_min=240,
         user_daily_token_cap=100_000,
         global_daily_token_cap=1_000_000,
         trust_proxy=False,
@@ -214,6 +296,7 @@ def test_production_config_complete_boots():
         {"supabase_jwks_url": "", "supabase_jwt_secret": "a-symmetric-secret"},
         {"allow_dev_fallback": True},
         {"rate_limit_per_min": 0},
+        {"read_rate_limit_per_min": 0},
         {"user_daily_token_cap": 0},
         {"global_daily_token_cap": 0},
     ],
@@ -237,6 +320,7 @@ def test_dev_config_never_blocks():
             supabase_jwks_url="",
             supabase_jwt_secret="",
             rate_limit_per_min=0,
+            read_rate_limit_per_min=0,
             user_daily_token_cap=0,
             global_daily_token_cap=0,
         )

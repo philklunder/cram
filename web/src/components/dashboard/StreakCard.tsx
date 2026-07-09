@@ -61,8 +61,9 @@ export function StreakCard({ streak, subtitle }: { streak: StreakStats; subtitle
   );
 }
 
-// Self-fetching streak card for the sidebar. Fetches review logs and computes the streak on its
-// own; renders nothing until there's at least one review so an empty account shows a clean rail.
+// Self-fetching streak card for the sidebar. Reads review logs from the shared snapshot (one cached
+// request, deduped with whatever the page itself is loading) and computes the streak on its own;
+// renders nothing until there's at least one review so an empty account shows a clean rail.
 export function SidebarStreak() {
   const { loading, data } = useAsync(() => listReviewLogs(), []);
 

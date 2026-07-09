@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/pages/shared";
 import { ThemeChoice } from "@/components/ThemeToggle";
 import { Button, Panel, inputClass } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { clearApiCache } from "@/lib/api/cache";
 import type { GradingScale } from "@/lib/api/types";
 import { displayScaleLabel } from "@/lib/grades";
 import { setDisplayScale, useDisplayScale } from "@/lib/useDisplayScale";
@@ -26,6 +27,8 @@ export function SettingsView({ email }: { email: string | null }) {
     setBusy(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Drop every cached row before the next user can sign in on this tab.
+    clearApiCache();
     router.push("/login");
     router.refresh();
   }

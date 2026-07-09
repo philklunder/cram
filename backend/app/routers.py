@@ -160,6 +160,42 @@ def build_router(spec: ResourceSpec) -> APIRouter:
     return router
 
 
+def build_dashboard_router() -> APIRouter:
+    """``GET /v1/dashboard`` — the caller's whole live working set in one response.
+
+    A read-only convenience aggregate over the same owner-scoped repository the resource routers
+    use, so it inherits the ownership invariant unchanged (ADR 0008 §3). It exists purely to
+    remove the client's ten-request fan-out; it is not part of the sync contract, and the
+    per-resource delta endpoints remain the only thing iOS depends on.
+    """
+    router = APIRouter(
+        prefix="/v1/dashboard",
+        tags=["dashboard"],
+        dependencies=[Depends(enforce_rate_limit)],
+    )
+
+    @router.get("", response_model=s.DashboardRead)
+    def read_dashboard(repo: OwnedRepository = Depends(get_repo)):
+        # One session, one transaction: ten owner-scoped SELECTs on a single pooled connection.
+        def rows(model, schema):
+            return [schema.model_validate(r) for r in repo.list_live(model)]
+
+        return s.DashboardRead(
+            subjects=rows(Subject, s.SubjectRead),
+            exams=rows(Exam, s.ExamRead),
+            sources=rows(Source, s.SourceRead),
+            cards=rows(Card, s.CardRead),
+            quizzes=rows(Quiz, s.QuizRead),
+            questions=rows(Question, s.QuestionRead),
+            grade_entries=rows(GradeEntry, s.GradeEntryRead),
+            attempts=rows(Attempt, s.AttemptRead),
+            review_logs=rows(ReviewLog, s.ReviewLogRead),
+            study_sessions=rows(StudySession, s.StudySessionRead),
+        )
+
+    return router
+
+
 # The resources. Order is irrelevant; each is independent.
 SPECS: list[ResourceSpec] = [
     ResourceSpec("subjects", Subject, s.SubjectRead, s.SubjectCreate, s.SubjectUpdate),
@@ -183,6 +219,7 @@ def install_resource_routers(app) -> None:
     """Mount every resource router and the repository-exception → HTTP handlers."""
     for spec in SPECS:
         app.include_router(build_router(spec))
+    app.include_router(build_dashboard_router())
 
     @app.exception_handler(OwnershipError)
     async def _ownership(_: Request, exc: OwnershipError):

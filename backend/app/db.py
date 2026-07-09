@@ -64,14 +64,31 @@ def normalize_url(url: str) -> str:
     return _strip_unknown_params(url)
 
 
+# Connection pool sizing. SQLAlchemy's defaults (pool_size=5, max_overflow=10) meant a burst of
+# concurrent requests exhausted the five pooled connections and opened *fresh* ones — each a TCP
+# + TLS handshake to the Supabase pooler on the request's critical path, then discarded when the
+# overflow connection was returned. Holding more warm connections trades a little idle memory for
+# not paying that handshake. The ceiling (size + overflow) stays well under the pooler's per-client
+# allowance, and comfortably above what one uvicorn worker's threadpool will ask for.
+_POOL_SIZE = 10
+_MAX_OVERFLOW = 10
+# Retire a pooled connection after this long, so we never hand out one the pooler has since
+# dropped server-side. pool_pre_ping catches that case too; this just keeps it rare.
+_POOL_RECYCLE_SECONDS = 1800
+
+
 def _build_engine(settings: Settings) -> Engine | None:
     if not settings.database_url:
         return None
     return create_engine(
         normalize_url(settings.database_url),
         future=True,
-        # Reconnect transparently after the pooler drops an idle connection.
+        # Reconnect transparently after the pooler drops an idle connection. Costs a `SELECT 1`
+        # per checkout; cheap next to reconnecting mid-request, and the pooler does drop idles.
         pool_pre_ping=True,
+        pool_size=_POOL_SIZE,
+        max_overflow=_MAX_OVERFLOW,
+        pool_recycle=_POOL_RECYCLE_SECONDS,
         # pgBouncer transaction mode (the Supabase pooler) cannot keep server-side
         # prepared statements across pooled connections; disable them. Harmless on a
         # direct connection. (psycopg v3 connection kwarg.)
