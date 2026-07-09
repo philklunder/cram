@@ -465,6 +465,18 @@ html body:has(> .page) {
   background: #dfe4ed;
 }
 
+.browserDots span:nth-child(1) {
+  background: #ff5f57;
+}
+
+.browserDots span:nth-child(2) {
+  background: #febc2e;
+}
+
+.browserDots span:nth-child(3) {
+  background: #28c840;
+}
+
 .mockSearch {
   width: 235px;
   height: 29px;
