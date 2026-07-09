@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 
+import { InteractiveClaudeMascot } from "@/components/ClaudeMascot";
 import styles from "./landing.module.css";
 
 // Public marketing page at "/". A port of cram-landing-page-v4-spaced-home.html: the styles live
@@ -242,6 +243,7 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
               <span className={`${styles.heroOrb} ${styles.one}`} />
               <span className={`${styles.heroOrb} ${styles.two}`} />
 
+              <div className={styles.heroStage}>
               <div ref={dashboardRef} className={styles.dashboardShell}>
                 <div className={styles.browserBar}>
                   <div className={styles.browserDots}>
@@ -333,6 +335,17 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
                     </div>
                   </div>
                 </div>
+              </div>
+
+                {/* Sits over the mockup's bottom-right corner rather than inside the
+                    shell: .dashboardShell is overflow:hidden and 3D-rotated, so a child
+                    there would be clipped at the corner and skewed with the shell. */}
+                <InteractiveClaudeMascot
+                  className={styles.heroMascot}
+                  size={84}
+                  showPoweredByLabel
+                  theme="light"
+                />
               </div>
 
               <div className={`${styles.floatingCard} ${styles.review}`}>

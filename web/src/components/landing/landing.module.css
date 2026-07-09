@@ -426,10 +426,33 @@ html body:has(> .page) {
   animation: drift 7s ease-in-out infinite reverse;
 }
 
+/* Carries the mockup's width so .heroMascot can anchor to the mockup's own bottom-right
+   corner. .heroVisual centres its child, so anchoring to .heroVisual would drift. */
+.heroStage {
+  position: relative;
+  width: min(100%, 760px);
+}
+
+/* The mascot's canvas holds his speech bubble, so ~22% of its height sits empty below
+   his feet. The negative bottom offset lands his feet just inside the mockup's edge. */
+.heroMascot {
+  position: absolute;
+  right: -16px;
+  bottom: -46px;
+  z-index: 7;
+}
+
+@media (max-width: 640px) {
+  .heroMascot {
+    transform: scale(0.68);       /* ~57px body, inside the 52-64px mobile range */
+    transform-origin: 100% 100%;
+  }
+}
+
 .dashboardShell {
   position: relative;
   z-index: 3;
-  width: min(100%, 760px);
+  width: 100%;
   padding: 13px;
   border: 1px solid rgba(212, 219, 232, 0.97);
   border-radius: 29px;
@@ -2401,7 +2424,7 @@ html body:has(> .page) {
     min-height: 620px;
   }
 
-  .dashboardShell {
+  .heroStage {
     width: min(100%, 720px);
   }
 
