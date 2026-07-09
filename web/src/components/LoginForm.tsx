@@ -12,9 +12,19 @@ type Mode = "signin" | "signup";
 
 // Email/password auth against Supabase (same project as iOS). On success the session cookie is
 // set by @supabase/ssr and the route layout lets the user through.
-export function LoginForm() {
+//
+// /login and /signup both render this card; `initialMode` picks the starting tab. Switching tabs
+// rewrites the URL with history.replaceState rather than a router navigation — a navigation would
+// remount the component and throw away an in-flight notice ("check your email…").
+export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {}) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(initialMode);
+
+  function applyMode(next: Mode) {
+    setMode(next);
+    window.history.replaceState(null, "", next === "signup" ? "/signup" : "/login");
+  }
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -44,7 +54,7 @@ export function LoginForm() {
         // cases are indistinguishable to an attacker probing for accounts.
         if (error && /already|exist|registered/i.test(error.message)) {
           setNotice("Check your email to confirm your account, then sign in.");
-          setMode("signin");
+          applyMode("signin");
         } else if (error) {
           throw error;
         } else if (data.session) {
@@ -52,7 +62,7 @@ export function LoginForm() {
           router.refresh();
         } else {
           setNotice("Check your email to confirm your account, then sign in.");
-          setMode("signin");
+          applyMode("signin");
         }
       }
     } catch (err: unknown) {
@@ -272,7 +282,7 @@ export function LoginForm() {
                 <button
                   type="button"
                   onClick={() => {
-                    setMode(mode === "signin" ? "signup" : "signin");
+                    applyMode(mode === "signin" ? "signup" : "signin");
                     setError(null);
                     setNotice(null);
                   }}
