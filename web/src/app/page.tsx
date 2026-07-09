@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-// The app entry point routes straight to the dashboard; the (app) layout handles the
-// auth gate and bounces unauthenticated users to /login.
-export default function Home() {
-  redirect("/dashboard");
+// The landing page lives at /home; "/" is just the door to it. Same in dev and production, so
+// hitting localhost:3000 or the deployed origin always opens the landing page.
+export default function Root() {
+  redirect("/home");
 }

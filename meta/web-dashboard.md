@@ -109,7 +109,14 @@ to `main` once both halves are done.
   subject/quiz in the browser.
 - **Zero runtime dependencies beyond Next/React/Supabase + Tailwind.** A local `cn()` instead of
   `clsx`; a **system font stack instead of `next/font/google`**; a shared design-system primitives
-  file (`web/src/components/ui.tsx`).
+  file (`web/src/components/ui.tsx`). **The `next/font` half of this was reversed 2026-07-09** for the
+  public landing page only — the CSP forbids its Google Fonts link, so Geist is self-hosted at build
+  time and scoped to that one container. The app shell still ships the system stack. See
+  [landing-page.md](landing-page.md).
+- **A public marketing page now fronts the app (2026-07-09).** `/` redirects to `/home`; the app is no
+  longer the first thing an unauthenticated visitor sees, and a real `/signup` route joins `/login`.
+  The landing is a verbatim CSS-Module port of an owner-supplied HTML comp and deliberately does
+  **not** use the semantic token layer or respond to `.dark`. See [landing-page.md](landing-page.md).
 - **Same Supabase project as iOS**; only the **anon** key ships to the browser (public by design).
   Backend base URL defaults to the live Railway deploy, overridable via
   `NEXT_PUBLIC_CRAM_BACKEND_URL`.
