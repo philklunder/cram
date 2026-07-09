@@ -7,6 +7,7 @@ import { Bell, ChevronDown, LogOut, Menu, Search } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { clearApiCache } from "@/lib/api/cache";
 
 // Sticky application top bar: mobile nav trigger, global search, theme toggle, notifications, and
 // the user menu (which owns sign-out). Search filtering and real notifications are wired in later
@@ -127,6 +128,8 @@ function UserMenu({ email }: { email: string | null }) {
     setBusy(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Drop every cached row before the next user can sign in on this tab.
+    clearApiCache();
     router.push("/login");
     router.refresh();
   }

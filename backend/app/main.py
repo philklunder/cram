@@ -19,6 +19,7 @@ load_dotenv()  # load .env before reading settings
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 from .config import check_production_config, get_settings  # noqa: E402
@@ -55,6 +56,28 @@ def storage_dependency() -> Storage | None:
     return get_storage(settings)
 
 
+# Compress responses (only when the client sends `Accept-Encoding: gzip`). The reads here are
+# JSON lists of rows — highly repetitive — so this cuts a /v1/dashboard payload by ~94% and
+# dominates any CPU it costs.
+#
+# ORDERING IS LOAD-BEARING. `add_middleware` does `user_middleware.insert(0, ...)`, so the LAST
+# middleware added is the OUTERMOST. This call must therefore come BEFORE the `limit_body_size`
+# decorator below, which registers a BaseHTTPMiddleware — and BaseHTTPMiddleware re-emits every
+# response as a *stream*. Gzip sitting outside it would see `more_body=True` on the first chunk,
+# which bypasses the `minimum_size` check entirely (compressing a 13-byte /healthz up to 31
+# bytes) and forces chunked transfer by dropping Content-Length. Registered here, gzip is the
+# innermost middleware and sees each route's complete, single-chunk response.
+#
+# Deliberately done in the app rather than nginx: `gzip on` already lives in the stock Debian
+# nginx.conf http{} block that deploy/nginx.conf.template is included into (re-declaring it there
+# is the [emerg] duplicate-directive boot crash), and stock nginx compresses only text/html and
+# won't touch proxied responses without `gzip_proxied` — so an nginx-side setting would look
+# enabled while doing nothing for our JSON. nginx passes the encoded body through untouched.
+#
+# minimum_size skips bodies too small to benefit; level 6 is the usual size/CPU knee (default 9).
+app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
+
+
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):
     """Reject oversized requests before the body is buffered into memory/disk.
@@ -74,10 +97,10 @@ async def limit_body_size(request: Request, call_next):
 
 
 # CORS for the v0.6 web dashboard (browser cross-origin calls). Added last so it is the
-# OUTERMOST middleware — it answers preflight OPTIONS and stamps Access-Control headers on
-# every response, including errors. No-op when CRAM_CORS_ORIGINS is unset, so native/iOS
-# deployments stay locked down. Credentials are off: the web client authenticates with a
-# Bearer JWT (not cookies), so it does not need `Access-Control-Allow-Credentials`.
+# OUTERMOST middleware (see the ordering note above) — it answers preflight OPTIONS and stamps
+# Access-Control headers on every response, including errors. No-op when CRAM_CORS_ORIGINS is
+# unset, so native/iOS deployments stay locked down. Credentials are off: the web client
+# authenticates with a Bearer JWT (not cookies), so it needs no `Access-Control-Allow-Credentials`.
 if settings.cors_origins:
     app.add_middleware(
         CORSMiddleware,

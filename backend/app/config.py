@@ -27,8 +27,15 @@ class Settings:
     max_field_chars: int
     # v0.5 Phase 4 hardening (ADR 0009). All default to "disabled" (0 / off) so local and
     # dev runs are unaffected; production *requires* them (see check_production_config).
-    # Per-caller request ceiling per minute across all /v1/* routes (0 = no limit).
+    # Per-caller request ceiling per minute for *mutating* /v1/* requests and the paid AI
+    # endpoints — the ones that write, or cost money (0 = no limit). Postgres-backed, so it
+    # holds across workers and restarts (ADR 0009).
     rate_limit_per_min: int
+    # Per-caller ceiling per minute for *safe* reads (GET/HEAD). Separate and much higher: a
+    # read is owner-scoped, idempotent and free, so it is limited only to blunt runaway clients,
+    # and it is counted in-process rather than with a Postgres write per request (see
+    # app/limits.py). 0 = no limit.
+    read_rate_limit_per_min: int
     # Daily token ceilings for the metered Claude calls (0 = no cap). Token-based (exact from
     # the SDK usage) rather than cost-based, so there is no per-model price table to maintain.
     user_daily_token_cap: int
@@ -98,6 +105,9 @@ def load_settings() -> Settings:
         # Phase 4 hardening (ADR 0009). Default off so dev/local is unaffected; prod requires
         # them (check_production_config). A generous 60/min covers an interactive client.
         rate_limit_per_min=int(os.environ.get("CRAM_RATE_LIMIT_PER_MIN", "60")),
+        # Defaults high on purpose: reads are cheap, and the prod guard below requires > 0, so an
+        # unset var must never be able to refuse a boot.
+        read_rate_limit_per_min=int(os.environ.get("CRAM_READ_RATE_LIMIT_PER_MIN", "240")),
         user_daily_token_cap=int(os.environ.get("CRAM_USER_DAILY_TOKEN_CAP", "0")),
         global_daily_token_cap=int(os.environ.get("CRAM_GLOBAL_DAILY_TOKEN_CAP", "0")),
         trust_proxy=os.environ.get("CRAM_TRUSTED_PROXY", "").strip().lower()
@@ -165,6 +175,8 @@ def check_production_config(settings: Settings) -> None:
     # unmetered public endpoint to a paid LLM is an open wallet.
     if settings.rate_limit_per_min <= 0:
         problems.append("CRAM_RATE_LIMIT_PER_MIN must be > 0")
+    if settings.read_rate_limit_per_min <= 0:
+        problems.append("CRAM_READ_RATE_LIMIT_PER_MIN must be > 0")
     if settings.user_daily_token_cap <= 0:
         problems.append("CRAM_USER_DAILY_TOKEN_CAP must be > 0")
     if settings.global_daily_token_cap <= 0:

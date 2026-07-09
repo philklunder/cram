@@ -333,3 +333,30 @@ class StudySessionCreate(BaseModel):
     # poisoning the weekly-activity aggregate (24h = 86400s).
     duration_seconds: int = Field(ge=0, le=86_400)
     kind: StudyKind = StudyKind.other
+
+
+# --- aggregate read --------------------------------------------------------------------
+
+
+class DashboardRead(BaseModel):
+    """Every live row the caller owns, in one response.
+
+    The web client used to assemble this by pulling all ten resources in parallel — nine or ten
+    HTTP requests per page, each paying its own auth, rate-limit write and connection checkout.
+    This collapses that into one request, one transaction and one rate-limit hit.
+
+    Tombstones are excluded (see ``OwnedRepository.list_live``): this is a snapshot for
+    rendering, not a delta for replica convergence. The per-resource ``GET /v1/{resource}``
+    delta-pull endpoints remain the sync contract for the iOS client and are unchanged.
+    """
+
+    subjects: list[SubjectRead]
+    exams: list[ExamRead]
+    sources: list[SourceRead]
+    cards: list[CardRead]
+    quizzes: list[QuizRead]
+    questions: list[QuestionRead]
+    grade_entries: list[GradeEntryRead]
+    attempts: list[AttemptRead]
+    review_logs: list[ReviewLogRead]
+    study_sessions: list[StudySessionRead]

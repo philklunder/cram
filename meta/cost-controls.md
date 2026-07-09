@@ -13,6 +13,12 @@
   bounds one abusive account; global bounds total blast-radius.
 - **Rate limit covers *all* `/v1/*`**, not just the AI endpoints — one router-level dependency, fixed
   per-minute window, keyed per authenticated user (per-IP only for the shared dev-fallback identity).
+- **~~Counters are Postgres-backed~~ … for writes and the AI endpoints only; safe reads are counted
+  in-process (2026-07-09).** `enforce_rate_limit` now branches on HTTP method. POST/PATCH/DELETE and
+  the paid `/v1/generate` + `/v1/grade` keep the Postgres-backed counter unchanged. GET/HEAD use a
+  separate, much higher in-process ceiling (`CRAM_READ_RATE_LIMIT_PER_MIN`, default 240) and perform
+  **no database write at all**. Both routers still get the one uniform dependency, so no route can
+  forget it.
 - **Metering is committed *before* persistence, not atomically with it.** A paid Claude call's usage
   row is committed on its own the instant the call returns, before the deck/attempt is persisted.
 - **Cost controls are mandatory in prod.** `check_production_config` refuses to boot `CRAM_ENV=prod`
@@ -33,14 +39,31 @@
 - **`rate_limit_buckets` is pruned lazily in-process, not by an external cron (2026-07-06).**
   ADR 0009 documented the sweep (`DELETE … WHERE window_start < now()-'1h'`) but never scheduled it,
   so the table grew one row per (subject, minute) forever. `_maybe_prune_buckets` in `limits.py`
-  runs the delete opportunistically from `check_rate_limit` (a path hit on every request),
-  self-throttled to once per hour per process via an in-process monotonic timestamp, and is
-  best-effort (any failure is logged + swallowed, never breaks the triggering request). Retention =
-  1h of counters.
+  runs the delete opportunistically from `check_rate_limit`, self-throttled to once per hour per
+  process via an in-process monotonic timestamp, and is best-effort (any failure is logged +
+  swallowed, never breaks the triggering request). Retention = 1h of counters. **Since 2026-07-09
+  `check_rate_limit` runs only on writes/AI calls, so the sweep is driven by writes** — which is also
+  the only thing that creates a bucket row, so it still self-cleans; a read-only session simply never
+  needs to prune.
 
 ## Reasoning
 - An in-memory limiter resets on restart and is per-worker, giving false confidence right when the
   service goes public — the exact scenario these controls exist for. Postgres makes them honest.
+- **Why reads were then exempted from that rule (2026-07-09).** The Postgres counter charged every
+  request an `INSERT … ON CONFLICT DO UPDATE` plus an immediate `COMMIT` — including cheap `GET`s.
+  Worse, all of one user's concurrent reads target the *same* `(subject, minute)` bucket row, so they
+  serialised on its row lock: the limiter meant to protect the DB was itself the per-request cost.
+  The honesty argument above still applies with full force to anything that **writes, or costs money** —
+  so that path is unchanged. It does *not* apply to a read, which is idempotent, owner-scoped and
+  free: the worst a client gains from a per-worker counter is reading its own rows faster. Reads also
+  are not undefended — nginx applies a per-IP `limit_req` (10 r/s) + `limit_conn` in front of the app
+  (see [edge-and-budget-backstops.md](edge-and-budget-backstops.md)), which is what actually blunts an
+  unauthenticated flood. The in-process counter is deliberately **not** to be extended to the
+  mutating/AI path, whose cap guards real money.
+- Pressure on the limiter also dropped sharply the same day for an unrelated reason: the web client
+  went from ten requests per page load to one (see
+  [read-path-performance.md](read-path-performance.md)), so the read ceiling is now generous by a wide
+  margin rather than a thing users bump into.
 - **Why metering-before-persistence (the load-bearing subtlety).** The first cut committed the usage
   row in the same transaction as persistence. But persistence is fallible *after* the paid call:
   `/v1/grade` with a foreign/absent `question_id` raises `OwnershipError` → `422`, and a Storage/DB
@@ -84,6 +107,17 @@
   the call site flagging this.
 - New deploys must set five things they didn't before (the three ceilings are new) — a deliberate
   trip-wire, documented in the `docs/SETUP.md` production checklist; the guard fails fast naming them.
+- **`CRAM_RATE_LIMIT_PER_MIN` is now a *write* ceiling, which makes an under-sized value bite harder,
+  not softer.** It no longer has reads padding it, but the ratio that matters got worse: a review
+  session writes **two** rows per card (`PATCH /v1/cards` + `POST /v1/review-logs`), so a value of
+  ~10/min throttles a user to ~5 cards a minute. The "size it for the sync client, not the wallet"
+  rule above (≥120) is therefore load-bearing, not advisory. `check_production_config` additionally
+  requires `CRAM_READ_RATE_LIMIT_PER_MIN > 0`; it defaults to 240, so an existing deploy that never
+  sets it still boots (verified).
+- The read ceiling is per uvicorn worker and resets on restart. The deploy runs `--workers 1`
+  (`deploy/entrypoint.sh`), so today that equals per-container; with N workers a client could read
+  N× the ceiling. Acceptable for reads by construction — and a reason not to scale workers without
+  revisiting this.
 
 ## Open questions
 - A monthly ceiling and/or USD cost view layered on the same ledger, if billing visibility needs it.
@@ -96,6 +130,12 @@
   fully (reserve-then-reconcile) isn't worth it for a single-tenant deploy. At a very small budget the
   overshoot can equal a month's spend, so the real backstop is an **out-of-app Anthropic Console hard
   limit** rather than tighter in-app logic — see [edge-and-budget-backstops.md](edge-and-budget-backstops.md).
+- **Confirm the live `CRAM_RATE_LIMIT_PER_MIN` in Railway.** The session notes recall it being set to
+  ~10 (chosen when it still throttled reads, on the mistaken theory that it saved money); that value
+  now only throttles writes, where it is actively harmful (see Implications). It should be ≥120.
+- If the write limiter ever needs the same latency treatment the read one got, the move is a single
+  non-blocking upsert (no `COMMIT` on the request path) or a Redis counter — **not** an in-process
+  map, which would forfeit exactly the guarantee that makes it worth having.
 
 ## Last updated
-2026-07-06
+2026-07-09
