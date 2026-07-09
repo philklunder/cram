@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 
+import { InteractiveClaudeMascot, type MascotMood } from "@/components/ClaudeMascot";
 import { PageHeader, SelectChevron } from "@/components/pages/shared";
 import { Button, ErrorBox, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { generateDeck, listExams, listSubjects, updateSubject } from "@/lib/api/client";
@@ -59,6 +60,21 @@ export function UploadWork({
   const [deck, setDeck] = useState<GeneratedDeck | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // The mascot celebrates or commiserates, then goes back to watching the cursor. It's a
+  // reaction, not a status light -- the panels below already say what happened, and a
+  // permanently grinning (or permanently sad) mascot stops meaning anything.
+  const [reaction, setReaction] = useState<Exclude<MascotMood, "reading" | null> | null>(null);
+  const reactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (reactionTimer.current) clearTimeout(reactionTimer.current); }, []);
+
+  function react(next: "done" | "error") {
+    if (reactionTimer.current) clearTimeout(reactionTimer.current);
+    setReaction(next);
+    reactionTimer.current = setTimeout(() => setReaction(null), next === "done" ? 3600 : 4200);
+  }
+
+  const mascotMood: MascotMood = busy ? "reading" : reaction;
+
   // Deep-link pre-fill: ?subject=<name>&exam=<examId>. Runs once, after subjects have loaded, so a
   // name can be matched to an existing subject (else it seeds a new-subject entry).
   const prefilled = useRef(false);
@@ -103,8 +119,8 @@ export function UploadWork({
   }
 
   async function generate() {
-    if (files.length === 0) { setError("Choose at least one PDF or image."); return; }
-    if (subjectName === "") { setError("Pick a subject (or name a new one) for this material."); return; }
+    if (files.length === 0) { setError("Choose at least one PDF or image."); react("error"); return; }
+    if (subjectName === "") { setError("Pick a subject (or name a new one) for this material."); react("error"); return; }
     setBusy(true);
     setError(null);
     setDeck(null);
@@ -120,8 +136,10 @@ export function UploadWork({
       setDeck(result);
       setFiles([]);
       reload();
+      react("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed.");
+      react("error");
     } finally {
       setBusy(false);
     }
@@ -301,6 +319,12 @@ export function UploadWork({
               {busy ? "Claude is analyzing your materials…" : deck ? "Your study deck is ready." : "How Claude turns your files into a deck."}
             </p>
             <Pipeline busy={busy} done={!!deck} />
+
+            {/* Reacts to the run: watches your cursor while Claude reads, cheers on
+                success, commiserates on failure. `mood` comes straight off busy/deck/error. */}
+            <div className="mt-2 flex justify-center">
+              <InteractiveClaudeMascot size={68} mood={mascotMood} trim />
+            </div>
           </div>
 
           <PreviewCard icon={Layers} title="Flashcards" tag="example">
