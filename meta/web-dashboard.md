@@ -7,6 +7,56 @@ to `main` once both halves are done.
 
 ## Decisions
 
+- **Practice is activity; only a Review is progress (2026-07-09, supersedes the same-day "one study
+  surface" pass below).** The mental model is now explicit: **Flashcards and Quizzes are for learning**
+  (browse, flip, practise) and **Review is the assessment**. Practice records study time
+  (`POST /v1/study-sessions`, `kind: "other"` for cards / `"quiz"` for questions) so it still feeds the
+  streak and the weekly-activity chart, but it writes **no** SM-2 state and **no** attempts. A Review
+  (`ReviewRun.tsx`) runs two phases: **recall** (`ReviewSession.tsx` — rate Again/Hard/Good/Easy,
+  `PATCH /v1/cards` + `POST /v1/review-logs`) then **test** (`QuizRunner` with `mode="test"` —
+  `POST /v1/attempts`). Those two writes are the *only* inputs to readiness. **Rationale:** rehearsing a
+  card until you can parrot it says nothing about cold recall in three weeks; letting practice move the
+  score would measure effort, not knowledge. **Rejected:** tagging practice attempts and filtering them
+  downstream — `attempts` has no source column, so that needs a migration + iOS parity; not writing them
+  is free and equally correct.
+- **Readiness = 0.5 × cardMastery + 0.3 × quizAccuracy + 0.2 × coverage (2026-07-09).** `lib/readiness.ts`.
+  A `Question` has **no SM-2 state and no FK to a `Card`** — they share only a `topic` string — so a quiz
+  answer is deliberately NOT folded into a card's schedule (that would mean guessing a join, and one wrong
+  answer would penalise cards you know). The two stay separate, honest measurements. A missing signal
+  (no cards, or nothing tested) has its weight **redistributed** across the signals that exist, so a
+  flashcards-only subject isn't penalised for having no quiz. Quiz accuracy uses only the **last 20
+  attempts** in scope; coverage is the fraction of topics with at least one reviewed card or answered
+  question. `verdict: "untested"` is its own state — an untested subject is an unknown, not a 0%.
+  **Rejected:** topic-string joins between questions and cards (fuzzy); mastery-from-cards-only (then
+  quizzes don't actually test anything).
+- **One readiness definition, app-wide (2026-07-09).** When `lib/readiness.ts` landed it was only wired
+  into the Review hub, so the Dashboard, Progress and Calendar kept **three older, card-only formulas** —
+  Dashboard/Calendar used `computeProgress().masteredPct` (`mastered / total`) and Progress used its own
+  `(mastered + 0.5·strong) / total`. None of them saw quiz attempts, and `masteredPct` needs
+  `repetitions >= 2 && interval_days >= 21`, so it **could not move for the first ~3 successful reviews of
+  a card** — reviewing looked like it did nothing. All four surfaces now call `computeReadiness`, and
+  `overallReadiness` / `readinessBySubject` live in the lib rather than being re-derived per page.
+  `verdict === "untested"` renders as "—"/"Untested" everywhere instead of a misleading 0%.
+  `nearestExam` now returns the **`Exam` row** (not just subject + date), so the Progress page's
+  countdown card scores that exam via `examReadiness()` — with the General-material fallback above.
+- **Review's test phase includes short answer (2026-07-09).** Graded by `POST /v1/grade` (the paid Claude
+  call, behind the spend cap). The new device-local `questionCount` setting (0 · 3 · 5 · 10, default 5) is
+  what bounds the per-review cost; `0` gives a cards-only Review. The test phase prioritises questions on
+  topics the recall phase just showed as weak.
+- **The Flashcards progress ring measures partial credit (2026-07-09).** It showed `mastered / total`,
+  where "mastered" requires `repetitions >= 2 && interval_days >= 21` — so it sat frozen at the same
+  number for the first three weeks of studying a deck, which read as "progress isn't saving". It now
+  plots `(mastered + 0.5 × learning) / total` (the same term readiness uses), so one honest Review moves
+  it. The legend still shows the three exact bucket counts (`lib/progress.ts`), and the "Mastered" stat
+  card keeps the strict definition. Stats are computed over the **subject + exam scope**, not the
+  search/deck-filtered list. The rail states plainly that cramming doesn't move these numbers.
+- **~~One study surface: the Flashcards hub~~ (2026-07-09, SUPERSEDED the same day by the entry above).**
+  Briefly, `/flashcards` was the only surface that mounted a session and its two-button Cram persisted
+  SM-2 (Missed → 1, Got it → 4). This fixed the dead per-card "Study" link (a `<Link href="/subjects/<id>">`)
+  and the frozen ring, but it conflated practice with assessment and cost the Hard/Easy ratings. What
+  survives: the subject page no longer runs sessions (its "Study" buttons deep-link into Flashcards via
+  `lib/studyLink.ts`), the dead per-card button is gone, and `FlashcardCram.tsx` is now
+  `FlashcardPractice.tsx`.
 - **Scope = "study desk", now a full study surface.** v0.6 web does: Supabase login, browse
   subjects (exam countdown), browse a subject's sources/cards/quizzes, upload material →
   `/v1/generate`, and a progress readout. **As of 2026-06-30 the web also does quiz-taking AND
@@ -23,7 +73,7 @@ to `main` once both halves are done.
   — both the SM-2 update *and* the ADR-0004 exam-date compression (`card.mastery` + subject grade
   strength, the latter ported in `grade-strength.ts` incl. the weighted-average `currentGrade`
   fallback) — and the result is written back via `PATCH /v1/cards` + `POST /v1/review-logs`
-  (`web/src/components/ReviewSession.tsx`). Rejected: a "practice-only" web review that never mutates
+  (`web/src/components/StudySession.tsx`). Rejected: a "practice-only" web review that never mutates
   scheduling (safe but doesn't advance the real schedule). **Guardrail:** the canonical SM-2 integer
   state is pure arithmetic, pinned to **34 parity vectors hand-derived from the Swift source**
   (`scheduler.test.ts`, `grade-strength.test.ts`); a future change to the Swift scheduler now fails a
@@ -229,9 +279,9 @@ to `main` once both halves are done.
   `/v1/generate`. **(2) Subject page** — all three "Add material" buttons now `router.push` to AI Decks
   pre-filled; the inline upload modal + `GenerateMaterialForm.tsx` were **deleted**. **(3) Quizzes** —
   scope picker → launches the existing `QuizRunner` in place (merges all in-scope questions), no more
-  funnel-to-subject. **(4) Flashcards** — added exam scope + a new **free cram flip-through**
-  ([`FlashcardCram.tsx`](../web/src/components/FlashcardCram.tsx)): a self-check that **does NOT mutate
-  SM-2** (deliberately distinct from Review/subject-study). **(5) Grades** — the **Grades page is now
+  funnel-to-subject. **(4) Flashcards** — added exam scope + a **cram flip-through** (`FlashcardCram.tsx`,
+  since superseded by `StudySession.tsx`): at the time a self-check that **did NOT mutate SM-2**,
+  deliberately distinct from Review/subject-study. **(5) Grades** — the **Grades page is now
   the single editor**: each subject row expands into the full `GradesPanel` (targets/add/delete moved
   off the subject page); the subject page shows a read-only `SubjectGradesSummary` + a "Manage in
   Grades" link. **(6) Calendar** — removed the fabricated suggestions; shows **real exam dates** + user-
@@ -262,9 +312,10 @@ to `main` once both halves are done.
   via [`lib/reviewSettings.ts`](../web/src/lib/reviewSettings.ts) — the **same `localStorage` +
   `useSyncExternalStore` pattern as `useDisplayScale`/theme**, so it survives reload + syncs across tabs and
   needs no server round-trip. `getSnapshot` returns a **reference-cached** object keyed on the raw string
-  (a fresh object each read would loop `useSyncExternalStore`). `ReviewSession` gained `order`+`limit` props
-  that its `buildQueue` honours (Fisher–Yates for shuffle, `slice` for the cap); `ReviewHubPage` reads the
-  store and feeds both the cross-subject **Start review** and **Review all cards** paths. **Rejected:**
+  (a fresh object each read would loop `useSyncExternalStore`). `order`+`limit` are honoured by
+  `buildSessionQueue` (Fisher–Yates for shuffle, `slice` for the cap); since the 2026-07-09 study-IA pass
+  the **Flashcards hub** reads the store and builds every session, so both the cross-subject **Start
+  review** and **Review all cards** paths flow through it. **Rejected:**
   backend-synced review prefs — there is no `review_settings` field and inventing one silently was out of
   scope; noted as a follow-up if cross-device sync is wanted. **Scope:** governs only the Review hub's
   cross-subject session; per-subject review (SubjectDetail) is a separate screen, not yet wired.
@@ -533,9 +584,22 @@ to `main` once both halves are done.
   Railway backend — a local backend built from HEAD 500'd against the prod DB this session.*
 - **Review settings are device-local only (2026-07-08).** Session-size + card-order live in `localStorage`
   (no `review_settings` backend field), so they don't follow the user across devices and iOS has no parity.
-  Also **not applied to per-subject review** (SubjectDetail runs its own `ReviewSession`). Open: promote to
-  a synced resource + wire per-subject review if cross-device / whole-app consistency is wanted.
+  (The "not applied to per-subject review" caveat is **resolved** as of 2026-07-09: every web session is
+  built by the Flashcards hub, which reads the store.) Open: promote to a synced resource if cross-device
+  consistency is wanted.
+- **Material filed under "General" can't score a specific exam (2026-07-09).** `computeReadiness` scopes
+  cards by `card.exam_id` and questions by `quiz.exam_id`, and the AI Decks upload defaults to "General"
+  (`exam_id: null`) — so an exam often has no material of its own. `examReadiness()` handles this by
+  falling back to the whole subject and returning `scope: "subject"`, which the Progress page surfaces as
+  a "Whole subject" chip rather than a misleading number. Still open: attribute General material to an
+  exam by topic overlap, or default the upload's exam picker to the soonest upcoming exam.
+- **Readiness weights are a guess (2026-07-09).** 0.5 / 0.3 / 0.2 across mastery / accuracy / coverage is
+  a considered default, not a calibrated one — nothing validates it against real exam outcomes yet. The
+  grade↔exam link (migration 0007) is the data that could eventually calibrate it.
+- **Practice short answers still cost a grading call (2026-07-09).** Practice writes no attempt, but
+  `POST /v1/grade` is what grades free text, so a practice short-answer question still spends. Only the
+  attempt row is suppressed. Open: a local heuristic grader for practice.
 
 ## Last updated
 
-2026-07-08
+2026-07-09

@@ -7,7 +7,9 @@
 import { useEffect } from "react";
 
 import { AppShell } from "@/components/shell/AppShell";
+import { FlashcardPractice } from "@/components/FlashcardPractice";
 import { ReviewSession } from "@/components/ReviewSession";
+import { ReviewReport } from "@/components/ReviewRun";
 import { QuizRunner } from "@/components/QuizRunner";
 import { CalendarPlanner } from "@/components/pages/CalendarPlanner";
 import { FlashcardsHubView } from "@/components/pages/FlashcardsHub";
@@ -18,7 +20,7 @@ import { ReviewHubView } from "@/components/pages/ReviewHub";
 import { SettingsView } from "@/components/pages/SettingsView";
 import { UploadWork } from "@/components/pages/UploadWork";
 import type { LibraryData } from "@/lib/api/client";
-import type { Card, Exam, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
+import type { Attempt, Card, Exam, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
 import { subjectExamDate } from "@/lib/dashboard";
 import { setDisplayScale } from "@/lib/useDisplayScale";
 
@@ -111,6 +113,19 @@ const QUESTIONS: Question[] = QUIZZES.flatMap((q, qi) =>
 
 const DATA: LibraryData = { subjects: SUBJECTS, exams: EXAMS, cards: CARDS, quizzes: QUIZZES, questions: QUESTIONS };
 
+// Graded answers from past Review test phases — the quiz-accuracy half of readiness. Without these
+// every subject previews as "Untested", which is correct but shows none of the scored states.
+const ATTEMPTS: Attempt[] = QUESTIONS.slice(0, 8).map((q, i) => ({
+  id: `at-${q.id}`,
+  created_at: iso(NOW - (8 - i) * HOUR),
+  question_id: q.id,
+  response: "a",
+  is_correct: i % 3 !== 0,
+  score: i % 3 === 0 ? 0.2 : 1,
+  feedback: "",
+  graded_at: iso(NOW - (8 - i) * HOUR),
+}));
+
 // Sources = "decks" on the Flashcards page.
 function source(id: string, subjectId: string, title: string): Source {
   return { id, created_at: iso(NOW), updated_at: iso(NOW), deleted_at: null, subject_id: subjectId, kind: "pdf", title, added_at: iso(NOW), storage_paths: [] };
@@ -196,6 +211,9 @@ const PROGRESS_DATA = {
   gradeEntries: GRADES,
   reviewLogs: REVIEW_LOGS,
   studySessions: STUDY_SESSIONS,
+  questions: QUESTIONS,
+  quizzes: QUIZZES,
+  attempts: ATTEMPTS,
 };
 
 const REVIEW_DUE = CARDS.filter((c) => new Date(c.due_date).getTime() <= NOW);
@@ -237,11 +255,11 @@ const QUIZ_SEED = [seedResult("Microeconomics"), seedResult("Microeconomics"), s
 const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
   review: {
     href: "/review",
-    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} reviewLogs={REVIEW_LOGS} streak={2} now={NOW} onStart={() => {}} />,
+    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} questions={QUESTIONS} quizzes={QUIZZES} attempts={ATTEMPTS} streak={2} now={NOW} onStart={() => {}} />,
   },
   reviewsettings: {
     href: "/review",
-    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} reviewLogs={REVIEW_LOGS} streak={2} now={NOW} onStart={() => {}} initialSettingsOpen />,
+    node: <ReviewHubView subjects={SUBJECTS} cards={CARDS} exams={EXAMS} questions={QUESTIONS} quizzes={QUIZZES} attempts={ATTEMPTS} streak={2} now={NOW} onStart={() => {}} initialSettingsOpen />,
   },
   reviewsession: {
     href: "/review",
@@ -250,12 +268,50 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
         cards={REVIEW_DUE}
         streak={12}
         initialFlipped
-        contextFor={(card) => {
+        contextFor={(card: Card) => {
           const subject = REVIEW_SUBJECT_BY_ID.get(card.subject_id) ?? GRADE_SUBJECTS[0];
           return { subject, examDate: subjectExamDate(subject.id, EXAMS), strength: 0.6 };
         }}
+        onExit={() => {}}
+        onFinish={() => {}}
+      />
+    ),
+  },
+  reviewreport: {
+    href: "/review",
+    node: (
+      <ReviewReport
+        title="ABU — Review"
+        subtitle="Swiss scale"
+        recall={{
+          reviewed: 8,
+          recalledWell: 6,
+          ratings: [
+            { cardId: "c1", topic: "Obligationenrecht", rating: 1 },
+            { cardId: "c2", topic: "Grundlagen", rating: 4 },
+          ],
+        }}
+        quiz={[
+          { topic: "Grundlagen", score: 1, is_correct: true, feedback: "", answerKey: "", isMC: true },
+          { topic: "Fiscal policy", score: 0.2, is_correct: false, feedback: "", answerKey: "", isMC: false },
+        ]}
+        hadQuestions
+        questionLimit={5}
+        generateHref="/upload?subject=ABU"
+        onDone={() => {}}
+      />
+    ),
+  },
+  flashcardpractice: {
+    href: "/flashcards",
+    node: (
+      <FlashcardPractice
+        cards={REVIEW_DUE}
+        title="Biology"
+        subtitle="Cell division"
+        subjectId="s-bio"
+        initialFlipped
         onClose={() => {}}
-        onReviewed={() => {}}
       />
     ),
   },
@@ -291,7 +347,7 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
     ),
   },
   grades: { href: "/grades", node: <GradesView subjects={GRADE_SUBJECTS} exams={EXAMS} entries={GRADES} /> },
-  calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} exams={EXAMS} cards={CARDS} studySessions={STUDY_SESSIONS} now={NOW} /> },
+  calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} exams={EXAMS} cards={CARDS} studySessions={STUDY_SESSIONS} questions={QUESTIONS} quizzes={QUIZZES} attempts={ATTEMPTS} now={NOW} /> },
   settings: { href: "/settings", node: <SettingsView email="philipp@cram.study" /> },
 };
 

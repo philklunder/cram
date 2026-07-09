@@ -10,7 +10,6 @@ import { ExamFormModal } from "@/components/ExamFormModal";
 import { SubjectGradesSummary } from "@/components/GradesPanel";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuizRunner } from "@/components/QuizRunner";
-import { ReviewSession } from "@/components/ReviewSession";
 import { SubjectFormModal } from "@/components/SubjectFormModal";
 import {
   Badge,
@@ -19,6 +18,7 @@ import {
   ErrorBox,
   PageLoader,
   Panel,
+  buttonClass,
   cn,
   difficultyTone,
 } from "@/components/ui";
@@ -27,8 +27,8 @@ import type { Card, Exam, GradeEntry, Question, Quiz, Source, Subject } from "@/
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
 import { formatGrade, isPassing } from "@/lib/grades";
+import { studyHref } from "@/lib/studyLink";
 import { subjectVars } from "@/lib/subjectColor";
-import { subjectStrength as computeSubjectStrength } from "@/lib/srs/grade-strength";
 import { useAsync } from "@/lib/useAsync";
 
 const GENERAL = "__general__";
@@ -60,6 +60,9 @@ function byExamOrder(a: Exam, b: Exam): number {
   return a.title.localeCompare(b.title);
 }
 
+// The subject page is where material lives — it browses and organises, it does not assess. Every
+// "Study" affordance here links into the Flashcards hub with this subject (and exam) pre-scoped,
+// where you can practise the deck. Progress is only ever measured by a Review. See lib/readiness.ts.
 export function SubjectDetail({ id }: { id: string }) {
   const router = useRouter();
   // A grade in the Grades page deep-links here as ?exam=<id> so the finished exam it belongs
@@ -67,12 +70,8 @@ export function SubjectDetail({ id }: { id: string }) {
   const focusExam = useSearchParams().get("exam");
   const { loading, error, data, reload } = useAsync<SubjectBundle>(() => loadSubjectBundle(id), [id]);
 
-  // What we're studying right now (a bucket of cards), or null when browsing.
-  const [studyCards, setStudyCards] = useState<Card[] | null>(null);
   const [editSubjectOpen, setEditSubjectOpen] = useState(false);
   const [examModal, setExamModal] = useState<{ open: boolean; exam: Exam | null }>({ open: false, exam: null });
-
-  const examById = useMemo(() => new Map((data?.exams ?? []).map((e) => [e.id, e])), [data?.exams]);
 
   if (loading) return <PageLoader label="Loading subject…" />;
   if (error) {
@@ -86,17 +85,7 @@ export function SubjectDetail({ id }: { id: string }) {
   if (!data) return null;
 
   const { subject, exams, sources, cards, quizzes, questions, gradeEntries } = data;
-
-  // Subject grade strength feeds SM-2 exam compression — derived exactly as iOS does.
-  const strength = computeSubjectStrength(subject.grading_scale, subject.current_grade, gradeEntries);
-
-  // Each card is scheduled against ITS exam's date (or none) — so whole-subject and per-exam
-  // study both compress correctly, per card.
-  const contextFor = (card: Card) => ({
-    subject,
-    examDate: (card.exam_id ? examById.get(card.exam_id)?.exam_date : null) ?? null,
-    strength,
-  });
+  const examById = new Map(exams.map((e) => [e.id, e]));
 
   // Bucket cards/quizzes by exam. A card whose exam is missing/deleted falls back to General.
   const bucketOf = (examId: string | null) => (examId && examById.has(examId) ? examId : GENERAL);
@@ -159,17 +148,8 @@ export function SubjectDetail({ id }: { id: string }) {
         }
       />
 
-      {studyCards ? (
-        <ReviewSession
-          cards={studyCards}
-          contextFor={contextFor}
-          onClose={() => setStudyCards(null)}
-          onReviewed={reload}
-        />
-      ) : (
-        <>
-          {/* Study everything that's still active — graded exams are excluded. */}
-          {cards.length === 0 ? (
+      {/* Study everything that's still active — graded exams are excluded. */}
+      {cards.length === 0 ? (
             <EmptyState
               title="No cards yet"
               hint="Create an exam and add material, or add material straight to “General”. Cram builds the flashcards and a quiz."
@@ -195,14 +175,17 @@ export function SubjectDetail({ id }: { id: string }) {
                 </p>
                 <p className="mt-0.5 text-sm text-muted">
                   {totalDue > 0
-                    ? "Study the whole subject, or pick a single exam below."
-                    : "Nothing's due — you can still review any exam below."}
+                    ? "Study the whole subject in Flashcards, or pick a single exam below."
+                    : "Nothing's due — you can still study any exam below."}
                 </p>
               </div>
-              <Button onClick={() => setStudyCards(activeCards)} className="flex-none">
+              <Link
+                href={studyHref({ subjectId: subject.id, dueOnly: totalDue > 0, start: true })}
+                className={buttonClass("primary", "md", "flex-none")}
+              >
                 <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
                 {totalDue > 0 ? "Study whole subject" : "Review everything"}
-              </Button>
+              </Link>
             </div>
           ) : null}
 
@@ -232,7 +215,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     cards={cardsByBucket.get(exam.id) ?? []}
                     quizzes={quizzesByBucket.get(exam.id) ?? []}
                     questions={questions}
-                    onStudy={(c) => setStudyCards(c)}
+                    href={studyHref({ subjectId: subject.id, examId: exam.id, start: true })}
                     onAddMaterial={() => goAddMaterial(exam.id)}
                     onEdit={() => openExamModal(exam)}
                   />
@@ -243,7 +226,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     cards={generalCards}
                     quizzes={generalQuizzes}
                     questions={questions}
-                    onStudy={(c) => setStudyCards(c)}
+                    href={studyHref({ subjectId: subject.id, general: true, start: true })}
                     onAddMaterial={() => goAddMaterial(null)}
                   />
                 ) : null}
@@ -266,7 +249,7 @@ export function SubjectDetail({ id }: { id: string }) {
                     cards={cardsByBucket.get(exam.id) ?? []}
                     quizzes={quizzesByBucket.get(exam.id) ?? []}
                     questions={questions}
-                    onStudy={(c) => setStudyCards(c)}
+                    href={studyHref({ subjectId: subject.id, examId: exam.id, start: true })}
                     onAddMaterial={() => goAddMaterial(exam.id)}
                     onEdit={() => openExamModal(exam)}
                     earned={{ subject, entry: gradeByExam.get(exam.id)! }}
@@ -286,8 +269,6 @@ export function SubjectDetail({ id }: { id: string }) {
               <SubjectGradesSummary subject={subject} entries={gradeEntries} />
             </Section>
           </div>
-        </>
-      )}
 
       {/* Edit / delete this subject. */}
       <SubjectFormModal
@@ -367,13 +348,13 @@ export function SubjectHero({
 // --- Exam group -------------------------------------------------------------------------
 
 // One collapsible exam (or the "General" bucket when `exam` is null): a header with its date,
-// card count, mastery and a Study action, expanding to its cards + quiz and per-exam actions.
+// card count, mastery and a Study link, expanding to its cards + quiz and per-exam actions.
 export function ExamSection({
   exam,
   cards,
   quizzes,
   questions,
-  onStudy,
+  href,
   onAddMaterial,
   onEdit,
   earned,
@@ -383,7 +364,7 @@ export function ExamSection({
   cards: Card[];
   quizzes: Quiz[];
   questions: Question[];
-  onStudy: (cards: Card[]) => void;
+  href: string; // into the Flashcards hub, scoped to this exam
   onAddMaterial: () => void;
   onEdit?: () => void;
   // Set for a graded ("past") exam: the recorded mark, shown as a badge in the header.
@@ -455,10 +436,10 @@ export function ExamSection({
           </span>
         </button>
         {cards.length > 0 ? (
-          <Button size="sm" onClick={() => onStudy(cards)} className="flex-none">
+          <Link href={href} className={buttonClass("primary", "sm", "flex-none")}>
             <Play className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
             Study
-          </Button>
+          </Link>
         ) : null}
       </div>
 
@@ -623,6 +604,7 @@ function QuizzesTab({ quizzes, questions }: { quizzes: Quiz[]; questions: Questi
         title={activeQuiz.title}
         subjectId={activeQuiz.subject_id}
         questions={questions.filter((q) => q.quiz_id === activeQuiz.id)}
+        mode="practice"
         onClose={() => setActiveQuizId(null)}
       />
     );

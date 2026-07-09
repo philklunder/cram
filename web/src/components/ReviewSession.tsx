@@ -1,12 +1,18 @@
 "use client";
 
-// Spaced-repetition review session. Walks the due cards one at a time: show the question, flip to
-// reveal the answer, rate recall (Again/Hard/Good/Easy). Each rating runs the local SM-2 scheduler
-// (a faithful port of the iOS one) and writes the new card state back (PATCH /v1/cards) plus an
-// append-only review-log (POST /v1/review-logs) — so reviewing on web advances the same schedule as
-// iOS. A completed session is also recorded as study time (POST /v1/study-sessions).
+// The recall phase of a Review — the ONLY thing in the app that advances a card's SM-2 schedule.
+//
+// Walks the due cards one at a time: show the question, flip to reveal the answer, rate recall
+// (Again/Hard/Good/Easy). Each rating runs the local SM-2 scheduler (a faithful port of the iOS
+// one) and writes the new card state back (PATCH /v1/cards) plus an append-only review-log
+// (POST /v1/review-logs) — so reviewing on web advances the same schedule as iOS. Rating honestly
+// here is what teaches Cram how well you actually know the material (see lib/readiness.ts).
+//
+// Study time and the end-of-run report belong to the whole Review (see ReviewRun.tsx), so this
+// phase hands its tally back through `onFinish` rather than ending the session itself. Practising
+// on the Flashcards page is a different component and writes none of this.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronsRight,
@@ -20,9 +26,10 @@ import {
 } from "lucide-react";
 
 import { Button, ErrorBox, cn } from "@/components/ui";
-import { createReviewLog, createStudySession, updateCard } from "@/lib/api/client";
+import { createReviewLog, updateCard } from "@/lib/api/client";
 import type { Card, Subject } from "@/lib/api/types";
 import { subjectInitials } from "@/lib/format";
+import { buildSessionQueue } from "@/lib/srs/queue";
 import { applyReview, REVIEW_RATINGS, type ReviewRating } from "@/lib/srs/scheduler";
 import type { ReviewOrder } from "@/lib/reviewSettings";
 import { subjectVars } from "@/lib/subjectColor";
@@ -33,28 +40,20 @@ export interface ReviewCardContext {
   strength: number | null;
 }
 
-// Fisher–Yates shuffle (a fresh copy; never mutates the input).
-function shuffled<T>(items: T[]): T[] {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+// What the recall phase reports back to the run.
+export interface RecallStats {
+  reviewed: number;
+  recalledWell: number; // rated Good/Easy
+  ratings: { cardId: string; topic: string; rating: ReviewRating }[];
 }
 
 // Due cards first (due_date <= now); if none are due, fall back to the whole deck so review is
-// always possible. `order` walks earliest-due first ("due") or randomises ("shuffle"); `limit`
-// caps the session length (0 = no cap). The user's Review settings feed both. Mirrors iOS's queue.
+// always possible. Ordering + the session cap come from the user's Review settings.
 function buildQueue(cards: Card[], order: ReviewOrder = "due", limit = 0): Card[] {
   const now = Date.now();
   const due = cards.filter((c) => new Date(c.due_date).getTime() <= now);
   const pool = due.length > 0 ? due : cards;
-  const ordered =
-    order === "shuffle"
-      ? shuffled(pool)
-      : [...pool].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  return limit > 0 ? ordered.slice(0, limit) : ordered;
+  return buildSessionQueue(pool, order, limit);
 }
 
 // Compact interval label from whole days (our scheduler works in days).
@@ -81,8 +80,8 @@ export function ReviewSession({
   order = "due",
   limit = 0,
   initialFlipped = false,
-  onClose,
-  onReviewed,
+  onExit,
+  onFinish,
 }: {
   cards: Card[];
   contextFor: (card: Card) => ReviewCardContext;
@@ -90,8 +89,8 @@ export function ReviewSession({
   order?: ReviewOrder; // from the user's Review settings
   limit?: number; // max cards this session serves (0 = all); from Review settings
   initialFlipped?: boolean; // dev/preview only — start with the answer + ratings shown
-  onClose: () => void;
-  onReviewed: () => void;
+  onExit: () => void; // abandon the run
+  onFinish: (stats: RecallStats) => void; // hand off to the run's next phase
 }) {
   const [queue] = useState(() => buildQueue(cards, order, limit));
   const [idx, setIdx] = useState(0);
@@ -100,26 +99,9 @@ export function ReviewSession({
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(0);
   const [correct, setCorrect] = useState(0); // rated Good/Easy — feeds the accuracy readout
-  const [finished, setFinished] = useState(false);
   const saving = pendingRating != null;
 
-  // Study-time tracking — recorded once on finish/exit, fire-and-forget (analytics only).
-  const startedAtRef = useRef(Date.now());
-  const reviewedRef = useRef(0);
-  const recordedRef = useRef(false);
-  const endSession = useCallback(() => {
-    if (recordedRef.current || reviewedRef.current === 0) return;
-    recordedRef.current = true;
-    const duration = Math.min(86_400, Math.round((Date.now() - startedAtRef.current) / 1000));
-    if (duration <= 0) return;
-    createStudySession({
-      subject_id: queue[0] ? contextFor(queue[0]).subject.id : null,
-      duration_seconds: duration,
-      kind: "review",
-      started_at: new Date(startedAtRef.current).toISOString(),
-    }).catch(() => {});
-  }, [queue, contextFor]);
-  useEffect(() => () => endSession(), [endSession]);
+  const ratingsLog = useRef<RecallStats["ratings"]>([]);
 
   const headingRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -132,35 +114,7 @@ export function ReviewSession({
 
   const card = queue[idx];
 
-  if (queue.length === 0) {
-    return (
-      <div className="rounded-2xl border border-line bg-surface p-8 text-center shadow-card">
-        <p className="text-sm font-semibold text-ink">Nothing to review</p>
-        <p className="mt-1 text-sm text-muted">Add material to this subject to generate cards.</p>
-        <div className="mt-4 flex justify-center">
-          <Button variant="secondary" onClick={onClose}>Back</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (finished || !card) {
-    const accuracy = reviewed === 0 ? 0 : Math.round((correct / reviewed) * 100);
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-line bg-surface p-8 text-center shadow-card">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 text-green-600 dark:bg-green-500/15 dark:text-green-400">
-          <Check className="h-7 w-7" strokeWidth={2.5} aria-hidden />
-        </div>
-        <p className="mt-4 text-lg font-semibold text-ink">Session complete</p>
-        <p className="mt-1 text-sm text-muted">
-          You reviewed {reviewed} {reviewed === 1 ? "card" : "cards"} · {accuracy}% recalled well.
-        </p>
-        <div className="mt-5 flex justify-center">
-          <Button onClick={() => { onReviewed(); onClose(); }}>Done</Button>
-        </div>
-      </div>
-    );
-  }
+  if (queue.length === 0 || !card) return null; // the run skips an empty recall phase
 
   const ctx = contextFor(card);
   const examDate = ctx.examDate ? new Date(ctx.examDate) : null;
@@ -184,12 +138,13 @@ export function ReviewSession({
         due_date: outcome.due_date,
       });
       await createReviewLog({ card_id: card.id, rating, reviewed_at: now.toISOString() });
-      reviewedRef.current += 1;
-      setReviewed((n) => n + 1);
-      if (rating >= 4) setCorrect((n) => n + 1);
+      ratingsLog.current.push({ cardId: card.id, topic: card.topic, rating });
+      const reviewedNow = reviewed + 1;
+      const correctNow = correct + (rating >= 4 ? 1 : 0);
+      setReviewed(reviewedNow);
+      setCorrect(correctNow);
       if (idx >= queue.length - 1) {
-        endSession();
-        setFinished(true);
+        onFinish({ reviewed: reviewedNow, recalledWell: correctNow, ratings: ratingsLog.current });
       } else {
         setIdx((i) => i + 1);
         setShowBack(false);
@@ -212,7 +167,7 @@ export function ReviewSession({
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3.5">
           <span className="inline-flex items-center gap-2 text-sm font-semibold text-ink">
             <Layers className="h-4 w-4 text-brand-500" strokeWidth={2} aria-hidden />
-            Card <span className="tabular-nums">{idx + 1}</span> of {queue.length}
+            Recall <span className="tabular-nums">{idx + 1}</span> of {queue.length}
           </span>
           {streak != null && streak > 0 ? (
             <span className="inline-flex items-center gap-1.5 text-sm text-muted">
@@ -223,7 +178,7 @@ export function ReviewSession({
           <span className="inline-flex items-center gap-1.5 text-sm text-muted">
             <Clock className="h-4 w-4 text-muted" strokeWidth={2} aria-hidden />~{estMinutes} min left
           </span>
-          <Button variant="secondary" size="sm" className="ml-auto" onClick={() => { endSession(); onClose(); }}>
+          <Button variant="secondary" size="sm" className="ml-auto" onClick={onExit}>
             End session
           </Button>
         </div>

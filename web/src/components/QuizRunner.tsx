@@ -1,11 +1,21 @@
 "use client";
 
 // Take-a-quiz session. Steps through a quiz's questions one at a time:
-//   • multiple choice → graded in the browser against answer_key, persisted via POST /v1/attempts
-//   • short answer    → graded by POST /v1/grade (the server-side Claude call, behind the spend
-//                       cap), which also persists the attempt when question_id is sent
+//   • multiple choice → graded in the browser against answer_key
+//   • short answer    → graded by POST /v1/grade (the server-side Claude call, behind the spend cap)
 // Shows a live session-overview rail (score, correct/incorrect/remaining, confidence, topic
 // breakdown) and, after grading, why the answer matters — then a final score summary.
+//
+// TWO MODES, and the difference is what gets written:
+//   "practice" (Quizzes page, subject page) — activity only. Records study time so it feeds the
+//       streak and the weekly-activity chart, but writes NO attempts. Practice must not move
+//       progress, or the readiness score would measure how much you rehearsed, not what you know.
+//   "test" (the quiz phase of a Review) — the only mode that persists attempts (POST /v1/attempts),
+//       which is one of the two signals lib/readiness.ts reads. Study time is owned by the run.
+//
+// `gradeShortAnswer` persists the attempt server-side when `question_id` is sent, so practice mode
+// deliberately omits it. (Practice short answers still cost a grading call — that's inherent to
+// grading free text.)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, HelpCircle, Lightbulb, Target, X } from "lucide-react";
@@ -15,7 +25,9 @@ import { createAttempt, createStudySession, gradeShortAnswer } from "@/lib/api/c
 import type { Question } from "@/lib/api/types";
 import { useCountUp } from "@/lib/useCountUp";
 
-interface Graded {
+export type QuizMode = "practice" | "test";
+
+export interface Graded {
   topic: string;
   score: number; // 0..1
   is_correct: boolean;
@@ -31,7 +43,9 @@ export function QuizRunner({
   subtitle,
   questions,
   subjectId = null,
+  mode = "practice",
   onClose,
+  onComplete,
   initialIdx = 0,
   initialResponse = "",
   initialResults = [],
@@ -40,11 +54,16 @@ export function QuizRunner({
   subtitle?: string;
   questions: Question[];
   subjectId?: string | null;
+  mode?: QuizMode;
   onClose: () => void;
+  // Set by a Review run to take over the ending: results are handed up instead of showing this
+  // component's own score summary, so the run can fold them into its report.
+  onComplete?: (results: Graded[]) => void;
   initialIdx?: number; // dev/preview only
   initialResponse?: string; // dev/preview only
   initialResults?: Graded[]; // dev/preview only — seed a mid-session rail
 }) {
+  const isTest = mode === "test";
   const [idx, setIdx] = useState(initialIdx);
   const [response, setResponse] = useState(initialResponse);
   const [result, setResult] = useState<Graded | null>(null);
@@ -60,17 +79,18 @@ export function QuizRunner({
     return () => clearInterval(id);
   }, []);
 
-  // Study-time tracking — recorded once on finish/exit, fire-and-forget.
+  // Study-time tracking — recorded once on finish/exit, fire-and-forget. In "test" mode the Review
+  // run records one study session for the whole run, so this one stays quiet.
   const startedAtRef = useRef(Date.now());
   const answeredRef = useRef(initialResults.length);
   const recordedRef = useRef(false);
   const endSession = useCallback(() => {
-    if (recordedRef.current || answeredRef.current === 0) return;
+    if (isTest || recordedRef.current || answeredRef.current === 0) return;
     recordedRef.current = true;
     const duration = Math.min(86_400, Math.round((Date.now() - startedAtRef.current) / 1000));
     if (duration <= 0) return;
     createStudySession({ subject_id: subjectId, duration_seconds: duration, kind: "quiz", started_at: new Date(startedAtRef.current).toISOString() }).catch(() => {});
-  }, [subjectId]);
+  }, [subjectId, isTest]);
   useEffect(() => () => endSession(), [endSession]);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -92,10 +112,19 @@ export function QuizRunner({
       if (isMC) {
         const is_correct = response === q.answer_key;
         const score = is_correct ? 1 : 0;
-        await createAttempt({ question_id: q.id, response, is_correct, score, feedback: "" });
+        // Only a test records an attempt — practice is activity, not progress.
+        if (isTest) await createAttempt({ question_id: q.id, response, is_correct, score, feedback: "" });
         graded = { topic: q.topic, score, is_correct, feedback: "", answerKey: q.answer_key, isMC: true };
       } else {
-        const g = await gradeShortAnswer({ prompt: q.prompt, model_answer: q.answer_key, response, topic: q.topic, question_id: q.id });
+        // Sending `question_id` is what makes the backend persist the graded attempt, so practice
+        // grades the answer for feedback without recording it.
+        const g = await gradeShortAnswer({
+          prompt: q.prompt,
+          model_answer: q.answer_key,
+          response,
+          topic: q.topic,
+          ...(isTest ? { question_id: q.id } : {}),
+        });
         graded = { topic: q.topic, score: g.score, is_correct: g.is_correct, feedback: g.feedback, answerKey: q.answer_key, isMC: false };
       }
       answeredRef.current += 1;
@@ -111,14 +140,17 @@ export function QuizRunner({
   const next = useCallback(() => {
     if (isLast) {
       endSession();
-      setFinished(true);
+      // A Review run takes over the ending and shows its own report. `results` must be in the dep
+      // list or this hands up a stale array missing the final answer.
+      if (onComplete) onComplete(results);
+      else setFinished(true);
       return;
     }
     setIdx((i) => i + 1);
     setResponse("");
     setResult(null);
     setError(null);
-  }, [isLast, endSession]);
+  }, [isLast, endSession, onComplete, results]);
 
   // Keyboard shortcuts: 1–4 pick an option, Enter checks / advances, N next.
   useEffect(() => {
@@ -157,7 +189,16 @@ export function QuizRunner({
         <div>
           <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-ink">
             {title}
-            <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-200">Practice</span>
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                isTest
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  : "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200",
+              )}
+            >
+              {isTest ? "Test" : "Practice"}
+            </span>
           </h1>
           {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
         </div>

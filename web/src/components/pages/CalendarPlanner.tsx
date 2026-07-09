@@ -9,7 +9,8 @@ import { PageHeader, SelectChevron } from "@/components/pages/shared";
 import { Button, EmptyState, ErrorBox, Skeleton, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, StudySession, Subject } from "@/lib/api/types";
-import { masteryBuckets, subjectExamDate, weeklyActivity } from "@/lib/dashboard";
+import { subjectExamDate, weeklyActivity } from "@/lib/dashboard";
+import { readinessBySubject } from "@/lib/readiness";
 import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
@@ -19,6 +20,10 @@ interface PlannerData {
   exams: Exam[];
   cards: DashboardData["cards"];
   studySessions: StudySession[];
+  // "% ready" is the app-wide readiness score, which needs the quiz side too (lib/readiness.ts).
+  questions: DashboardData["questions"];
+  quizzes: DashboardData["quizzes"];
+  attempts: DashboardData["attempts"];
 }
 
 type EventKind = "exam" | "study";
@@ -97,7 +102,7 @@ function buildEvents(subjects: Subject[], exams: Exam[], blocks: StudyBlock[], m
 
 const KIND_LABEL: Record<EventKind, string> = { exam: "Exam", study: "Study" };
 
-export function CalendarPlanner({ subjects, exams, cards, studySessions, now = Date.now() }: PlannerData & { now?: number }) {
+export function CalendarPlanner({ subjects, exams, cards, studySessions, questions, quizzes, attempts, now = Date.now() }: PlannerData & { now?: number }) {
   const today = new Date(now);
   const [view, setView] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
@@ -136,6 +141,13 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
   });
 
   const monthLabel = view.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  // "% ready" is the app-wide readiness score, written only by Reviews — not card mastery alone.
+  const readinessOf = useMemo(
+    () => readinessBySubject(subjects, { cards, questions, quizzes, attempts }),
+    [subjects, cards, questions, quizzes, attempts],
+  );
+
   const upcoming = subjects
     .map((s) => {
       const examDate = subjectExamDate(s.id, exams);
@@ -228,7 +240,8 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
               <h2 className="mb-3 text-lg font-semibold tracking-tight text-ink">Upcoming exams</h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {upcoming.map(({ s, days, examDate }) => {
-                  const readiness = masteryBuckets(cards.filter((c) => c.subject_id === s.id)).masteredPct;
+                  const r = readinessOf.get(s.id)!;
+                  const untested = r.verdict === "untested";
                   return (
                     <Link key={s.id} href={`/subjects/${s.id}`} style={subjectVars(s.id)} className="rounded-xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover">
                       <div className="flex items-center justify-between gap-3">
@@ -239,8 +252,8 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
                         <div className="text-right"><p className={cn("text-lg font-bold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-ink")}>{days}</p><p className="text-[10px] uppercase text-muted">days left</p></div>
                       </div>
                       <div className="mt-3 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-[var(--sc-solid)]" style={{ width: `${readiness}%` }} /></div>
-                        <span className="text-xs font-medium tabular-nums text-muted">{readiness}% ready</span>
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-[var(--sc-solid)]" style={{ width: `${untested ? 0 : r.score}%` }} /></div>
+                        <span className="text-xs font-medium tabular-nums text-muted">{untested ? "Untested" : `${r.score}% ready`}</span>
                       </div>
                     </Link>
                   );
@@ -257,7 +270,8 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, now = D
             {upcoming.length === 0 ? <p className="text-sm text-muted">No exams scheduled.</p> : (
               <ul className="space-y-3">
                 {upcoming.slice(0, 3).map(({ s, days }) => {
-                  const readiness = masteryBuckets(cards.filter((c) => c.subject_id === s.id)).masteredPct;
+                  const r = readinessOf.get(s.id)!;
+                  const readiness = r.verdict === "untested" ? 0 : r.score;
                   return (
                     <li key={s.id} style={subjectVars(s.id)}>
                       <div className="mb-1 flex items-center justify-between text-sm">
@@ -453,5 +467,15 @@ export function CalendarPlannerPage() {
   }
   if (error) return <ErrorBox message={error} />;
   if (!data) return null;
-  return <CalendarPlanner subjects={data.subjects} exams={data.exams} cards={data.cards} studySessions={data.studySessions} />;
+  return (
+    <CalendarPlanner
+      subjects={data.subjects}
+      exams={data.exams}
+      cards={data.cards}
+      studySessions={data.studySessions}
+      questions={data.questions}
+      quizzes={data.quizzes}
+      attempts={data.attempts}
+    />
+  );
 }
