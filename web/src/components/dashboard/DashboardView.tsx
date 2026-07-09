@@ -35,6 +35,7 @@ import {
 } from "@/lib/dashboard";
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
+import { computeReadiness, type Readiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
 import { useCountUp } from "@/lib/useCountUp";
 
@@ -386,6 +387,7 @@ function SubjectsSection({
               subject={s}
               examDate={subjectExamDate(s.id, data.exams)}
               cards={data.cards.filter((c) => c.subject_id === s.id)}
+              readiness={computeReadiness({ subjectId: s.id }, data)}
               quizAvg={quizAvgs.get(s.id) ?? null}
               now={now}
             />
@@ -400,12 +402,14 @@ function SubjectMiniCard({
   subject,
   examDate,
   cards,
+  readiness,
   quizAvg,
   now,
 }: {
   subject: Subject;
   examDate: string | null;
   cards: DashboardData["cards"];
+  readiness: Readiness;
   quizAvg: number | null;
   now: number;
 }) {
@@ -442,17 +446,25 @@ function SubjectMiniCard({
         </span>
       </div>
 
+      {/* Readiness comes from Reviews only (lib/readiness.ts) — never from cramming. A subject you
+          have never been tested on reads "Not tested yet", not 0%, which would be a lie. */}
       <div className="mt-4">
         <div className="mb-1.5 flex items-baseline justify-between text-xs">
           <span className="font-medium text-ink-2">Exam readiness</span>
-          <span className="font-semibold tabular-nums text-ink">{p.masteredPct}%</span>
+          <span className="font-semibold tabular-nums text-ink">
+            {readiness.verdict === "untested" ? "—" : `${readiness.score}%`}
+          </span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-line">
-          <div
-            className="h-full rounded-full bg-[var(--sc-solid)] transition-[width] duration-700 ease-out"
-            style={{ width: `${p.masteredPct}%` }}
-          />
-        </div>
+        {readiness.verdict === "untested" ? (
+          <p className="text-[11px] text-subtle">Not tested yet — run a review</p>
+        ) : (
+          <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+            <div
+              className="h-full rounded-full bg-[var(--sc-solid)] transition-[width] duration-700 ease-out"
+              style={{ width: `${readiness.score}%` }}
+            />
+          </div>
+        )}
       </div>
 
       <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">

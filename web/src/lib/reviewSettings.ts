@@ -1,10 +1,10 @@
 "use client";
 
 // Review preferences — device-local settings (like the theme / display scale) that control how a
-// spaced-repetition session runs, not what's in it. Two knobs, both genuinely wired into the
-// session queue (see ReviewSession.buildQueue + the Review hub):
-//   • sessionSize — cap the number of cards a single session serves (0 = no cap, review everything)
-//   • order       — "due" walks earliest-due first (default); "shuffle" randomises the queue
+// Review runs, not what's in it. Three knobs, all genuinely wired into the run (see ReviewRun.tsx):
+//   • sessionSize   — cap the cards the recall phase serves (0 = no cap, review everything)
+//   • order         — "due" walks earliest-due first (default); "shuffle" randomises the queue
+//   • questionCount — how many quiz questions the test phase asks (0 = skip the test phase)
 //
 // Stored in localStorage so it survives reloads and is shared across tabs; reads go through
 // useSyncExternalStore so the Review hub reflects a change the moment the settings dialog saves it.
@@ -16,14 +16,18 @@ export type ReviewOrder = "due" | "shuffle";
 export interface ReviewSettings {
   sessionSize: number; // 0 = all due cards
   order: ReviewOrder;
+  questionCount: number; // 0 = cards only, no test phase
 }
 
 const KEY = "cram-review-settings";
 const EVENT = "cram-review-settings-change";
 
-export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = { sessionSize: 0, order: "due" };
+export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = { sessionSize: 0, order: "due", questionCount: 5 };
 // 0 = "All"; kept last so the option row reads 10 · 20 · 50 · All.
 export const SESSION_SIZES = [10, 20, 50, 0] as const;
+// 0 = "None" — a cards-only Review. Short-answer questions are graded by a paid Claude call, so the
+// cap is what keeps a daily review's cost bounded.
+export const QUESTION_COUNTS = [0, 3, 5, 10] as const;
 
 // Cache the parsed value keyed on the raw string so getSnapshot returns a STABLE reference until
 // the stored value actually changes — required by useSyncExternalStore (a fresh object each read
@@ -37,6 +41,12 @@ function parse(raw: string): ReviewSettings {
     return {
       sessionSize: typeof p.sessionSize === "number" && p.sessionSize >= 0 ? p.sessionSize : DEFAULT_REVIEW_SETTINGS.sessionSize,
       order: p.order === "shuffle" ? "shuffle" : "due",
+      // Absent in settings saved before the test phase existed — fall back to the default, not 0,
+      // or an existing user would silently get a Review with no questions.
+      questionCount:
+        typeof p.questionCount === "number" && p.questionCount >= 0
+          ? p.questionCount
+          : DEFAULT_REVIEW_SETTINGS.questionCount,
     };
   } catch {
     return DEFAULT_REVIEW_SETTINGS;

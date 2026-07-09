@@ -70,6 +70,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
   }
 
   // Practising: hand the in-scope questions to the runner (which reveals answers + accuracy).
+  // Practice records study time but no attempts — only a Review measures progress.
   if (active && subject && questionsInScope.length > 0) {
     const label = scopeLabel(subjectExams, scope);
     return (
@@ -78,6 +79,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
         subtitle={label ? `${subject.name} · ${label}` : `${subject.name} · all exams`}
         questions={questionsInScope}
         subjectId={subject.id}
+        mode="practice"
         onClose={() => setActive(false)}
       />
     );

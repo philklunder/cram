@@ -51,6 +51,13 @@ const buttonSizes: Record<ButtonSize, string> = {
   md: "px-4 py-2.5 text-sm",
 };
 
+// The Button's classes, for elements that must render as something else — chiefly a `next/link`
+// that should look like a button. Nesting a <button> inside an <a> is invalid HTML and breaks
+// keyboard and screen-reader behaviour, so link-actions style the <a> with this instead.
+export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md", className?: string): string {
+  return cn(buttonBase, buttonVariants[variant], buttonSizes[size], className);
+}
+
 export function Button({
   variant = "primary",
   size = "md",

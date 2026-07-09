@@ -191,18 +191,22 @@ export function subjectExamDate(subjectId: string, exams: Exam[]): string | null
 
 export interface NearestExam {
   subject: Subject;
+  exam: Exam; // the exam row itself, so callers can scope to it (e.g. per-exam readiness)
   days: number;
   examDate: string; // ISO of the subject's soonest upcoming exam
 }
 
-// The single closest upcoming exam across all subjects, derived from their exams.
+// The single closest upcoming exam across all subjects. Ties keep the first subject in the given
+// order, and within a subject the first exam on that date — matching the previous behaviour.
 export function nearestExam(subjects: Subject[], exams: Exam[]): NearestExam | null {
   let best: NearestExam | null = null;
   for (const s of subjects) {
-    const examDate = subjectExamDate(s.id, exams);
-    if (examDate === null) continue;
-    const days = daysUntil(examDate)!; // non-negative by construction
-    if (!best || days < best.days) best = { subject: s, days, examDate };
+    for (const e of exams) {
+      if (e.subject_id !== s.id || !e.exam_date) continue;
+      const days = daysUntil(e.exam_date);
+      if (days === null || days < 0) continue; // past exams don't drive a countdown
+      if (!best || days < best.days) best = { subject: s, exam: e, days, examDate: e.exam_date };
+    }
   }
   return best;
 }

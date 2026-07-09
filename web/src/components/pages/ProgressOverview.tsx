@@ -35,6 +35,7 @@ import {
   higherIsBetter,
 } from "@/lib/grades";
 import { computeProgress } from "@/lib/progress";
+import { computeReadiness, examReadiness, overallReadiness, readinessBySubject, type Readiness, type ScopedReadiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
 import { useDisplayScale } from "@/lib/useDisplayScale";
@@ -46,12 +47,15 @@ interface ProgressData {
   gradeEntries: GradeEntry[];
   reviewLogs: DashboardData["reviewLogs"];
   studySessions: StudySession[];
+  // Readiness is card mastery + quiz accuracy + coverage, so it needs the quiz side too.
+  questions: DashboardData["questions"];
+  quizzes: DashboardData["quizzes"];
+  attempts: DashboardData["attempts"];
 }
 
-function readinessScore(cards: ProgressData["cards"]): number {
-  const b = masteryBuckets(cards);
-  if (b.total === 0) return 0;
-  return Math.round(((b.mastered + b.strong * 0.5) / b.total) * 100);
+// One definition of readiness for the whole app: lib/readiness.ts, fed only by Reviews.
+function subjectReadiness(subjectId: string, data: ProgressData): Readiness {
+  return computeReadiness({ subjectId }, data);
 }
 
 function readinessLabel(pct: number): string {
@@ -72,8 +76,12 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
 
   const streak = computeStreak(reviewLogs, now);
   const buckets = masteryBuckets(cards);
-  const readiness = readinessScore(cards);
+  // Weighted across subjects, excluding ones never tested — null until a Review has happened.
+  const readiness = useMemo(() => overallReadiness([...readinessBySubject(subjects, data).values()]), [subjects, data]);
   const exam = nearestExam(subjects, exams);
+  // Scored against the exam's own material where it has any, else the whole subject (material
+  // uploaded without picking an exam is filed under "General"). `scope` says which.
+  const examScore = exam ? examReadiness(exam.subject.id, exam.exam.id, data) : null;
 
   const allPoints = useMemo(() => trendPoints(gradeEntries, scaleOf), [gradeEntries, scaleOf]);
   const currentAvg = allPoints.length ? Math.round(allPoints.reduce((s, p) => s + p.pct, 0) / allPoints.length) : null;
@@ -99,7 +107,7 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
             <Stat icon={TrendingUp} tone="brand" label="Current average" value={currentAvg == null ? "—" : formatPercentInScale(displayScale, currentAvg)} sub={delta != null ? <Delta v={delta} scale={displayScale} /> : "No trend yet"} />
             <Stat icon={Target} tone="red" label="Target grade" value={targetSubject?.target_grade != null ? String(targetSubject.target_grade) : "—"} sub={targetSubject ? `${targetSubject.grading_scale} scale` : "Set a target"} />
-            <Stat icon={Award} tone="brand" label="Readiness" value={`${readiness}%`} sub={readinessLabel(readiness)} />
+            <Stat icon={Award} tone="brand" label="Readiness" value={readiness == null ? "—" : `${readiness}%`} sub={readiness == null ? "Run a review" : readinessLabel(readiness)} />
             <Stat icon={Flame} tone="amber" label="Study streak" value={String(streak.current)} sub={streak.current === 1 ? "day in a row" : "days in a row"} />
             <Stat icon={BookOpen} tone="green" label="Cards mastered" value={buckets.mastered.toLocaleString()} sub={`of ${buckets.total.toLocaleString()}`} />
           </div>
@@ -121,7 +129,7 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
 
         {/* Right rail */}
         <aside className="min-w-0 space-y-6">
-          <UpcomingExam exam={exam} readiness={readiness} />
+          <UpcomingExam exam={exam} scored={examScore} />
           <StudyActivity sessions={studySessions} streak={streak.current} now={now} />
           <AIInsight />
         </aside>
@@ -334,7 +342,7 @@ function SubjectPerfCard({ subject, data, now, displayScale }: { subject: Subjec
     cur != null
       ? formatPercentInScale(displayScale, gradePercent(subject.grading_scale, cur))
       : `${masteryBuckets(cards).masteredPct}%`;
-  const readiness = readinessScore(cards);
+  const readiness = subjectReadiness(subject.id, data);
   const b = masteryBuckets(cards);
   const topics = new Map<string, typeof cards>();
   for (const c of cards) {
@@ -370,7 +378,19 @@ function SubjectPerfCard({ subject, data, now, displayScale }: { subject: Subjec
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Trend</p>
           <div className="mt-1"><MiniSpark values={spark} /></div>
         </div>
-        <Metric label="Readiness" value={`${readiness}%`} tone={readiness >= 65 ? "green" : readiness >= 45 ? "amber" : "red"} />
+        <Metric
+          label="Readiness"
+          value={readiness.verdict === "untested" ? "—" : `${readiness.score}%`}
+          tone={
+            readiness.verdict === "untested"
+              ? undefined
+              : readiness.score >= 65
+                ? "green"
+                : readiness.score >= 45
+                  ? "amber"
+                  : "red"
+          }
+        />
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
@@ -414,7 +434,17 @@ function MiniSpark({ values }: { values: number[] }) {
 
 // --- Right rail --------------------------------------------------------------------------
 
-function UpcomingExam({ exam, readiness }: { exam: ReturnType<typeof nearestExam>; readiness: number }) {
+function UpcomingExam({ exam, scored }: { exam: ReturnType<typeof nearestExam>; scored: ScopedReadiness | null }) {
+  const readiness = scored?.readiness ?? null;
+  const untested = readiness == null || readiness.verdict === "untested";
+  const score = readiness?.score ?? 0;
+  // Whether the number describes this exam's own deck, or the subject as a whole because nothing is
+  // filed under the exam. Saying which is the difference between a useful score and a mystery one.
+  const scopeNote = untested
+    ? "Run a review — Cram can't score you until it has tested you."
+    : scored?.scope === "exam"
+      ? `Measured by your reviews of ${exam!.exam.title}.`
+      : "No material is filed under this exam, so this scores the whole subject.";
   return (
     <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
       <div className="mb-4 flex items-center justify-between">
@@ -424,20 +454,35 @@ function UpcomingExam({ exam, readiness }: { exam: ReturnType<typeof nearestExam
       {exam ? (
         <>
           <div style={subjectVars(exam.subject.id)} className="flex items-center gap-3">
-            <span className="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
+            <span className="flex h-12 w-12 flex-none flex-col items-center justify-center rounded-xl bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
               <span className="text-lg font-bold leading-none tabular-nums">{exam.days}</span>
               <span className="text-[9px] uppercase">days</span>
             </span>
             <div className="min-w-0">
-              <p className="truncate font-semibold text-ink">{exam.subject.name}</p>
-              <p className="text-xs text-muted">{formatDate(exam.examDate)}</p>
+              <p className="truncate font-semibold text-ink">{exam.exam.title}</p>
+              <p className="truncate text-xs text-muted">
+                {exam.subject.name} · {formatDate(exam.examDate)}
+              </p>
             </div>
           </div>
           <div className="mt-4 flex items-center gap-4">
-            <Donut segments={[{ value: readiness, color: "#7c4dff" }, { value: 100 - readiness, color: "transparent" }]} centerValue={`${readiness}%`} centerSub={readinessLabel(readiness)} size={84} stroke={10} />
+            <Donut
+              segments={[{ value: score, color: "#7c4dff" }, { value: 100 - score, color: "transparent" }]}
+              centerValue={untested ? "—" : `${score}%`}
+              centerSub={untested ? "Untested" : readinessLabel(score)}
+              size={84}
+              stroke={10}
+            />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink">Readiness</p>
-              <p className="mt-0.5 text-xs text-muted">Keep studying to reach your target.</p>
+              <p className="text-sm font-medium text-ink">
+                Readiness
+                {!untested && scored?.scope === "subject" ? (
+                  <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                    Whole subject
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted">{scopeNote}</p>
             </div>
           </div>
           <Link href={`/subjects/${exam.subject.id}`} className="mt-4 block">

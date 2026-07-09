@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { Brain, CalendarClock, ChevronRight, Clock, Layers, ListOrdered, Play, RefreshCw, Shuffle, SlidersHorizontal, Sparkles, Target, TrendingUp } from "lucide-react";
+// The Review hub — where Cram measures what you actually know.
+//
+// Practising on Flashcards or Quizzes is activity: it builds your streak but writes no progress.
+// A Review is the assessment. It rates your recall (SM-2) and tests you on quiz questions, and
+// those two signals are the only inputs to your readiness score (lib/readiness.ts). This page plans
+// the work — what's due, how ready each subject is — and launches the run (ReviewRun.tsx).
+
+import { useMemo, useState } from "react";
+import { Brain, CalendarClock, ChevronRight, Clock, HelpCircle, Layers, ListOrdered, Play, RefreshCw, Shuffle, SlidersHorizontal, Sparkles, Target, TrendingUp } from "lucide-react";
 
 import { Modal } from "@/components/Modal";
-import { ReviewSession, type ReviewCardContext } from "@/components/ReviewSession";
+import { ReviewRun } from "@/components/ReviewRun";
+import type { ReviewCardContext } from "@/components/ReviewSession";
 import { Button, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
-import type { Card, Exam, ReviewLog, Subject } from "@/lib/api/types";
+import type { Attempt, Card, Exam, Question, Quiz, Subject } from "@/lib/api/types";
 import { computeStreak, subjectExamDate } from "@/lib/dashboard";
 import { daysUntil, subjectInitials } from "@/lib/format";
-import { DEFAULT_REVIEW_SETTINGS, SESSION_SIZES, setReviewSettings, useReviewSettings, type ReviewOrder, type ReviewSettings } from "@/lib/reviewSettings";
+import { computeReadiness, overallReadiness, VERDICT_COPY, type Readiness } from "@/lib/readiness";
+import { DEFAULT_REVIEW_SETTINGS, QUESTION_COUNTS, SESSION_SIZES, setReviewSettings, useReviewSettings, type ReviewOrder, type ReviewSettings } from "@/lib/reviewSettings";
 import { subjectStrength } from "@/lib/srs/grade-strength";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
@@ -20,18 +28,44 @@ interface Row {
   subject: Subject;
   due: number;
   total: number;
+  questions: number;
   days: number | null;
+  readiness: Readiness;
 }
 
-function rows(subjects: Subject[], cards: Card[], exams: Exam[], now: number): Row[] {
+// Every subject you have material for — not just the ones with cards due. A subject can be worth
+// reviewing because its quiz has never been attempted, even when nothing is scheduled today.
+function rows(
+  subjects: Subject[],
+  cards: Card[],
+  exams: Exam[],
+  questions: Question[],
+  quizzes: Quiz[],
+  attempts: Attempt[],
+  now: number,
+): Row[] {
+  const quizById = new Map(quizzes.map((q) => [q.id, q]));
   return subjects
     .map((subject) => {
       const own = cards.filter((c) => c.subject_id === subject.id);
-      const due = own.filter((c) => new Date(c.due_date).getTime() <= now).length;
-      return { subject, due, total: own.length, days: daysUntil(subjectExamDate(subject.id, exams)) };
+      const ownQuestions = questions.filter((q) => quizById.get(q.quiz_id)?.subject_id === subject.id);
+      return {
+        subject,
+        due: own.filter((c) => new Date(c.due_date).getTime() <= now).length,
+        total: own.length,
+        questions: ownQuestions.length,
+        days: daysUntil(subjectExamDate(subject.id, exams)),
+        readiness: computeReadiness({ subjectId: subject.id }, { cards, questions, quizzes, attempts }),
+      };
     })
-    .filter((r) => r.due > 0)
-    .sort((a, b) => b.due - a.due || (a.days ?? 1e9) - (b.days ?? 1e9) || a.subject.name.localeCompare(b.subject.name));
+    .filter((r) => r.total > 0 || r.questions > 0)
+    .sort(
+      (a, b) =>
+        b.due - a.due ||
+        (a.days ?? 1e9) - (b.days ?? 1e9) ||
+        a.readiness.score - b.readiness.score ||
+        a.subject.name.localeCompare(b.subject.name),
+    );
 }
 
 // Rough per-card review time (~47s), rounded to whole minutes.
@@ -39,27 +73,19 @@ function estimateMinutes(cardCount: number): number {
   return Math.max(1, Math.round((cardCount * 47) / 60));
 }
 
-// Recall accuracy over the last 7 days: a review rated ≥3 (hard/good/easy) counts as recalled;
-// rating 1 (again) is a miss. null when there's nothing recent to score.
-function recentAccuracy(logs: ReviewLog[], now: number): number | null {
-  const cutoff = now - 7 * 86_400_000;
-  const recent = logs.filter((l) => new Date(l.reviewed_at).getTime() >= cutoff);
-  if (recent.length === 0) return null;
-  const recalled = recent.filter((l) => l.rating >= 3).length;
-  return Math.round((recalled / recent.length) * 100);
-}
-
 function scaleLabel(subject: Subject): string {
   const base = subject.grading_scale === "german" ? "German scale" : "Swiss scale";
   return subject.target_grade != null ? `${base} · Target ${subject.target_grade}` : base;
 }
 
-// The hub: today's due load across subjects, a prominent cross-subject session CTA, and tips.
+// The hub: today's due load and readiness per subject, plus the CTA that starts a run.
 export function ReviewHubView({
   subjects,
   cards,
   exams,
-  reviewLogs = [],
+  questions = [],
+  quizzes = [],
+  attempts = [],
   streak = 0,
   now = Date.now(),
   onStart,
@@ -68,17 +94,23 @@ export function ReviewHubView({
   subjects: Subject[];
   cards: Card[];
   exams: Exam[];
-  reviewLogs?: ReviewLog[];
+  questions?: Question[];
+  quizzes?: Quiz[];
+  attempts?: Attempt[];
   streak?: number;
   now?: number;
-  onStart?: () => void;
+  onStart?: (subjectId: string | null) => void; // null = every subject
   initialSettingsOpen?: boolean; // dev/preview only — render with the settings dialog open
 }) {
-  const list = rows(subjects, cards, exams, now);
+  const list = useMemo(
+    () => rows(subjects, cards, exams, questions, quizzes, attempts, now),
+    [subjects, cards, exams, questions, quizzes, attempts, now],
+  );
   const totalDue = list.reduce((n, r) => n + r.due, 0);
-  const subjectsDue = list.length;
-  const accuracy = recentAccuracy(reviewLogs, now);
+  const subjectsDue = list.filter((r) => r.due > 0).length;
+  const readiness = overallReadiness(list.map((r) => r.readiness));
   const [settingsOpen, setSettingsOpen] = useState(initialSettingsOpen);
+  const start = (subjectId: string | null) => () => onStart?.(subjectId);
 
   return (
     <section>
@@ -89,78 +121,87 @@ export function ReviewHubView({
             <RefreshCw className="h-6 w-6 text-brand-500 sm:h-7 sm:w-7" strokeWidth={2.25} aria-hidden />
             Review
           </h1>
-          <p className="mt-1.5 text-sm text-ink-2">Smart repetition that helps you remember what matters.</p>
+          <p className="mt-1.5 text-sm text-ink-2">
+            Rate your recall, answer a few questions, and Cram works out how ready you really are.
+          </p>
         </div>
         <ReviewArt className="pointer-events-none absolute -top-3 right-0 hidden md:block" />
       </header>
 
       {list.length === 0 ? (
         <EmptyState
-          title="You're all caught up"
-          hint="No cards are due right now. Upload material to a subject to generate a deck, or come back when cards are ready."
+          title="Nothing to review yet"
+          hint="Upload material to a subject and Cram will build the flashcards and questions a review needs."
         />
       ) : (
         <div className="space-y-6">
           {/* Stat cards */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard icon={Layers} tone="violet" label="Cards due today" value={String(totalDue)} sub={`Across ${subjectsDue} subject${subjectsDue === 1 ? "" : "s"}`} />
+            <StatCard icon={Layers} tone="violet" label="Cards due today" value={String(totalDue)} sub={subjectsDue === 0 ? "Nothing scheduled" : `Across ${subjectsDue} subject${subjectsDue === 1 ? "" : "s"}`} />
             <StatCard icon={CalendarClock} tone="amber" label="Estimated time" value={`${estimateMinutes(totalDue)} min`} sub="For today's review" />
             <StatCard icon={TrendingUp} tone="green" label="Review streak" value={`${streak} day${streak === 1 ? "" : "s"}`} sub={streak > 0 ? "Keep it going!" : "Start today"} />
-            <StatCard icon={Target} tone="sky" label="Accuracy" value={accuracy == null ? "—" : `${accuracy}%`} sub="Last 7 days" />
+            <StatCard icon={Target} tone="sky" label="Exam readiness" value={readiness == null ? "—" : `${readiness}%`} sub={readiness == null ? "Run a review to find out" : "Across all subjects"} />
           </div>
 
-          {/* Today's review by subject + ready-to-review CTA */}
+          {/* Review by subject + ready-to-review CTA */}
           <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
             <div className="rounded-2xl border border-line bg-surface p-6 shadow-card">
-              <h2 className="mb-4 text-base font-semibold tracking-tight text-ink">Today&rsquo;s review by subject</h2>
+              <h2 className="mb-4 text-base font-semibold tracking-tight text-ink">Review by subject</h2>
               <ul className="divide-y divide-line">
-                {list.map(({ subject, due, total }) => {
-                  const pct = total > 0 ? Math.round((due / total) * 100) : 0;
-                  return (
-                    <li key={subject.id}>
-                      <Link
-                        href={`/subjects/${subject.id}`}
-                        style={subjectVars(subject.id)}
-                        className="group -mx-2 flex items-center gap-4 rounded-xl px-2 py-3.5 transition duration-200 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                {list.map(({ subject, due, total, readiness: r }) => (
+                  <li key={subject.id}>
+                    <button
+                      type="button"
+                      onClick={start(subject.id)}
+                      disabled={!onStart}
+                      style={subjectVars(subject.id)}
+                      className="group -mx-2 flex w-full items-center gap-4 rounded-xl px-2 py-3.5 text-left transition duration-200 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-solid)] focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span
+                        aria-hidden
+                        className="flex h-11 w-11 flex-none items-center justify-center rounded-xl text-sm font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
                       >
-                        <span
-                          aria-hidden
-                          className="flex h-11 w-11 flex-none items-center justify-center rounded-xl text-sm font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
-                        >
-                          {subjectInitials(subject.name)}
-                        </span>
-                        <div className="hidden min-w-0 sm:block sm:w-40 sm:flex-none">
-                          <p className="truncate font-semibold text-ink">{subject.name}</p>
-                          <p className="truncate text-sm text-muted">{scaleLabel(subject)}</p>
+                        {subjectInitials(subject.name)}
+                      </span>
+                      <div className="hidden min-w-0 sm:block sm:w-40 sm:flex-none">
+                        <p className="truncate font-semibold text-ink">{subject.name}</p>
+                        <p className="truncate text-sm text-muted">{scaleLabel(subject)}</p>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1.5 text-sm font-semibold text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]">
+                          <span className="sm:hidden">{subject.name} · </span>
+                          {due > 0 ? `${due} card${due === 1 ? "" : "s"} due` : "Nothing due"}
+                        </p>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+                          <div
+                            className="h-full rounded-full bg-[var(--sc-solid)] transition-all duration-500"
+                            style={{ width: `${Math.max(6, total > 0 ? Math.round((due / total) * 100) : 0)}%` }}
+                          />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="mb-1.5 text-sm font-semibold text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]">
-                            <span className="sm:hidden">{subject.name} · </span>{due} card{due === 1 ? "" : "s"} due
-                          </p>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-                            <div className="h-full rounded-full bg-[var(--sc-solid)] transition-all duration-500" style={{ width: `${Math.max(6, pct)}%` }} />
-                          </div>
-                        </div>
-                        <span className="hidden flex-none text-sm font-medium tabular-nums text-muted sm:inline">{estimateMinutes(due)} min</span>
-                        <ChevronRight className="h-4 w-4 flex-none text-subtle transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
-                      </Link>
-                    </li>
-                  );
-                })}
+                      </div>
+                      <ReadinessPill readiness={r} />
+                      <ChevronRight className="h-4 w-4 flex-none text-subtle transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
+                    </button>
+                  </li>
+                ))}
               </ul>
 
               <button
                 type="button"
-                onClick={onStart}
+                onClick={start(null)}
                 disabled={!onStart}
-                className="mt-2 flex w-full items-center gap-4 rounded-xl border border-dashed border-line-strong/70 px-4 py-3.5 text-left transition duration-200 hover:border-brand-300 hover:bg-brand-50/40 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10"
+                className="mt-2 flex w-full items-center gap-4 rounded-xl border border-dashed border-line-strong/70 px-4 py-3.5 text-left transition duration-200 hover:border-brand-300 hover:bg-brand-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10"
               >
                 <span aria-hidden className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/25">
                   <Layers className="h-5 w-5" strokeWidth={2} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">Review all cards</p>
-                  <p className="text-sm text-muted">Mix all {totalDue} due card{totalDue === 1 ? "" : "s"} from every subject</p>
+                  <p className="font-semibold text-ink">Review everything</p>
+                  <p className="text-sm text-muted">
+                    {totalDue > 0
+                      ? `Mix all ${totalDue} due card${totalDue === 1 ? "" : "s"} from every subject`
+                      : "Nothing's due — test yourself across every subject anyway"}
+                  </p>
                 </div>
                 <ChevronRight className="h-4 w-4 flex-none text-subtle" strokeWidth={2} aria-hidden />
               </button>
@@ -172,9 +213,12 @@ export function ReviewHubView({
                 <Sparkles className="h-5 w-5" strokeWidth={2} />
               </span>
               <h2 className="mt-5 text-xl font-bold tracking-tight text-ink">Ready to review?</h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink-2">Let&rsquo;s strengthen your memory with smart repetition.</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-2">
+                First you&rsquo;ll rate how well you recalled each card, then answer a few questions on the same
+                material. Honest answers make your readiness score mean something.
+              </p>
               <div className="mt-auto pt-6">
-                <Button className="w-full py-3 text-[15px]" onClick={onStart} disabled={!onStart}>
+                <Button className="w-full py-3 text-[15px]" onClick={start(null)} disabled={!onStart}>
                   <Play className="h-4 w-4 fill-current" strokeWidth={0} aria-hidden />
                   Start review
                 </Button>
@@ -246,6 +290,18 @@ function ReviewSettingsModal({ open, onClose }: { open: boolean; onClose: () => 
             onChange={(order) => setDraft((d) => ({ ...d, order }))}
           />
         </SettingRow>
+
+        <SettingRow
+          icon={HelpCircle}
+          label="Questions per review"
+          hint="After the cards, Cram tests you on quiz questions. Written answers are graded by AI, so this caps the cost."
+        >
+          <Segmented
+            options={QUESTION_COUNTS.map((n) => ({ value: n, label: n === 0 ? "None" : String(n) }))}
+            value={draft.questionCount}
+            onChange={(questionCount) => setDraft((d) => ({ ...d, questionCount }))}
+          />
+        </SettingRow>
       </div>
 
       <div className="mt-7 flex items-center justify-between gap-3">
@@ -313,6 +369,31 @@ function Segmented<T extends string | number>({
         );
       })}
     </div>
+  );
+}
+
+// A subject's readiness, at a glance. "Not tested yet" is its own state, not a 0% — an untested
+// subject is an unknown, and showing it as a failing score would be a lie.
+function ReadinessPill({ readiness }: { readiness: Readiness }) {
+  const { score, verdict } = readiness;
+  const tone =
+    verdict === "ready"
+      ? "bg-green-50 text-green-700 ring-green-200 dark:bg-green-500/10 dark:text-green-300 dark:ring-green-500/25"
+      : verdict === "almost"
+        ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25"
+        : verdict === "keep-going"
+          ? "bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/25"
+          : "bg-surface-2 text-muted ring-line";
+  return (
+    <span
+      title={VERDICT_COPY[verdict].hint}
+      className={cn(
+        "hidden flex-none rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ring-1 ring-inset sm:inline-block",
+        tone,
+      )}
+    >
+      {verdict === "untested" ? "Untested" : `${score}% ready`}
+    </span>
   );
 }
 
@@ -393,13 +474,14 @@ function ReviewArt({ className }: { className?: string }) {
   );
 }
 
-// The /review route: hub → cross-subject session and back.
+// The /review route: hub → a scoped Review run and back.
 export function ReviewHubPage() {
   const { loading, error, data, reload } = useAsync(() => loadDashboard(), []);
-  const [active, setActive] = useState(false);
+  // undefined = browsing the hub; string = one subject; null = every subject.
+  const [running, setRunning] = useState<string | null | undefined>(undefined);
   const settings = useReviewSettings();
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-48 rounded-lg" />
@@ -416,18 +498,15 @@ export function ReviewHubPage() {
   if (!data) return null;
 
   const now = Date.now();
-  const dueCards = data.cards.filter((c) => new Date(c.due_date).getTime() <= now);
-  const streak = computeStreak(data.reviewLogs, now).current;
 
-  if (active && dueCards.length > 0) {
+  if (running !== undefined) {
     return (
-      <ReviewSession
-        cards={dueCards}
-        streak={streak}
-        order={settings.order}
-        limit={settings.sessionSize}
-        contextFor={(card) => contextFor(data, card)}
-        onClose={() => setActive(false)}
+      <ReviewRunFor
+        data={data}
+        subjectId={running}
+        streak={computeStreak(data.reviewLogs, now).current}
+        settings={settings}
+        onExit={() => setRunning(undefined)}
         onReviewed={reload}
       />
     );
@@ -438,23 +517,71 @@ export function ReviewHubPage() {
       subjects={data.subjects}
       cards={data.cards}
       exams={data.exams}
-      reviewLogs={data.reviewLogs}
-      streak={streak}
+      questions={data.questions}
+      quizzes={data.quizzes}
+      attempts={data.attempts}
+      streak={computeStreak(data.reviewLogs, now).current}
       now={now}
-      onStart={dueCards.length > 0 ? () => setActive(true) : undefined}
+      onStart={(subjectId) => setRunning(subjectId)}
     />
   );
 }
 
-function contextFor(data: DashboardData, card: Card): ReviewCardContext {
-  const subject = data.subjects.find((s) => s.id === card.subject_id)!;
-  const entries = data.gradeEntries.filter((e) => e.subject_id === subject.id);
-  // Compress this card's schedule toward its own exam's date (a card outlives its exam and may be
-  // unassigned → "General" → no exam date → no compression).
-  const exam = card.exam_id ? data.exams.find((e) => e.id === card.exam_id) : undefined;
-  return {
-    subject,
-    examDate: exam?.exam_date ?? null,
-    strength: subjectStrength(subject.grading_scale, subject.current_grade, entries),
+// Assembles one Review run's scope: its cards, its questions, and the per-card SM-2 context
+// (each card compresses toward ITS OWN exam's date, and the subject's grade strength decides how
+// hard — exactly as iOS does).
+function ReviewRunFor({
+  data,
+  subjectId,
+  streak,
+  settings,
+  onExit,
+  onReviewed,
+}: {
+  data: DashboardData;
+  subjectId: string | null; // null = every subject
+  streak: number;
+  settings: ReviewSettings;
+  onExit: () => void;
+  onReviewed: () => void;
+}) {
+  const subject = subjectId == null ? null : data.subjects.find((s) => s.id === subjectId);
+  const quizById = new Map(data.quizzes.map((q) => [q.id, q]));
+  const examById = new Map(data.exams.map((e) => [e.id, e]));
+
+  const cards = subjectId == null ? data.cards : data.cards.filter((c) => c.subject_id === subjectId);
+  const questions =
+    subjectId == null
+      ? data.questions.filter((q) => quizById.has(q.quiz_id))
+      : data.questions.filter((q) => quizById.get(q.quiz_id)?.subject_id === subjectId);
+
+  const strengthOf = (id: string) => {
+    const s = data.subjects.find((x) => x.id === id);
+    if (!s) return null;
+    return subjectStrength(s.grading_scale, s.current_grade, data.gradeEntries.filter((g) => g.subject_id === id));
   };
+
+  const contextFor = (card: Card): ReviewCardContext => ({
+    subject: data.subjects.find((s) => s.id === card.subject_id)!,
+    examDate: (card.exam_id ? examById.get(card.exam_id)?.exam_date : null) ?? null,
+    strength: strengthOf(card.subject_id),
+  });
+
+  return (
+    <ReviewRun
+      title={subject ? `${subject.name} — Review` : "Review"}
+      subtitle={subject ? scaleLabel(subject) : "Every subject"}
+      cards={cards}
+      questions={questions}
+      contextFor={contextFor}
+      subjectId={subjectId}
+      generateHref={subject ? `/upload?subject=${encodeURIComponent(subject.name)}` : "/upload"}
+      streak={streak}
+      order={settings.order}
+      limit={settings.sessionSize}
+      questionLimit={settings.questionCount}
+      onExit={onExit}
+      onReviewed={onReviewed}
+    />
+  );
 }

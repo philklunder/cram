@@ -169,7 +169,7 @@ export default function PreviewPage() {
               cards={MOCK_CARDS.slice(0, 20)}
               quizzes={[]}
               questions={[]}
-              onStudy={() => {}}
+              href="/flashcards"
               onAddMaterial={() => {}}
               onEdit={() => {}}
               defaultOpen
@@ -179,7 +179,7 @@ export default function PreviewPage() {
               cards={MOCK_CARDS.slice(20, 32)}
               quizzes={[]}
               questions={[]}
-              onStudy={() => {}}
+              href="/flashcards"
               onAddMaterial={() => {}}
               onEdit={() => {}}
             />
@@ -188,7 +188,7 @@ export default function PreviewPage() {
               cards={MOCK_CARDS.slice(32)}
               quizzes={[]}
               questions={[]}
-              onStudy={() => {}}
+              href="/flashcards"
               onAddMaterial={() => {}}
             />
           </div>

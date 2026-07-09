@@ -83,6 +83,10 @@ every `/v1/*` call fails as a CORS error in the browser.
   grade (`PATCH /v1/subjects`). `src/lib/grades.ts` is a TS port of the iOS `GradeFormat` + `GradingScale`
   (formatting, pass-mark, range); the current-grade/strength derivation is reused from
   `src/lib/srs/grade-strength.ts`, so a grade reads and compresses identically to iOS.
+- **Practice vs progress:** the Flashcards and Quizzes pages are for *learning* — they record study
+  time (`POST /v1/study-sessions`) but write no schedule and no attempts. A **Review**
+  (`ReviewRun.tsx`) is the only assessment: it rates recall (SM-2) then tests you on quiz questions,
+  and those two signals are the sole inputs to the readiness score (`src/lib/readiness.ts`).
 - **Review (SM-2):** `src/lib/srs/scheduler.ts` is a faithful TypeScript port of the iOS scheduler
   (`ios/Cram/Study/Scheduler.swift`) — standard SM-2 plus exam-date compression. `ReviewSession.tsx`
   runs it on each rating and writes back `PATCH /v1/cards` + `POST /v1/review-logs`. Because the same
