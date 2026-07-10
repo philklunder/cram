@@ -1,6 +1,7 @@
 // Shared design-system primitives. One source of truth for buttons, badges, surfaces, form
 // fields, and the empty/loading/error states so the app reads as one coherent system.
 
+import Link from "next/link";
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 
 // Tiny class combiner — joins truthy parts. Avoids a clsx dependency for this small surface.
@@ -24,6 +25,36 @@ export function BrandMark({ size = 32 }: { size?: number }) {
       className="select-none"
       style={{ width: size, height: size }}
     />
+  );
+}
+
+// --- Back to home ----------------------------------------------------------------------
+
+// The way out of the ungated surfaces (/login, /signup, the setup notice), none of which carry
+// the app shell's nav. The landing page needs no Supabase session, so it's always reachable.
+export function BackToHomeLink({ className }: { className?: string }) {
+  return (
+    <Link
+      href="/home"
+      className={cn(
+        "group inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition duration-200 ease-out",
+        "hover:bg-brand-50/60 hover:text-brand-700 dark:hover:bg-brand-500/15 dark:hover:text-brand-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
+        className,
+      )}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="h-4 w-4 transition-transform duration-200 ease-out group-hover:-translate-x-0.5"
+        aria-hidden
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H6m0 0 5-5m-5 5 5 5" />
+      </svg>
+      Back to home
+    </Link>
   );
 }
 

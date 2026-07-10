@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { BrandMark, Button, ErrorBox } from "@/components/ui";
+import { BackToHomeLink, BrandMark, Button, ErrorBox } from "@/components/ui";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { createClient } from "@/lib/supabase/client";
 
@@ -115,31 +116,42 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
 
       {/* Auth column */}
       <div className="relative flex min-h-[100dvh] flex-col px-4 pb-10 pt-5 sm:px-8">
-        {/* Top bar: theme toggle + help. */}
-        <div className="flex items-center justify-end gap-1">
-          <ThemeToggle label />
-          <a
-            href="mailto:klunderphilipp@gmail.com?subject=Cram%20help"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition duration-200 ease-out hover:bg-brand-50/60 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
-          >
-            Need help?
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden>
-              <circle cx="12" cy="12" r="9" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3" />
-              <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
-            </svg>
-          </a>
+        {/* Top bar: way back to the landing page + theme toggle + help. */}
+        <div className="flex items-center justify-between gap-1">
+          <BackToHomeLink />
+
+          <div className="flex items-center gap-1">
+            <ThemeToggle label />
+            <a
+              href="mailto:klunderphilipp@gmail.com?subject=Cram%20help"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition duration-200 ease-out hover:bg-brand-50/60 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
+            >
+              Need help?
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3" />
+                <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
+              </svg>
+            </a>
+          </div>
         </div>
 
         {/* Card, vertically centered in the column. */}
         <div className="flex flex-1 items-center justify-center py-8">
           <div className="w-full max-w-[26rem]">
-            {/* Compact brand lockup — only on mobile, where the brand panel is hidden. */}
-            <div className="mb-6 flex items-center justify-center gap-2.5 lg:hidden">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-brand-sm">
-                <BrandMark size={26} />
-              </span>
-              <span className="text-lg font-bold tracking-tight text-ink">Cram</span>
+            {/* Compact brand lockup — only on mobile, where the brand panel is hidden. Also the
+                conventional route home, mirroring the wordmark on the desktop brand panel. */}
+            <div className="mb-6 flex justify-center lg:hidden">
+              <Link
+                href="/home"
+                aria-label="Cram — back to home"
+                className="inline-flex items-center gap-2.5 rounded-xl transition-opacity duration-200 ease-out hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-4 focus-visible:ring-offset-canvas"
+              >
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-brand-sm">
+                  <BrandMark size={26} />
+                </span>
+                <span className="text-lg font-bold tracking-tight text-ink">Cram</span>
+              </Link>
             </div>
 
             <div className="rounded-3xl border border-line bg-surface px-6 py-8 shadow-card sm:px-9 sm:py-10">
@@ -412,13 +424,18 @@ function BrandPanel() {
       {/* Floating product illustration, center-right; decorative, clipped by the panel edge. */}
       <BrandIllustration />
 
-      {/* Top: mark inside a violet gradient tile. */}
-      <div className="relative flex items-center gap-3">
-        <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-brand-sm ring-1 ring-inset ring-white/15">
+      {/* Top: mark inside a violet gradient tile — and the way back to the landing page. The
+          focus ring-offset matches the panel gradient's top-left stop, so the gap reads as a gap. */}
+      <Link
+        href="/home"
+        aria-label="Cram — back to home"
+        className="group relative inline-flex w-fit items-center gap-3 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-4 focus-visible:ring-offset-[#1c1147]"
+      >
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-brand-sm ring-1 ring-inset ring-white/15 transition duration-200 ease-out group-hover:shadow-brand-md group-hover:ring-white/30">
           <BrandMark size={30} />
         </span>
         <span className="text-xl font-bold tracking-tight text-white">Cram</span>
-      </div>
+      </Link>
 
       {/* Middle: the message + what it does. */}
       <div className="relative max-w-md">
