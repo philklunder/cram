@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/ui";
+import { BackToHomeLink, BrandMark } from "@/components/ui";
 
 // Shown when the Supabase env vars are not configured, so the app degrades to a helpful
 // message instead of crashing on a missing client.
@@ -28,6 +28,10 @@ export function SetupNotice() {
           <code className="rounded bg-amber-100 px-1 py-0.5 dark:bg-amber-500/20">web/README.md</code>.
         </p>
       </div>
+
+      {/* This notice replaces /login, /signup, and every gated (app) route, so it's otherwise a
+          dead end with no shell nav to escape through. */}
+      <BackToHomeLink className="mt-6 -ml-2.5" />
     </div>
   );
 }
