@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { InteractiveClaudeMascot } from "@/components/ClaudeMascot";
 import styles from "./landing.module.css";
@@ -13,6 +13,250 @@ import styles from "./landing.module.css";
 
 const LOGO = "/cram-logo.png";
 
+const NAV_LINKS = [
+  { href: "#features", label: "Features" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#connected", label: "Why Cram" },
+  { href: "#devices", label: "iPhone & iPad" },
+];
+
+// Below `--story-bp` the sticky stage is replaced by a stacked layout, so the drawer and the
+// story both key off the same breakpoint. Keep in sync with the 1040px queries in the stylesheet.
+const STORY_BREAKPOINT = "(max-width: 1040px)";
+
+// ---------------------------------------------------------------------------- story scenes
+// Each scene is authored once and rendered twice: inside the desktop sticky stage (absolutely
+// positioned, cross-faded by scroll) and inline under its own step on mobile. Only one of the
+// two layouts is ever `display: block`, so the hidden copy stays out of the accessibility tree.
+
+function SceneUpload() {
+  return (
+    <>
+      <div className={styles.sceneKicker}>Add study material</div>
+      <h4>Maths · Algebra exam</h4>
+
+      <div className={styles.uploadCard}>
+        <div>
+          <div className={styles.uploadIcon}>
+            <svg viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 16V5M8 9L12 5L16 9M6 12H5A3 3 0 0 0 2 15V18A3 3 0 0 0 5 21H19A3 3 0 0 0 22 18V15A3 3 0 0 0 19 12H18"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <strong>Upload your study materials</strong>
+          <span>Drag &amp; drop PDFs, slides or images</span>
+        </div>
+      </div>
+
+      <div className={styles.fileRow}>
+        <div className={styles.filePill}>📄 Algebra_Notes.pdf</div>
+        <div className={styles.filePill}>📊 Functions.pptx</div>
+        <div className={styles.filePill}>🖼️ Worksheet.jpg</div>
+      </div>
+    </>
+  );
+}
+
+function SceneGenerate() {
+  return (
+    <>
+      <div className={styles.sceneKicker}>AI Decks</div>
+      <h4>Turning your files into a study deck.</h4>
+
+      <div className={styles.aiBuildCard}>
+        <div className={styles.aiBuildHead}>
+          <strong>Cram is analysing your Maths material...</strong>
+          <span className={styles.liveTag}>● Live</span>
+        </div>
+
+        <div className={styles.buildRail}>
+          <div className={`${styles.buildNode} ${styles.done}`}>
+            <span>✓</span>Ingest
+          </div>
+          <div className={`${styles.buildNode} ${styles.done}`}>
+            <span>✓</span>Extract
+          </div>
+          <div className={`${styles.buildNode} ${styles.activeNode}`}>
+            <span />
+            Generate
+          </div>
+          <div className={styles.buildNode}>
+            <span />
+            Review
+          </div>
+        </div>
+
+        <div className={styles.generatedGrid}>
+          <div className={styles.generatedCard}>
+            <small>Flashcard preview</small>
+            <strong>What is the quadratic formula?</strong>
+            <p>A formula used to solve equations in the form ax² + bx + c = 0.</p>
+          </div>
+
+          <div className={styles.generatedCard}>
+            <small>Quiz preview</small>
+            <strong>Which graph represents y = x²?</strong>
+            <p>Four answer choices generated from the uploaded lesson.</p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SceneReview() {
+  return (
+    <>
+      <div className={styles.sceneKicker}>Today&apos;s review</div>
+      <h4>23 cards due · about 18 minutes</h4>
+
+      <div className={styles.reviewScene}>
+        <div className={styles.flashcard}>
+          <div className={styles.flashcardTop}>
+            <div className={styles.subjectHead} style={{ margin: 0 }}>
+              <span className={`${styles.subjectBadge} ${styles.physics}`}>PH</span>
+              <strong style={{ fontSize: 13 }}>Physics</strong>
+            </div>
+            <span className={styles.topicPill}>Topic: Forces</span>
+          </div>
+
+          <div className={styles.flashQuestion}>What is Newton&apos;s second law of motion?</div>
+
+          <div className={styles.reviewActions}>
+            <div className={styles.rating}>
+              Again
+              <br />
+              <span style={{ fontWeight: 500 }}>&lt; 1 min</span>
+            </div>
+            <div className={styles.rating}>
+              Hard
+              <br />
+              <span style={{ fontWeight: 500 }}>5 min</span>
+            </div>
+            <div className={styles.rating}>
+              Good
+              <br />
+              <span style={{ fontWeight: 500 }}>15 min</span>
+            </div>
+            <div className={styles.rating}>
+              Easy
+              <br />
+              <span style={{ fontWeight: 500 }}>4 days</span>
+            </div>
+          </div>
+        </div>
+
+        <aside className={styles.reviewSide}>
+          <div className={styles.sideMetric}>
+            <small>Cards remaining</small>
+            <strong>16</strong>
+          </div>
+          <div className={styles.sideMetric}>
+            <small>Accuracy</small>
+            <strong style={{ color: "#25ae62" }}>82%</strong>
+          </div>
+          <div className={styles.sideMetric}>
+            <small>Review streak</small>
+            <strong>8 days</strong>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+const GRADE_ROWS = [
+  { badge: styles.math, code: "MA", name: "Maths", avg: "5.4", target: "5.5", count: "8" },
+  { badge: styles.english, code: "EN", name: "English", avg: "5.6", target: "5.5", count: "11" },
+  { badge: styles.physics, code: "PH", name: "Physics", avg: "4.8", target: "5.2", count: "7" },
+  { badge: styles.history, code: "HI", name: "History", avg: "5.1", target: "5.3", count: "9" },
+];
+
+function SceneGrades() {
+  return (
+    <>
+      <div className={styles.sceneKicker}>Grades</div>
+      <h4>Your subjects and averages, connected.</h4>
+
+      <div className={styles.gradeScene}>
+        <div className={styles.gradeSummary}>
+          <div className={styles.gradeSummaryCard}>
+            <small>Overall average</small>
+            <strong>5.2</strong>
+          </div>
+          <div className={styles.gradeSummaryCard}>
+            <small>Active subjects</small>
+            <strong>4</strong>
+          </div>
+          <div className={styles.gradeSummaryCard}>
+            <small>Target hit</small>
+            <strong style={{ color: "#25ae62" }}>75%</strong>
+          </div>
+        </div>
+
+        <div className={styles.subjectGradeList}>
+          {GRADE_ROWS.map((row) => (
+            <div key={row.code} className={styles.subjectGrade}>
+              <div className={styles.subjectGradeName}>
+                <span className={`${styles.subjectBadge} ${row.badge}`}>{row.code}</span>
+                {row.name}
+              </div>
+              <div>
+                <small>Average</small>
+                <strong>{row.avg}</strong>
+              </div>
+              <div>
+                <small>Target</small>
+                <strong>{row.target}</strong>
+              </div>
+              <div>
+                <small>Grades</small>
+                <strong>{row.count}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+const STORY_STEPS = [
+  {
+    number: "01",
+    title: "Upload the material you actually use.",
+    body: "Add a Maths worksheet, English notes, Physics slides or a photo of a textbook page. Everything stays connected to the subject you choose.",
+    sceneClass: styles.scene0,
+    Scene: SceneUpload,
+  },
+  {
+    number: "02",
+    title: "Cram builds the study content.",
+    body: "AI extracts the key ideas and generates flashcards, quiz questions and a concise summary from your real material.",
+    sceneClass: styles.scene1,
+    Scene: SceneGenerate,
+  },
+  {
+    number: "03",
+    title: "Review exactly what is starting to slip.",
+    body: "Cards return through spaced repetition. Rate each answer Again, Hard, Good or Easy and Cram updates the next review.",
+    sceneClass: styles.scene2,
+    Scene: SceneReview,
+  },
+  {
+    number: "04",
+    title: "Your grades become part of the plan.",
+    body: "Add real marks by subject. Cram shows each subject average and your overall average, then uses performance and exam urgency as study context.",
+    sceneClass: styles.scene3,
+    Scene: SceneGrades,
+  },
+];
+
 export function LandingPage({ fontClassName }: { fontClassName: string }) {
   const pageRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -20,6 +264,10 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const dashboardRef = useRef<HTMLDivElement>(null);
   const heroVisualRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
 
   // `scroll-behavior: smooth` has to sit on the scrolling element, which the CSS module can't
   // reach without leaking into every route. Set it while the landing page is mounted.
@@ -149,9 +397,43 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
     };
   }, []);
 
+  // The drawer only exists below the story breakpoint. Growing past it (rotation, tablet resize)
+  // reveals the real nav, so a drawer left open would hang over the page with no way to dismiss.
+  useEffect(() => {
+    const mq = window.matchMedia(STORY_BREAKPOINT);
+    const onChange = () => {
+      if (!mq.matches) setMenuOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // While the drawer is open: lock the page behind it, close on Escape, and hand focus back to
+  // the toggle so a keyboard user isn't dropped at the top of the document.
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    body.style.overflow = "hidden";
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuBtnRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      body.style.overflow = previousOverflow;
+    };
+  }, [menuOpen]);
+
   return (
     <div ref={pageRef} className={`${fontClassName} ${styles.page}`}>
-      <header ref={headerRef} className={styles.siteHeader}>
+      <header ref={headerRef} className={styles.siteHeader} data-menu-open={menuOpen}>
         <div className={`${styles.container} ${styles.nav}`}>
           <a className={styles.brand} href="#top" aria-label="Cram home">
             <img className={styles.brandLogo} src={LOGO} alt="" />
@@ -159,10 +441,11 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
           </a>
 
           <nav className={styles.navLinks} aria-label="Primary navigation">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#connected">Why Cram</a>
-            <a href="#devices">iPhone &amp; iPad</a>
+            {NAV_LINKS.map((link) => (
+              <a key={link.href} href={link.href}>
+                {link.label}
+              </a>
+            ))}
           </nav>
 
           <div className={styles.navActions}>
@@ -173,20 +456,72 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
               Get started
             </Link>
             <button
+              ref={menuBtnRef}
               className={styles.menuBtn}
               type="button"
-              aria-label="Jump to features"
-              onClick={() =>
-                pageRef.current?.querySelector("#features")?.scrollIntoView({ behavior: "smooth" })
-              }
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              onClick={() => setMenuOpen((open) => !open)}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M4 7H20M4 12H20M4 17H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
+              <span className={styles.menuIcon} aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
             </button>
           </div>
         </div>
       </header>
+
+      {/* Siblings of the header, not children: the header carries a `backdrop-filter`, which makes
+          it the containing block for `position: fixed` descendants — a scrim nested inside it
+          would resolve `inset: var(--header-h) 0 0` against the 76px bar and collapse to nothing.
+          `inert` (not `hidden`) keeps the closed drawer out of the tab order while it animates. */}
+      <button
+        className={styles.menuScrim}
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-open={menuOpen}
+        onClick={closeMenu}
+      />
+
+      <div id="mobile-menu" className={styles.mobileMenu} data-open={menuOpen} inert={!menuOpen}>
+        <nav className={styles.mobileMenuLinks} aria-label="Primary navigation">
+          {NAV_LINKS.map((link) => (
+            <a key={link.href} href={link.href} onClick={closeMenu}>
+              {link.label}
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M9 6L15 12L9 18"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          ))}
+        </nav>
+
+        <div className={styles.mobileMenuActions}>
+          <Link
+            className={`${styles.btn} ${styles.btnSecondary} ${styles.btnLg}`}
+            href="/login"
+            onClick={closeMenu}
+          >
+            Log in
+          </Link>
+          <Link
+            className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}
+            href="/signup"
+            onClick={closeMenu}
+          >
+            Get started
+          </Link>
+        </div>
+      </div>
 
       <main className={styles.main} id="top">
         {/* ---------------------------------------------------------------- hero */}
@@ -429,52 +764,35 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
           <div className={styles.container}>
             <div className={styles.storyHeading} data-reveal>
               <div className={styles.eyebrow}>
-                <span className={styles.eyebrowDot} /> Scroll through the study loop
+                <span className={styles.eyebrowDot} /> The study loop
               </div>
               <h2>Watch your material become a study plan.</h2>
               <p>
-                This section is scroll-driven. The product scene changes as you move through the
-                page, giving the landing page a video-like feeling without needing a video file.
+                Four steps take you from the notes you already have to a review schedule that keeps
+                up with your exams — no manual card writing, no separate grade tracker.
               </p>
             </div>
 
             <div className={styles.storyLayout}>
               <div className={styles.storySteps}>
-                <article className={`${styles.storyStep} ${styles.active}`} data-story-step="0">
-                  <span className={styles.storyStepNumber}>01</span>
-                  <h3>Upload the material you actually use.</h3>
-                  <p>
-                    Add a Maths worksheet, English notes, Physics slides or a photo of a textbook
-                    page. Everything stays connected to the subject you choose.
-                  </p>
-                </article>
+                {STORY_STEPS.map((step, index) => (
+                  <article
+                    key={step.number}
+                    className={`${styles.storyStep} ${index === 0 ? styles.active : ""}`}
+                    data-story-step={index}
+                  >
+                    <span className={styles.storyStepNumber}>{step.number}</span>
+                    <h3>{step.title}</h3>
+                    <p>{step.body}</p>
 
-                <article className={styles.storyStep} data-story-step="1">
-                  <span className={styles.storyStepNumber}>02</span>
-                  <h3>Cram builds the study content.</h3>
-                  <p>
-                    AI extracts the key ideas and generates flashcards, quiz questions and a concise
-                    summary from your real material.
-                  </p>
-                </article>
-
-                <article className={styles.storyStep} data-story-step="2">
-                  <span className={styles.storyStepNumber}>03</span>
-                  <h3>Review exactly what is starting to slip.</h3>
-                  <p>
-                    Cards return through spaced repetition. Rate each answer Again, Hard, Good or
-                    Easy and Cram updates the next review.
-                  </p>
-                </article>
-
-                <article className={styles.storyStep} data-story-step="3">
-                  <span className={styles.storyStepNumber}>04</span>
-                  <h3>Your grades become part of the plan.</h3>
-                  <p>
-                    Add real marks by subject. Cram shows each subject average and your overall
-                    average, then uses performance and exam urgency as study context.
-                  </p>
-                </article>
+                    {/* Mobile only. Above the breakpoint the sticky stage below owns the scenes. */}
+                    <div className={styles.stepStage}>
+                      <div className={`${styles.scene} ${styles.sceneInline}`}>
+                        <step.Scene />
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
 
               <div className={styles.storyStageWrap}>
@@ -493,188 +811,11 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
                     </div>
                   </div>
 
-                  {/* scene 0 — upload */}
-                  <div className={`${styles.scene} ${styles.scene0}`}>
-                    <div className={styles.sceneKicker}>Add study material</div>
-                    <h4>Maths · Algebra exam</h4>
-
-                    <div className={styles.uploadCard}>
-                      <div>
-                        <div className={styles.uploadIcon}>
-                          <svg viewBox="0 0 24 24" fill="none">
-                            <path
-                              d="M12 16V5M8 9L12 5L16 9M6 12H5A3 3 0 0 0 2 15V18A3 3 0 0 0 5 21H19A3 3 0 0 0 22 18V15A3 3 0 0 0 19 12H18"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </div>
-                        <strong>Upload your study materials</strong>
-                        <span>Drag &amp; drop PDFs, slides or images</span>
-                      </div>
+                  {STORY_STEPS.map((step) => (
+                    <div key={step.number} className={`${styles.scene} ${step.sceneClass}`}>
+                      <step.Scene />
                     </div>
-
-                    <div className={styles.fileRow}>
-                      <div className={styles.filePill}>📄 Algebra_Notes.pdf</div>
-                      <div className={styles.filePill}>📊 Functions.pptx</div>
-                      <div className={styles.filePill}>🖼️ Worksheet.jpg</div>
-                    </div>
-                  </div>
-
-                  {/* scene 1 — AI decks */}
-                  <div className={`${styles.scene} ${styles.scene1}`}>
-                    <div className={styles.sceneKicker}>AI Decks</div>
-                    <h4>Turning your files into a study deck.</h4>
-
-                    <div className={styles.aiBuildCard}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                        <strong>Cram is analysing your Maths material...</strong>
-                        <span style={{ color: "#c9bdff", fontSize: 11, fontWeight: 650 }}>● Live</span>
-                      </div>
-
-                      <div className={styles.buildRail}>
-                        <div className={`${styles.buildNode} ${styles.done}`}>
-                          <span>✓</span>Ingest
-                        </div>
-                        <div className={`${styles.buildNode} ${styles.done}`}>
-                          <span>✓</span>Extract
-                        </div>
-                        <div className={`${styles.buildNode} ${styles.activeNode}`}>
-                          <span />
-                          Generate
-                        </div>
-                        <div className={styles.buildNode}>
-                          <span />
-                          Review
-                        </div>
-                      </div>
-
-                      <div className={styles.generatedGrid}>
-                        <div className={styles.generatedCard}>
-                          <small>Flashcard preview</small>
-                          <strong>What is the quadratic formula?</strong>
-                          <p>A formula used to solve equations in the form ax² + bx + c = 0.</p>
-                        </div>
-
-                        <div className={styles.generatedCard}>
-                          <small>Quiz preview</small>
-                          <strong>Which graph represents y = x²?</strong>
-                          <p>Four answer choices generated from the uploaded lesson.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* scene 2 — review */}
-                  <div className={`${styles.scene} ${styles.scene2}`}>
-                    <div className={styles.sceneKicker}>Today&apos;s review</div>
-                    <h4>23 cards due · about 18 minutes</h4>
-
-                    <div className={styles.reviewScene}>
-                      <div className={styles.flashcard}>
-                        <div className={styles.flashcardTop}>
-                          <div className={styles.subjectHead} style={{ margin: 0 }}>
-                            <span className={`${styles.subjectBadge} ${styles.physics}`}>PH</span>
-                            <strong style={{ fontSize: 13 }}>Physics</strong>
-                          </div>
-                          <span className={styles.topicPill}>Topic: Forces</span>
-                        </div>
-
-                        <div className={styles.flashQuestion}>What is Newton&apos;s second law of motion?</div>
-
-                        <div className={styles.reviewActions}>
-                          <div className={styles.rating}>
-                            Again
-                            <br />
-                            <span style={{ fontWeight: 500 }}>&lt; 1 min</span>
-                          </div>
-                          <div className={styles.rating}>
-                            Hard
-                            <br />
-                            <span style={{ fontWeight: 500 }}>5 min</span>
-                          </div>
-                          <div className={styles.rating}>
-                            Good
-                            <br />
-                            <span style={{ fontWeight: 500 }}>15 min</span>
-                          </div>
-                          <div className={styles.rating}>
-                            Easy
-                            <br />
-                            <span style={{ fontWeight: 500 }}>4 days</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <aside className={styles.reviewSide}>
-                        <div className={styles.sideMetric}>
-                          <small>Cards remaining</small>
-                          <strong>16</strong>
-                        </div>
-                        <div className={styles.sideMetric}>
-                          <small>Accuracy</small>
-                          <strong style={{ color: "#25ae62" }}>82%</strong>
-                        </div>
-                        <div className={styles.sideMetric}>
-                          <small>Review streak</small>
-                          <strong>8 days</strong>
-                        </div>
-                      </aside>
-                    </div>
-                  </div>
-
-                  {/* scene 3 — grades */}
-                  <div className={`${styles.scene} ${styles.scene3}`}>
-                    <div className={styles.sceneKicker}>Grades</div>
-                    <h4>Your subjects and averages, connected.</h4>
-
-                    <div className={styles.gradeScene}>
-                      <div className={styles.gradeSummary}>
-                        <div className={styles.gradeSummaryCard}>
-                          <small>Overall average</small>
-                          <strong>5.2</strong>
-                        </div>
-                        <div className={styles.gradeSummaryCard}>
-                          <small>Active subjects</small>
-                          <strong>4</strong>
-                        </div>
-                        <div className={styles.gradeSummaryCard}>
-                          <small>Target hit</small>
-                          <strong style={{ color: "#25ae62" }}>75%</strong>
-                        </div>
-                      </div>
-
-                      <div className={styles.subjectGradeList}>
-                        {[
-                          { badge: styles.math, code: "MA", name: "Maths", avg: "5.4", target: "5.5", count: "8" },
-                          { badge: styles.english, code: "EN", name: "English", avg: "5.6", target: "5.5", count: "11" },
-                          { badge: styles.physics, code: "PH", name: "Physics", avg: "4.8", target: "5.2", count: "7" },
-                          { badge: styles.history, code: "HI", name: "History", avg: "5.1", target: "5.3", count: "9" },
-                        ].map((row) => (
-                          <div key={row.code} className={styles.subjectGrade}>
-                            <div className={styles.subjectGradeName}>
-                              <span className={`${styles.subjectBadge} ${row.badge}`}>{row.code}</span>
-                              {row.name}
-                            </div>
-                            <div>
-                              <small>Average</small>
-                              <strong>{row.avg}</strong>
-                            </div>
-                            <div>
-                              <small>Target</small>
-                              <strong>{row.target}</strong>
-                            </div>
-                            <div>
-                              <small>Grades</small>
-                              <strong>{row.count}</strong>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -814,95 +955,100 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
             <div className={styles.deviceStage} data-reveal>
               <div className={styles.deviceGlow} />
 
-              <div className={styles.ipad} aria-hidden="true">
-                <div className={styles.ipadUi}>
-                  <div className={styles.ipadHead}>
-                    <div className={styles.ipadSearch} />
-                    <div className={styles.ipadProfile} />
-                  </div>
-
-                  <div className={styles.ipadTitle}>Subjects</div>
-
-                  <div className={styles.ipadGrid}>
-                    <div className={styles.ipadColumn}>
-                      <div className={styles.ipadSubject}>
-                        <div className={styles.subjectHead}>
-                          <span className={`${styles.subjectBadge} ${styles.math}`}>MA</span>
-                          <strong>Maths</strong>
-                        </div>
-                        <div className={`${styles.miniProgress} ${styles.blue}`}>
-                          <span />
-                        </div>
-                      </div>
-
-                      <div className={styles.ipadSubject}>
-                        <div className={styles.subjectHead}>
-                          <span className={`${styles.subjectBadge} ${styles.english}`}>EN</span>
-                          <strong>English</strong>
-                        </div>
-                        <div className={`${styles.miniProgress} ${styles.green}`}>
-                          <span />
-                        </div>
-                      </div>
+              {/* The mockups are composed at a fixed pixel size so their inner UI keeps its
+                  proportions. Rather than reflowing them, the scene scales as a unit — see
+                  `--device-scale` in the stylesheet. */}
+              <div className={styles.deviceScene}>
+                <div className={styles.ipad} aria-hidden="true">
+                  <div className={styles.ipadUi}>
+                    <div className={styles.ipadHead}>
+                      <div className={styles.ipadSearch} />
+                      <div className={styles.ipadProfile} />
                     </div>
 
-                    <div className={styles.ipadColumn}>
-                      <div className={styles.ipadSide}>
-                        <strong>Today&apos;s review</strong>
-                        <div className={styles.ipadRing} />
+                    <div className={styles.ipadTitle}>Subjects</div>
+
+                    <div className={styles.ipadGrid}>
+                      <div className={styles.ipadColumn}>
+                        <div className={styles.ipadSubject}>
+                          <div className={styles.subjectHead}>
+                            <span className={`${styles.subjectBadge} ${styles.math}`}>MA</span>
+                            <strong>Maths</strong>
+                          </div>
+                          <div className={`${styles.miniProgress} ${styles.blue}`}>
+                            <span />
+                          </div>
+                        </div>
+
+                        <div className={styles.ipadSubject}>
+                          <div className={styles.subjectHead}>
+                            <span className={`${styles.subjectBadge} ${styles.english}`}>EN</span>
+                            <strong>English</strong>
+                          </div>
+                          <div className={`${styles.miniProgress} ${styles.green}`}>
+                            <span />
+                          </div>
+                        </div>
                       </div>
 
-                      <div className={styles.ipadSide}>
-                        <strong>Upcoming exam</strong>
-                        <div style={{ marginTop: 18, fontSize: 27, fontWeight: 700, color: "#25ae62" }}>8</div>
-                        <div style={{ color: "#8a92a4", fontSize: 9 }}>days left</div>
+                      <div className={styles.ipadColumn}>
+                        <div className={styles.ipadSide}>
+                          <strong>Today&apos;s review</strong>
+                          <div className={styles.ipadRing} />
+                        </div>
+
+                        <div className={styles.ipadSide}>
+                          <strong>Upcoming exam</strong>
+                          <div style={{ marginTop: 18, fontSize: 27, fontWeight: 700, color: "#25ae62" }}>8</div>
+                          <div style={{ color: "#8a92a4", fontSize: 9 }}>days left</div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className={styles.iphone} aria-hidden="true">
-                <div className={styles.iphoneUi}>
-                  <div className={styles.iphoneTitle}>
-                    <img src={LOGO} alt="" />
-                    Cram
-                  </div>
+                <div className={styles.iphone} aria-hidden="true">
+                  <div className={styles.iphoneUi}>
+                    <div className={styles.iphoneTitle}>
+                      <img src={LOGO} alt="" />
+                      Cram
+                    </div>
 
-                  <div className={styles.iphoneGreeting}>Good morning, Tom 👋</div>
-                  <div className={styles.iphoneSub}>Ready to make progress today?</div>
-                  <div className={styles.iphoneSearch} />
+                    <div className={styles.iphoneGreeting}>Good morning, Tom 👋</div>
+                    <div className={styles.iphoneSub}>Ready to make progress today?</div>
+                    <div className={styles.iphoneSearch} />
 
-                  <div className={styles.iphoneStats}>
-                    <div className={styles.iphoneStat}>
-                      <strong>4</strong>
-                      <small>Subjects</small>
+                    <div className={styles.iphoneStats}>
+                      <div className={styles.iphoneStat}>
+                        <strong>4</strong>
+                        <small>Subjects</small>
+                      </div>
+                      <div className={styles.iphoneStat}>
+                        <strong>23</strong>
+                        <small>Due today</small>
+                      </div>
+                      <div className={styles.iphoneStat}>
+                        <strong>8</strong>
+                        <small>Days</small>
+                      </div>
                     </div>
-                    <div className={styles.iphoneStat}>
-                      <strong>23</strong>
-                      <small>Due today</small>
-                    </div>
-                    <div className={styles.iphoneStat}>
-                      <strong>8</strong>
-                      <small>Days</small>
-                    </div>
-                  </div>
 
-                  <div className={styles.iphoneCard}>
-                    <div className={styles.subjectHead}>
-                      <span className={`${styles.subjectBadge} ${styles.math}`}>MA</span>
-                      <strong>Maths</strong>
+                    <div className={styles.iphoneCard}>
+                      <div className={styles.subjectHead}>
+                        <span className={`${styles.subjectBadge} ${styles.math}`}>MA</span>
+                        <strong>Maths</strong>
+                      </div>
+                      <div style={{ color: "#8b93a6", fontSize: 8 }}>Your progress</div>
+                      <div className={`${styles.miniProgress} ${styles.blue}`}>
+                        <span />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#7d8598", fontSize: 8 }}>
+                        <span>128 cards</span>
+                        <span>18 to review</span>
+                        <span>5.4 avg.</span>
+                      </div>
+                      <div className={styles.iphoneBtn}>Study now →</div>
                     </div>
-                    <div style={{ color: "#8b93a6", fontSize: 8 }}>Your progress</div>
-                    <div className={`${styles.miniProgress} ${styles.blue}`}>
-                      <span />
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#7d8598", fontSize: 8 }}>
-                      <span>128 cards</span>
-                      <span>18 to review</span>
-                      <span>5.4 avg.</span>
-                    </div>
-                    <div className={styles.iphoneBtn}>Study now →</div>
                   </div>
                 </div>
               </div>
