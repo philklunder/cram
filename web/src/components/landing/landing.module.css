@@ -111,7 +111,17 @@ html body:has(> .page) {
   -webkit-backdrop-filter: blur(18px);
 }
 
+/* Opening the drawer at the top of the page would otherwise leave the bar transparent over it. */
+.siteHeader[data-menu-open="true"] {
+  background: rgba(248, 250, 255, 0.94);
+  border-color: rgba(217, 224, 237, 0.9);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
 .nav {
+  position: relative;
+  z-index: 3;
   height: var(--header-h);
   display: flex;
   align-items: center;
@@ -211,14 +221,180 @@ html body:has(> .page) {
 
 .menuBtn {
   display: none;
-  width: 44px;
-  height: 44px;
+  position: relative;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
   border: 1px solid var(--line);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.78);
   color: var(--text);
   place-items: center;
   cursor: pointer;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.menuBtn:hover {
+  background: #fff;
+  border-color: #cdd5e3;
+}
+
+/* Three bars that fold into an X. Bars are 2px tall at y = 0 / 6 / 12, so the outer two travel
+   6px to meet in the middle. */
+.menuIcon {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 14px;
+}
+
+.menuIcon span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition:
+    transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease;
+}
+
+.menuIcon span:nth-child(1) {
+  top: 0;
+}
+
+.menuIcon span:nth-child(2) {
+  top: 6px;
+}
+
+.menuIcon span:nth-child(3) {
+  top: 12px;
+}
+
+.menuBtn[aria-expanded="true"] .menuIcon span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.menuBtn[aria-expanded="true"] .menuIcon span:nth-child(2) {
+  opacity: 0;
+}
+
+.menuBtn[aria-expanded="true"] .menuIcon span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* ------------------------------------------------------------------- mobile menu (drawer)
+   Layered under `.siteHeader` (z-index 100) so the bar and its toggle stay above the sheet:
+   scrim 90 → drawer 95 → header 100. Shown only below the story breakpoint (1040px query). */
+.menuScrim {
+  display: none;
+  position: fixed;
+  inset: var(--header-h) 0 0;
+  z-index: 90;
+  padding: 0;
+  border: 0;
+  background: rgba(18, 26, 49, 0.34);
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+  transition: opacity 260ms ease;
+}
+
+.menuScrim[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobileMenu {
+  display: none;
+  position: fixed;
+  z-index: 95;
+  top: var(--header-h);
+  left: 0;
+  right: 0;
+  max-height: calc(100dvh - var(--header-h));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding:
+    8px
+    max(20px, env(safe-area-inset-right))
+    calc(18px + env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--line);
+  /* Opaque, not glass: at 0.97 the hero headline ghosted straight through the sheet. */
+  background: var(--surface);
+  box-shadow: 0 26px 60px rgba(27, 35, 70, 0.16);
+  opacity: 0;
+  transform: translateY(-12px);
+  visibility: hidden;
+  transition:
+    opacity 200ms ease,
+    transform 380ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 400ms;
+}
+
+.mobileMenu[data-open="true"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition:
+    opacity 200ms ease,
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s;
+}
+
+.mobileMenuLinks {
+  display: grid;
+}
+
+.mobileMenuLinks a {
+  min-height: 56px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(223, 229, 239, 0.9);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  transition: color 160ms ease;
+}
+
+.mobileMenuLinks a:last-child {
+  border-bottom: 0;
+}
+
+.mobileMenuLinks a svg {
+  color: #9aa3b8;
+  transition:
+    transform 200ms ease,
+    color 160ms ease;
+}
+
+.mobileMenuLinks a:hover,
+.mobileMenuLinks a:focus-visible {
+  color: var(--purple);
+}
+
+.mobileMenuLinks a:hover svg,
+.mobileMenuLinks a:focus-visible svg {
+  color: var(--purple);
+  transform: translateX(3px);
+}
+
+.mobileMenuActions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.mobileMenuActions .btnLg {
+  width: 100%;
 }
 
 .main {
@@ -469,14 +645,17 @@ html body:has(> .page) {
 
 .browserBar {
   height: 47px;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 0 8px 0 12px;
   border-bottom: 1px solid #e7ebf3;
 }
 
 .browserDots {
+  flex: 0 0 auto;
   display: flex;
   gap: 6px;
 }
@@ -500,8 +679,12 @@ html body:has(> .page) {
   background: #28c840;
 }
 
+/* Flexible rather than a hard 235px: a fixed width here set a ~421px min-content floor on the
+   whole mock, which the hero's single-column grid then inherited on phones. */
 .mockSearch {
-  width: 235px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 235px;
   height: 29px;
   border-radius: 9px;
   border: 1px solid #e6eaf1;
@@ -509,7 +692,8 @@ html body:has(> .page) {
 }
 
 .mockProfile {
-  width: 105px;
+  flex: 0 1 105px;
+  min-width: 44px;
   height: 29px;
   border-radius: 9px;
   border: 1px solid #e6eaf1;
@@ -1138,6 +1322,32 @@ html body:has(> .page) {
   filter: blur(0);
 }
 
+/* The mobile copy of a scene: same markup, but in normal flow under its own step instead of
+   cross-faded inside the sticky stage. Must follow `.scene` to win the cascade at equal
+   specificity. `.stepStage` is the frame around it; it only exists below the story breakpoint. */
+.stepStage {
+  display: none;
+  margin-top: 26px;
+  border: 1px solid #dce2ec;
+  border-radius: 26px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(111, 61, 244, 0.09), transparent 34%),
+    #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.sceneInline {
+  position: static;
+  inset: auto;
+  padding: 24px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  filter: none;
+  transition: none;
+}
+
 .sceneKicker {
   color: #6f3df4;
   font-size: 11px;
@@ -1216,6 +1426,20 @@ html body:has(> .page) {
     radial-gradient(circle at 90% 0%, rgba(129, 87, 255, 0.5), transparent 36%),
     #171a31;
   box-shadow: 0 24px 70px rgba(25, 22, 72, 0.26);
+}
+
+.aiBuildHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.liveTag {
+  flex: 0 0 auto;
+  color: #c9bdff;
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .buildRail {
@@ -1633,6 +1857,14 @@ html body:has(> .page) {
   filter: blur(70px);
 }
 
+/* On desktop the mockups lay themselves out directly in `.deviceStage`, exactly as before.
+   Below the story breakpoint this becomes a fixed 900x600 design canvas that is *scaled* to fit
+   rather than reflowed — the iPad/iPhone chrome and their inner UI are authored in absolute px,
+   so shrinking the boxes alone would leave 24px titles inside a 300px tablet. */
+.deviceScene {
+  display: contents;
+}
+
 .ipad {
   position: absolute;
   z-index: 2;
@@ -1982,9 +2214,18 @@ html body:has(> .page) {
     display: grid;
   }
 
+  .menuScrim,
+  .mobileMenu {
+    display: block;
+  }
+
+  /* `minmax(0, 1fr)` rather than `1fr`: a bare `1fr` takes a min-content floor from *every* item
+     in the track, so the dashboard mock stacked below the hero copy was widening the whole
+     column past the container and the copy was silently sliced off by `overflow-x: clip`. */
   .heroGrid,
-  .connectedPanel {
-    grid-template-columns: 1fr;
+  .connectedPanel,
+  .storyLayout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .heroCopy {
@@ -1992,49 +2233,95 @@ html body:has(> .page) {
   }
 
   .storyLayout {
-    grid-template-columns: 1fr;
     gap: 0;
   }
 
+  /* The sticky stage needs viewport height and a parallel scroll column to work at all. Below
+     this width it is replaced by the stacked layout: every step keeps its scene inline. */
   .storySteps {
-    display: none;
+    display: grid;
+    gap: clamp(56px, 9vw, 78px);
+  }
+
+  .storyStep {
+    min-height: 0;
+    display: block;
+    opacity: 1;
+    transform: none;
+  }
+
+  .storyStep p {
+    max-width: 62ch;
+  }
+
+  .stepStage {
+    display: block;
   }
 
   .storyStageWrap {
-    min-height: auto;
-  }
-
-  .storyStage {
-    position: relative;
-    top: auto;
-    min-height: 660px;
-  }
-
-  .scene {
-    opacity: 0 !important;
-  }
-
-  .storyStage .scene0 {
-    opacity: 1 !important;
-    transform: none;
-    filter: none;
+    display: none;
   }
 
   .featureGrid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Once the hero is one column the visual fills the container, so the desktop -42px/-34px hangs
+     would reach past the gutter and get sliced by `overflow-x: clip`. */
+  .floatingCard.review {
+    right: -8px;
+  }
+
+  .floatingCard.grade {
+    left: -8px;
   }
 
   .connectedVisual {
     min-height: 580px;
   }
 
+  .deviceStage {
+    --device-avail: calc(100vw - 72px);
+    --device-scale: 0.72;
+
+    min-height: calc(600px * var(--device-scale) + 24px);
+  }
+
+  /* Out of flow so the un-scaled 900x600 box can't set `.deviceStage`'s height or get shunted
+     off-centre by grid overflow alignment; the stage's min-height carries the scaled height. */
+  .deviceScene {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 900px;
+    height: 600px;
+    transform: translate(-50%, -50%) scale(var(--device-scale));
+  }
+
+  .deviceGlow {
+    width: min(640px, 100%);
+  }
+
   .ipad {
-    width: 82vw;
-    height: 57vw;
+    width: 800px;
+    height: 540px;
   }
 
   .iphone {
-    right: 2%;
+    right: 6%;
+  }
+}
+
+/* Exact fit instead of a per-breakpoint guess: tan(atan2(a, b)) divides two lengths and yields
+   a bare number, which is the one thing calc() cannot do. Capped at 1 so the scene never grows
+   past its design size. The 0.72 fallback above stands if a browser lacks trig functions. */
+@supports (width: calc(1px * tan(atan2(1px, 2px)))) {
+  @media (max-width: 1040px) {
+    .deviceStage {
+      --device-scale: min(1, tan(atan2(var(--device-avail), 900px)));
+    }
   }
 }
 
@@ -2068,7 +2355,7 @@ html body:has(> .page) {
   }
 
   .navActions .btnPrimary {
-    min-height: 42px;
+    min-height: 44px;
     padding-inline: 14px;
   }
 
@@ -2112,7 +2399,7 @@ html body:has(> .page) {
   }
 
   .mockLayout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 360px;
   }
 
@@ -2165,7 +2452,7 @@ html body:has(> .page) {
   }
 
   .featureGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .featureCard {
@@ -2177,35 +2464,61 @@ html body:has(> .page) {
     margin-bottom: 38px;
   }
 
-  .storyStage {
-    min-height: 590px;
-    border-radius: 26px;
+  .sceneInline {
+    padding: 20px;
   }
 
-  .scene {
+  .uploadCard {
+    min-height: 190px;
     padding: 22px;
   }
 
   .fileRow,
-  .generatedGrid,
-  .gradeSummary {
-    grid-template-columns: 1fr;
+  .generatedGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .reviewScene {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .flashcard {
-    min-height: 470px;
+    min-height: 0;
   }
 
+  /* `margin: auto` did the vertical centring against the 500px card. Once the card hugs its
+     content that collapses, so the question needs its own breathing room. */
+  .flashQuestion {
+    margin: 26px auto 24px;
+    font-size: 26px;
+  }
+
+  /* Kept, not hidden: stacked into a metrics row beneath the card rather than a side rail. */
   .reviewSide {
-    display: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sideMetric {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .sideMetric strong {
+    font-size: 21px;
+  }
+
+  .gradeSummary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .subjectGrade {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 8px;
+  }
+
+  .subjectGradeName {
+    grid-column: 1 / -1;
   }
 
   .connectedPanel {
@@ -2214,23 +2527,13 @@ html body:has(> .page) {
 
   .connectedCopy,
   .connectedVisual {
-    padding: 36px 24px;
+    padding: 40px 26px;
   }
 
   .deviceStage {
-    min-height: 620px;
-  }
+    --device-avail: calc(100vw - 48px);
 
-  .ipad {
-    width: 760px;
-    height: 510px;
-    left: 50%;
-    transform: rotate(-2deg) translateX(-48%);
-  }
-
-  .iphone {
-    right: 50%;
-    transform: translateX(74%) rotate(4deg);
+    margin-top: 26px;
   }
 
   .cta {
@@ -2250,10 +2553,12 @@ html body:has(> .page) {
   .footerRow {
     flex-direction: column;
     align-items: flex-start;
+    gap: 14px;
   }
 
   .footerLinks {
     flex-wrap: wrap;
+    gap: 4px 20px;
   }
 }
 
@@ -2271,6 +2576,14 @@ html body:has(> .page) {
     opacity: 1;
     transform: none;
   }
+
+  /* The blanket rule above zeroes durations but not delays, which would leave the closed drawer
+     on screen for 400ms. Drop the slide entirely and cross-fade instead. */
+  .mobileMenu,
+  .mobileMenu[data-open="true"] {
+    transform: none;
+    transition-delay: 0s;
+  }
 }
 
 .storyStage,
@@ -2286,10 +2599,6 @@ html body:has(> .page) {
     min-height: 430px;
   }
 
-  .storyStage {
-    min-height: 540px;
-  }
-
   .scene h4 {
     font-size: 24px;
   }
@@ -2298,8 +2607,21 @@ html body:has(> .page) {
     font-size: 25px;
   }
 
+  .sceneInline {
+    padding: 16px;
+  }
+
+  .mockProfile {
+    flex-basis: 64px;
+  }
+
+  .gradeSummary,
+  .subjectGrade {
+    gap: 8px 6px;
+  }
+
   .ctaPanel {
-    padding: 42px 20px;
+    padding: 44px 22px;
   }
 }
 
@@ -2348,7 +2670,7 @@ html body:has(> .page) {
 
 @media (max-width: 720px) {
   .container {
-    width: min(calc(100% - 40px), var(--max));
+    width: min(calc(100% - 48px), var(--max));
   }
 
   .hero {
@@ -2358,23 +2680,19 @@ html body:has(> .page) {
   .heroProof {
     gap: 12px;
   }
-
-  .sectionHeading,
-  .storyHeading,
-  .connectedCopy,
-  .ctaPanel {
-    padding-left: 2px;
-    padding-right: 2px;
-  }
 }
 
 @media (max-width: 520px) {
   .container {
-    width: min(calc(100% - 32px), var(--max));
+    width: min(calc(100% - 40px), var(--max));
+  }
+
+  .deviceStage {
+    --device-avail: calc(100vw - 40px);
   }
 
   .nav {
-    gap: 14px;
+    gap: 12px;
   }
 
   .brand {
@@ -2450,15 +2768,35 @@ html body:has(> .page) {
   }
 }
 
-/* Keep proper edge spacing on phones */
+/* Touch targets are an input-method question, not a width one — a 768px tablet and a touchscreen
+   laptop both need them. 17px-tall footer links and a 38px brand are misses; give them 44px. */
+@media (pointer: coarse) {
+  .brand {
+    min-height: 44px;
+  }
+
+  .footerLinks {
+    margin-left: -8px;
+  }
+
+  .footerLinks a {
+    min-height: 44px;
+    padding-inline: 8px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Keep proper edge spacing on phones: 24px of gutter each side, easing to 20px on the smallest
+   handsets. These are the last `.container` rules in the file and deliberately win. */
 @media (max-width: 720px) {
   .container {
-    width: min(calc(100% - 40px), var(--max));
+    width: min(calc(100% - 48px), var(--max));
   }
 }
 
 @media (max-width: 520px) {
   .container {
-    width: min(calc(100% - 32px), var(--max));
+    width: min(calc(100% - 40px), var(--max));
   }
 }
