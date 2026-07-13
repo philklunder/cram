@@ -8,7 +8,6 @@ import { CalendarClock, CheckCircle2, ChevronDown, Pencil, Play, Plus } from "lu
 
 import { ExamFormModal } from "@/components/ExamFormModal";
 import { SubjectGradesSummary } from "@/components/GradesPanel";
-import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuizRunner } from "@/components/QuizRunner";
 import { SubjectFormModal } from "@/components/SubjectFormModal";
 import {
@@ -23,9 +22,17 @@ import {
   difficultyTone,
 } from "@/components/ui";
 import { loadSubjectBundle, type SubjectBundle } from "@/lib/api/client";
-import type { Card, Exam, GradeEntry, Question, Quiz, Source, Subject } from "@/lib/api/types";
+import type { Attempt, Card, Exam, GradeEntry, Question, Quiz, Source, Subject } from "@/lib/api/types";
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
+import {
+  VERDICT_COPY,
+  VERDICT_FILL,
+  computeReadiness,
+  scoreFill,
+  type Readiness,
+  type TopicStat,
+} from "@/lib/readiness";
 import { formatGrade, isPassing } from "@/lib/grades";
 import { studyHref } from "@/lib/studyLink";
 import { subjectVars } from "@/lib/subjectColor";
@@ -63,15 +70,10 @@ function byExamOrder(a: Exam, b: Exam): number {
 // The subject page is where material lives — it browses and organises, it does not assess. Every
 // "Study" affordance here links into the Flashcards hub with this subject (and exam) pre-scoped,
 // where you can practise the deck. Progress is only ever measured by a Review. See lib/readiness.ts.
+// Self-fetching wrapper for the /subjects/[id] route. The pure view below takes the bundle as a
+// prop so the /preview harness can render the whole page without a backend.
 export function SubjectDetail({ id }: { id: string }) {
-  const router = useRouter();
-  // A grade in the Grades page deep-links here as ?exam=<id> so the finished exam it belongs
-  // to opens straight to its material in "Past exams".
-  const focusExam = useSearchParams().get("exam");
   const { loading, error, data, reload } = useAsync<SubjectBundle>(() => loadSubjectBundle(id), [id]);
-
-  const [editSubjectOpen, setEditSubjectOpen] = useState(false);
-  const [examModal, setExamModal] = useState<{ open: boolean; exam: Exam | null }>({ open: false, exam: null });
 
   if (loading) return <PageLoader label="Loading subject…" />;
   if (error) {
@@ -84,8 +86,24 @@ export function SubjectDetail({ id }: { id: string }) {
   }
   if (!data) return null;
 
-  const { subject, exams, sources, cards, quizzes, questions, gradeEntries } = data;
+  return <SubjectDetailView data={data} onReload={reload} />;
+}
+
+export function SubjectDetailView({ data, onReload = () => {} }: { data: SubjectBundle; onReload?: () => void }) {
+  const router = useRouter();
+  // A grade in the Grades page deep-links here as ?exam=<id> so the finished exam it belongs
+  // to opens straight to its material in "Past exams".
+  const focusExam = useSearchParams().get("exam");
+
+  const [editSubjectOpen, setEditSubjectOpen] = useState(false);
+  const [examModal, setExamModal] = useState<{ open: boolean; exam: Exam | null }>({ open: false, exam: null });
+
+  const { subject, exams, sources, cards, quizzes, questions, gradeEntries, attempts } = data;
   const examById = new Map(exams.map((e) => [e.id, e]));
+
+  // Exam readiness for the whole subject — the honest "how ready am I", from scored reviews only
+  // (recall + quiz), never from cramming. computeReadiness filters the passed data by subject id.
+  const readiness = computeReadiness({ subjectId: subject.id }, { cards, questions, quizzes, attempts });
 
   // Bucket cards/quizzes by exam. A card whose exam is missing/deleted falls back to General.
   const bucketOf = (examId: string | null) => (examId && examById.has(examId) ? examId : GENERAL);
@@ -114,6 +132,13 @@ export function SubjectDetail({ id }: { id: string }) {
   const activeCards = cards.filter((c) => !(c.exam_id && gradeByExam.has(c.exam_id)));
   const totalDue = dueCount(activeCards);
 
+  // Soonest upcoming active exam — drives the header countdown chip.
+  const nearest =
+    activeExams
+      .map((e) => ({ exam: e, days: daysUntil(e.exam_date) }))
+      .filter((x): x is { exam: Exam; days: number } => x.days != null && x.days >= 0)
+      .sort((a, b) => a.days - b.days)[0] ?? null;
+
   // Adding material happens in AI Decks, not here — deep-link there with this subject (and exam)
   // pre-selected so the upload flow lands ready to go.
   const goAddMaterial = (examId: string | null) => {
@@ -130,6 +155,19 @@ export function SubjectDetail({ id }: { id: string }) {
       <SubjectHero
         subject={subject}
         cards={cards}
+        readiness={readiness}
+        examCountdown={nearest ? { days: nearest.days } : null}
+        primary={
+          activeCards.length > 0 ? (
+            <Link
+              href={studyHref({ subjectId: subject.id, dueOnly: totalDue > 0, start: true })}
+              className={buttonClass("primary", "md", "flex-none")}
+            >
+              <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+              {totalDue > 0 ? `Study ${totalDue} due` : "Study subject"}
+            </Link>
+          ) : null
+        }
         actions={
           <>
             <Button variant="secondary" size="sm" onClick={() => openExamModal(null)}>
@@ -148,54 +186,26 @@ export function SubjectDetail({ id }: { id: string }) {
         }
       />
 
-      {/* Study everything that's still active — graded exams are excluded. */}
       {cards.length === 0 ? (
-            <EmptyState
-              title="No cards yet"
-              hint="Create an exam and add material, or add material straight to “General”. Cram builds the flashcards and a quiz."
-              action={
-                <div className="flex flex-wrap justify-center gap-2.5">
-                  <Button onClick={() => openExamModal(null)}>
-                    <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                    New exam
-                  </Button>
-                  <Button variant="secondary" onClick={() => goAddMaterial(null)}>
-                    Add material
-                  </Button>
-                </div>
-              }
-            />
-          ) : activeCards.length > 0 ? (
-            <div className="flex flex-col gap-4 rounded-xl border border-[var(--sc-line)] bg-[var(--sc-soft)] p-5 sm:flex-row sm:items-center sm:justify-between dark:border-[color:var(--sc-solid)]/25 dark:bg-[color:var(--sc-soft-dark)]">
-              <div>
-                <p className="text-base font-semibold text-[color:var(--sc-ink)] dark:text-[color:var(--sc-ink-dark)]">
-                  {totalDue > 0
-                    ? `${totalDue} ${totalDue === 1 ? "card" : "cards"} due`
-                    : "You're all caught up"}
-                </p>
-                <p className="mt-0.5 text-sm text-muted">
-                  {totalDue > 0
-                    ? "Study the whole subject in Flashcards, or pick a single exam below."
-                    : "Nothing's due — you can still study any exam below."}
-                </p>
-              </div>
-              <Link
-                href={studyHref({ subjectId: subject.id, dueOnly: totalDue > 0, start: true })}
-                className={buttonClass("primary", "md", "flex-none")}
-              >
-                <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                {totalDue > 0 ? "Study whole subject" : "Review everything"}
-              </Link>
+        <EmptyState
+          title="No cards yet"
+          hint="Create an exam and add material, or add material straight to “General”. Cram builds the flashcards and a quiz."
+          action={
+            <div className="flex flex-wrap justify-center gap-2.5">
+              <Button onClick={() => openExamModal(null)}>
+                <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                New exam
+              </Button>
+              <Button variant="secondary" onClick={() => goAddMaterial(null)}>
+                Add material
+              </Button>
             </div>
-          ) : null}
-
-          {/* Overall progress breakdown (status row hidden — the band above states what's due). */}
-          {cards.length > 0 ? (
-            <div className="space-y-4">
-              <h2 className="text-base font-semibold text-ink">Progress</h2>
-              <ProgressPanel cards={cards} hideStatus />
-            </div>
-          ) : null}
+          }
+        />
+      ) : (
+        /* At-a-glance overview: how ready you are, and which topics are weakest. */
+        <OverviewCards cards={cards} readiness={readiness} />
+      )}
 
           {/* Exams — the active ones. Each is a collapsible group of its own cards + quiz. */}
           {activeExams.length > 0 || generalCards.length > 0 || generalQuizzes.length > 0 ? (
@@ -275,7 +285,7 @@ export function SubjectDetail({ id }: { id: string }) {
         open={editSubjectOpen}
         onClose={() => setEditSubjectOpen(false)}
         subject={subject}
-        onSaved={() => reload()}
+        onSaved={() => onReload()}
         onDeleted={() => router.push("/subjects")}
       />
 
@@ -285,8 +295,8 @@ export function SubjectDetail({ id }: { id: string }) {
         onClose={() => setExamModal((m) => ({ ...m, open: false }))}
         subjectId={subject.id}
         exam={examModal.exam}
-        onSaved={() => reload()}
-        onDeleted={() => reload()}
+        onSaved={() => onReload()}
+        onDeleted={() => onReload()}
       />
     </section>
   );
@@ -294,18 +304,33 @@ export function SubjectDetail({ id }: { id: string }) {
 
 // --- Hero -------------------------------------------------------------------------------
 
-// The subject header: identity tile, name, scale/target meta, and a one-line mastery read.
-// Actions (New exam / Add material / Edit) are passed in. Exported for the /preview harness.
+const VERDICT_TONE: Record<Readiness["verdict"], string> = {
+  ready: "text-green-600 dark:text-green-400",
+  almost: "text-amber-600 dark:text-amber-400",
+  "keep-going": "text-red-600 dark:text-red-400",
+  untested: "text-muted",
+};
+
+// The subject header: identity tile, name, scale/target/count meta, the nearest-exam countdown
+// chip, an exam-readiness read, and a primary study action. `readiness`, `examCountdown` and
+// `primary` are optional so the /preview harness can still render the basic identity card.
 export function SubjectHero({
   subject,
   cards,
+  readiness,
+  examCountdown,
+  primary,
   actions,
 }: {
   subject: Subject;
   cards: Card[];
+  readiness?: Readiness;
+  examCountdown?: { days: number } | null;
+  primary?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   const p = computeProgress(cards);
+  const tested = readiness != null && readiness.verdict !== "untested";
 
   return (
     <div className="animate-fade-up rounded-xl border border-line bg-surface p-6 shadow-card">
@@ -314,34 +339,163 @@ export function SubjectHero({
           {subjectInitials(subject.name)}
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">{subject.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">{subject.name}</h1>
+            {examCountdown ? <ExamCountdownChip days={examCountdown.days} /> : null}
+          </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-            <span className="capitalize">{subject.grading_scale} scale</span>
+            <span>
+              <span className="capitalize">{subject.grading_scale}</span> scale
+            </span>
             {subject.target_grade != null ? (
               <>
                 <span aria-hidden className="text-subtle">·</span>
                 <span>target {subject.target_grade}</span>
               </>
             ) : null}
+            <span aria-hidden className="text-subtle">·</span>
+            <span className="tabular-nums">
+              {p.total} {p.total === 1 ? "card" : "cards"}
+            </span>
+            {p.dueNow > 0 ? (
+              <span className="font-medium text-amber-700 dark:text-amber-400">· {p.dueNow} due</span>
+            ) : null}
           </p>
-          <p className="mt-3 inline-flex items-center gap-2 text-sm">
-            {p.total === 0 ? (
-              <span className="text-muted">No cards yet</span>
-            ) : (
-              <>
-                <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", p.dueNow > 0 ? "bg-amber-500" : "bg-green-500")} />
-                <span className="font-medium tabular-nums text-ink-2">{p.masteredPct}% mastered</span>
-                <span aria-hidden className="text-subtle">·</span>
-                <span className="tabular-nums text-muted">
-                  {p.total} {p.total === 1 ? "card" : "cards"}
-                </span>
-              </>
-            )}
-          </p>
+          {p.total > 0 ? (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm">
+              {tested ? (
+                <>
+                  <span className={cn("font-semibold tabular-nums", VERDICT_TONE[readiness!.verdict])}>
+                    {readiness!.score}% ready
+                  </span>
+                  <span aria-hidden className="text-subtle">·</span>
+                  <span className="text-muted">{VERDICT_COPY[readiness!.verdict].label}</span>
+                </>
+              ) : (
+                <>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-line-strong" />
+                  <span className="text-muted">Not tested yet — run a review to see your readiness</span>
+                </>
+              )}
+            </p>
+          ) : null}
         </div>
-        {actions ? <div className="flex flex-none flex-wrap gap-2">{actions}</div> : null}
+        <div className="flex flex-none flex-col items-stretch gap-2 sm:items-end">
+          {primary}
+          {actions ? <div className="flex flex-wrap gap-2 sm:justify-end">{actions}</div> : null}
+        </div>
       </div>
     </div>
+  );
+}
+
+// Nearest-exam pill: red inside a week, amber within two, calm beyond.
+function ExamCountdownChip({ days }: { days: number }) {
+  const tone =
+    days <= 3
+      ? "bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/20"
+      : days <= 14
+        ? "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25"
+        : "bg-surface-2 text-muted ring-line";
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset", tone)}>
+      <CalendarClock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+      Exam {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
+    </span>
+  );
+}
+
+// --- At-a-glance overview: readiness + weakest topics --------------------------------------
+
+function OverviewCards({ cards, readiness }: { cards: Card[]; readiness: Readiness }) {
+  const p = computeProgress(cards);
+  const tested = readiness.verdict !== "untested";
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* Exam readiness */}
+      <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-ink">Exam readiness</h2>
+          <span className={cn("text-sm font-semibold tabular-nums", VERDICT_TONE[readiness.verdict])}>
+            {tested ? `${readiness.score}%` : "—"}
+          </span>
+        </div>
+        {tested ? (
+          <>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line">
+              <div className={cn("h-full rounded-full", VERDICT_FILL[readiness.verdict])} style={{ width: `${readiness.score}%` }} />
+            </div>
+            <p className="mt-2 text-sm text-ink-2">{VERDICT_COPY[readiness.verdict].hint}</p>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted">
+            Not tested yet. Readiness comes from a Review — the recall ratings plus the questions after — never from
+            cramming.
+          </p>
+        )}
+        <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-4 text-center">
+          <SplitStat value={p.mastered} label="Mastered" tone="green" />
+          <SplitStat value={p.learning} label="Learning" tone="amber" />
+          <SplitStat value={p.shaky} label="Shaky" tone="red" />
+        </dl>
+      </div>
+
+      {/* Weakest topics */}
+      <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-ink">Topics</h2>
+          <span className="text-xs text-muted">Weakest first</span>
+        </div>
+        {readiness.weakTopics.length > 0 ? (
+          <ul className="mt-3 space-y-3">
+            {readiness.weakTopics.map((t) => (
+              <TopicRow key={t.topic} topic={t} />
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted">
+            {tested ? "No weak topics — every tested topic is holding up." : "Run a review to see which topics need work."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SplitStat({ value, label, tone }: { value: number; label: string; tone: "green" | "amber" | "red" }) {
+  const color =
+    tone === "green"
+      ? "text-green-600 dark:text-green-400"
+      : tone === "amber"
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-red-600 dark:text-red-400";
+  return (
+    <div>
+      <dd className={cn("text-lg font-bold tabular-nums", color)}>{value}</dd>
+      <dt className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">{label}</dt>
+    </div>
+  );
+}
+
+function TopicRow({ topic }: { topic: TopicStat }) {
+  // A topic's display strength is the weaker of its card mastery and quiz accuracy (both 0..1);
+  // an untested topic has no number, only a prompt to review it.
+  const pct = topic.tested ? Math.round(Math.min(topic.cardMastery ?? 1, topic.accuracy ?? 1) * 100) : null;
+  return (
+    <li>
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+        <span className="truncate font-medium text-ink-2" title={topic.topic}>
+          {topic.topic}
+        </span>
+        <span className={cn("flex-none text-xs font-semibold tabular-nums", pct == null ? "text-subtle" : "text-ink")}>
+          {pct == null ? "Untested" : `${pct}%`}
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-line">
+        <div className={cn("h-full rounded-full", pct == null ? "bg-line-strong" : scoreFill(pct))} style={{ width: `${pct ?? 100}%` }} />
+      </div>
+    </li>
   );
 }
 

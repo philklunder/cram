@@ -18,8 +18,10 @@ import { ProgressOverviewView } from "@/components/pages/ProgressOverview";
 import { QuizzesHubView } from "@/components/pages/QuizzesHub";
 import { ReviewHubView } from "@/components/pages/ReviewHub";
 import { SettingsView } from "@/components/pages/SettingsView";
+import { SubjectDetailView } from "@/components/SubjectDetail";
+import { SubjectsListView } from "@/components/SubjectsList";
 import { UploadWork } from "@/components/pages/UploadWork";
-import type { LibraryData } from "@/lib/api/client";
+import type { LibraryData, SubjectBundle } from "@/lib/api/client";
 import type { Attempt, Card, Exam, GradeEntry, GradingScale, Question, Quiz, ReviewLog, Source, StudySession, Subject } from "@/lib/api/types";
 import { subjectExamDate } from "@/lib/dashboard";
 import { setDisplayScale } from "@/lib/useDisplayScale";
@@ -252,6 +254,19 @@ function seedResult(topic: string): { topic: string; score: number; is_correct: 
 }
 const QUIZ_SEED = [seedResult("Microeconomics"), seedResult("Microeconomics"), seedResult("Microeconomics")];
 
+// One subject's bundle (ABU) for the subject-detail preview: its exam, cards, quiz, questions,
+// attempts and grades, sliced from the mocks the same way loadSubjectBundle slices the snapshot.
+const ABU_BUNDLE: SubjectBundle = {
+  subject: GRADE_SUBJECTS.find((s) => s.id === "s-abu")!,
+  exams: EXAMS.filter((e) => e.subject_id === "s-abu"),
+  sources: SOURCES.filter((s) => s.subject_id === "s-abu"),
+  cards: CARDS.filter((c) => c.subject_id === "s-abu"),
+  quizzes: QUIZZES.filter((q) => q.subject_id === "s-abu"),
+  questions: QUESTIONS.filter((q) => q.quiz_id === "qz-s-abu"),
+  gradeEntries: GRADES.filter((g) => g.subject_id === "s-abu"),
+  attempts: ATTEMPTS.filter((a) => a.question_id.startsWith("qn-s-abu-")),
+};
+
 const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
   review: {
     href: "/review",
@@ -346,6 +361,8 @@ const PAGES: Record<string, { href: string; node: React.ReactNode }> = {
       />
     ),
   },
+  subjects: { href: "/subjects", node: <SubjectsListView data={PROGRESS_DATA} /> },
+  subjectdetail: { href: "/subjects", node: <SubjectDetailView data={ABU_BUNDLE} /> },
   grades: { href: "/grades", node: <GradesView subjects={GRADE_SUBJECTS} exams={EXAMS} entries={GRADES} /> },
   calendar: { href: "/calendar", node: <CalendarPlanner subjects={GRADE_SUBJECTS} exams={EXAMS} cards={CARDS} studySessions={STUDY_SESSIONS} questions={QUESTIONS} quizzes={QUIZZES} attempts={ATTEMPTS} now={NOW} /> },
   settings: { href: "/settings", node: <SettingsView email="philipp@cram.study" /> },

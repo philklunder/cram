@@ -250,18 +250,24 @@ export interface SubjectBundle {
   // Needed to derive the subject's grade strength (which feeds SM-2 exam compression) the same
   // way iOS does — its `currentGrade` falls back to the weighted average of grade entries.
   gradeEntries: GradeEntry[];
+  // Quiz attempts for this subject's questions — the assessment half of exam readiness
+  // (lib/readiness.ts). Without these the detail page could only show cramming mastery, not how
+  // ready a review says you are.
+  attempts: Attempt[];
 }
 
 // Everything needed to render a subject detail page, sliced out of the snapshot. Questions are
 // filtered via the subject's quiz ids.
 export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
-  const { subjects, exams, sources, cards, quizzes, questions, gradeEntries } = await snapshot();
+  const { subjects, exams, sources, cards, quizzes, questions, gradeEntries, attempts } = await snapshot();
 
   const subject = subjects.find((s) => s.id === id);
   if (!subject) throw new ApiError(404, "subject not found");
 
   const subjectQuizzes = quizzes.filter((q) => q.subject_id === id);
   const quizIds = new Set(subjectQuizzes.map((q) => q.id));
+  const subjectQuestions = questions.filter((q) => quizIds.has(q.quiz_id));
+  const questionIds = new Set(subjectQuestions.map((q) => q.id));
 
   return {
     subject,
@@ -269,8 +275,9 @@ export async function loadSubjectBundle(id: string): Promise<SubjectBundle> {
     sources: sources.filter((s) => s.subject_id === id),
     cards: cards.filter((c) => c.subject_id === id),
     quizzes: subjectQuizzes,
-    questions: questions.filter((q) => quizIds.has(q.quiz_id)),
+    questions: subjectQuestions,
     gradeEntries: gradeEntries.filter((g) => g.subject_id === id),
+    attempts: attempts.filter((a) => questionIds.has(a.question_id)),
   };
 }
 
