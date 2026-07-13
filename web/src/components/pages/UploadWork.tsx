@@ -305,26 +305,33 @@ export function UploadWork({
           ) : null}
         </div>
 
-        {/* AI preview rail */}
+        {/* "How it works" rail */}
         <aside className="min-w-0 space-y-4">
           <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <div className="mb-1 flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight text-ink">AI preview</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold tracking-tight text-ink">How it works</h2>
               <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", busy ? "text-brand-600 dark:text-brand-300" : "text-muted")}>
                 <span className={cn("h-1.5 w-1.5 rounded-full", busy ? "animate-pulse bg-brand-500" : "bg-line-strong")} />
                 {busy ? "Live" : deck ? "Done" : "Example"}
               </span>
             </div>
-            <p className="mb-5 text-xs text-muted">
-              {busy ? "Claude is analyzing your materials…" : deck ? "Your study deck is ready." : "How Claude turns your files into a deck."}
-            </p>
-            <Pipeline busy={busy} done={!!deck} />
 
-            {/* Reacts to the run: watches your cursor while Claude reads, cheers on
-                success, commiserates on failure. `mood` comes straight off busy/deck/error. */}
-            <div className="mt-2 flex justify-center">
-              <InteractiveClaudeMascot size={68} mood={mascotMood} trim />
+            {/* Mascot + one-line description, then the four stages. The mascot reacts to the run:
+                watches your cursor while idle, reads while Claude works, reacts on finish.
+                `flex-none` is load-bearing — without it the flex row shrinks the mascot's box while
+                its inner sprite keeps full height, squashing him horizontally. */}
+            <div className="mb-4 flex items-center gap-1">
+              <InteractiveClaudeMascot className="flex-none" size={76} mood={mascotMood} trim />
+              <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted">
+                {busy
+                  ? "Claude is reading your material…"
+                  : deck
+                    ? "Your study deck is ready — review it below."
+                    : "Claude reads every page, pulls out the concepts worth testing, and writes the cards."}
+              </p>
             </div>
+
+            <Pipeline busy={busy} done={!!deck} />
           </div>
 
           <PreviewCard icon={Layers} title="Flashcards" tag="example">
@@ -365,7 +372,7 @@ function Toggle({ icon: Icon, label, hint, on, disabled, onClick }: { icon: type
   );
 }
 
-const STEPS = ["Ingest", "Extract", "Generate", "Review"] as const;
+const STEPS = ["Read", "Extract", "Write", "You approve"] as const;
 function Pipeline({ busy, done }: { busy: boolean; done: boolean }) {
   // Horizontal stepper. Illustrative: an "example" run paused at Generate when idle, the live run
   // while busy (Generate pulses), all four complete when done. The connector into each reached node
