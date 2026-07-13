@@ -202,3 +202,21 @@ export const VERDICT_COPY: Record<Verdict, { label: string; hint: string }> = {
   "keep-going": { label: "Keep going", hint: "Review regularly — this isn't solid yet." },
   untested: { label: "Not tested yet", hint: "Run a review to find out where you stand." },
 };
+
+// Semantic fill for a readiness bar. Readiness is a *quality* measure, so it takes the
+// green/amber/red vocabulary — never the subject's identity accent, which would paint a
+// healthy subject red purely because of which colour family its id hashed to.
+export const VERDICT_FILL: Record<Verdict, string> = {
+  ready: "bg-green-500",
+  almost: "bg-amber-500",
+  "keep-going": "bg-red-500",
+  untested: "bg-line-strong",
+};
+
+// Same vocabulary keyed on a raw 0–100 percentage, for bars that have a score but no
+// Readiness object (topic mastery, per-exam readiness). Thresholds mirror `verdict`.
+export function scoreFill(pct: number): string {
+  if (pct >= 80) return "bg-green-500";
+  if (pct >= 60) return "bg-amber-500";
+  return "bg-red-500";
+}

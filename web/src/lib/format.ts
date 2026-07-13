@@ -1,5 +1,10 @@
 // Small presentation helpers for dates and the exam countdown.
 
+// Every string in the app is hard-coded English, so dates must be too. Passing `undefined` to
+// toLocaleDateString picks up the *browser's* locale, which rendered "13. Juli 2026" next to
+// English copy on a German-locale machine. Pin it until the app is actually translated.
+export const DATE_LOCALE = "en-GB";
+
 // Whole days from today (local) until the given date. Negative ⇒ in the past. Null input or
 // unparseable date ⇒ null.
 export function daysUntil(dateIso: string | null): number | null {
@@ -26,7 +31,7 @@ export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(DATE_LOCALE, { year: "numeric", month: "short", day: "numeric" });
 }
 
 // A first name to greet the user with. Prefers an OAuth display name (`full_name`/`name` from the

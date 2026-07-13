@@ -122,6 +122,12 @@ export function ReviewSession({
     ...r,
     interval: applyReview(card, r.rating, examDate, ctx.strength, new Date()).interval_days,
   }));
+  // On a card with no history SM-2 returns a 1-day interval for every rating (repetitions === 0),
+  // so all four buttons would read "1 day" and the choice would look meaningless. That is correct
+  // scheduler behaviour — `scheduler.ts` must stay identical to Scheduler.swift or sync flip-flops
+  // the schedule — so we hide the preview instead of faking a spread. Once the card has history the
+  // intervals genuinely diverge and the hint comes back.
+  const intervalsDiffer = new Set(previews.map((p) => p.interval)).size > 1;
 
   async function rate(rating: ReviewRating) {
     if (saving || !card) return;
@@ -263,7 +269,9 @@ export function ReviewSession({
                         )}
                       </span>
                       <span className={cn("text-sm font-semibold", m.text)}>{label}</span>
-                      <span className="text-[11px] tabular-nums text-muted">{formatInterval(interval)}</span>
+                      {intervalsDiffer ? (
+                        <span className="text-[11px] tabular-nums text-muted">{formatInterval(interval)}</span>
+                      ) : null}
                     </button>
                   );
                 })}

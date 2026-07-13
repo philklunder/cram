@@ -1,41 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import {
-  CalendarDays,
-  ChevronRight,
-  FileText,
-  Flame,
-  HelpCircle,
-  Layers,
-  Play,
-  Sparkles,
-  TrendingDown,
-  TrendingUp,
-  Upload,
-} from "lucide-react";
+import { Check, ChevronRight, Play, TrendingDown, TrendingUp, Upload } from "lucide-react";
 
 import { Button, cn } from "@/components/ui";
-import { StreakDots } from "@/components/dashboard/StreakCard";
 import type { DashboardData } from "@/lib/api/client";
 import type { Subject } from "@/lib/api/types";
 import {
   computeDue,
   computeQuizStats,
   computeStreak,
+  estimateReviewMinutes,
   focusAreas,
-  formatDueIn,
   formatMinutes,
   nearestExam,
   subjectExamDate,
   subjectQuizAverages,
-  upcomingReviews,
   weeklyActivity,
   type WeeklyActivity,
 } from "@/lib/dashboard";
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
-import { computeReadiness, type Readiness } from "@/lib/readiness";
+import { VERDICT_FILL, computeReadiness, type Readiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
 import { useCountUp } from "@/lib/useCountUp";
 
@@ -50,8 +36,6 @@ export function DashboardView({ data, now = Date.now(), name }: { data: Dashboar
   const quiz = computeQuizStats(attempts, now);
   const exam = nearestExam(subjects, exams);
   const quizAvgs = subjectQuizAverages(attempts, questions, quizzes);
-  const areas = focusAreas(cards, subjects);
-  const upcoming = upcomingReviews(cards, subjects, { now });
   const activity = weeklyActivity(studySessions, now);
 
   const topSubjects = [...subjects]
@@ -60,75 +44,87 @@ export function DashboardView({ data, now = Date.now(), name }: { data: Dashboar
         (daysUntil(subjectExamDate(a.id, exams)) ?? 1e9) -
         (daysUntil(subjectExamDate(b.id, exams)) ?? 1e9),
     )
-    .slice(0, 4);
+    .slice(0, 6);
 
+  // Single stacked column, ordered the way a learner needs it: what to do now → how am I doing →
+  // which subject needs me → how was my week. The old right rail (add-material, a duplicate weekly
+  // chart, upcoming-reviews) was the main source of clutter; "Add material" now lives in the top
+  // bar and the weekly chart takes the full width as the closing note.
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Main column */}
-      <div className="min-w-0 space-y-6 lg:col-span-2">
-        <HeroBanner due={due.due} name={name} />
+    <div className="space-y-6">
+      <HeroBanner due={due.due} subjectsCount={due.subjectsCount} exam={exam} name={name} />
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <StatTile
-            icon={Flame}
-            tone="amber"
-            label="Review streak"
-            value={streak.current}
-            unit={streak.current === 1 ? "day" : "days"}
-            sub={streak.studiedToday ? "Studied today" : streak.current > 0 ? "Study today to keep it" : "Start today"}
-          />
-          <StatTile
-            icon={Layers}
-            tone="brand"
-            label="Cards due today"
-            value={due.due}
-            sub={due.subjectsCount > 0 ? `Across ${due.subjectsCount} subject${due.subjectsCount === 1 ? "" : "s"}` : "All caught up"}
-          />
-          <QuizStatTile quiz={quiz} />
-          <ExamStatTile exam={exam} />
-        </div>
+      <FiguresStrip streak={streak} due={due} quiz={quiz} exam={exam} />
 
-        <SubjectsSection subjects={topSubjects} data={data} quizAvgs={quizAvgs} now={now} />
+      <SubjectsSection subjects={topSubjects} data={data} quizAvgs={quizAvgs} now={now} />
 
-        {areas.length > 0 ? <FocusAreasSection areas={areas} /> : null}
-      </div>
-
-      {/* Right rail */}
-      <aside className="min-w-0 space-y-6">
-        <AddMaterialCard />
-        <WeeklyActivityCard activity={activity} />
-        <UpcomingReviewsCard upcoming={upcoming} now={now} />
-      </aside>
+      <WeeklyActivityCard activity={activity} />
     </div>
   );
 }
 
 // --- Hero --------------------------------------------------------------------------------
 
-function HeroBanner({ due, name }: { due: number; name?: string | null }) {
+function HeroBanner({
+  due,
+  subjectsCount,
+  exam,
+  name,
+}: {
+  due: number;
+  subjectsCount: number;
+  exam: ReturnType<typeof nearestExam>;
+  name?: string | null;
+}) {
+  // The hero answers "how much work is waiting?" in one line so the learner doesn't have to read the
+  // figures below to decide. Minutes are an estimate, not a promise (~47s/card, shared with Review).
+  const minutes = estimateReviewMinutes(due);
+  const workload =
+    due > 0 ? (
+      <>
+        <b className="font-semibold text-ink">
+          {due} card{due === 1 ? "" : "s"}
+        </b>{" "}
+        due across{" "}
+        <b className="font-semibold text-ink">
+          {subjectsCount} subject{subjectsCount === 1 ? "" : "s"}
+        </b>{" "}
+        — about <b className="font-semibold text-ink">{minutes} min</b>.
+      </>
+    ) : (
+      <>You&rsquo;re all caught up — nothing due right now.</>
+    );
+
   return (
     <section className="relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/40 p-6 sm:p-8 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
-      <div className="relative z-10 max-w-lg">
+      <div className="relative z-10 max-w-xl">
         <p className="text-sm font-semibold text-brand-600 dark:text-brand-300">
           {name ? `Good to see you, ${name}` : "Good to see you"} 👋
         </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
           Ready for today&rsquo;s review?
         </h1>
-        <p className="mt-2 text-sm text-ink-2">
-          Consistent practice. Smarter repetition. Better results.
+        <p className="mt-2 max-w-md text-sm text-ink-2">
+          {workload}
+          {exam && exam.days <= 7 ? (
+            <>
+              {" "}
+              <span className="font-medium text-ink-2">
+                {exam.subject.name} has an exam in {exam.days} day{exam.days === 1 ? "" : "s"}.
+              </span>
+            </>
+          ) : null}
         </p>
-        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <Link href="/review">
             <Button>
               <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden />
               Start study session
             </Button>
           </Link>
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-ink-2">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-            {due > 0 ? `Review ${due} card${due === 1 ? "" : "s"}` : "No cards due — nice work"}
-          </span>
+          <Link href="/quizzes">
+            <Button variant="secondary">Take a quiz instead</Button>
+          </Link>
         </div>
       </div>
       <HeroIllustration />
@@ -247,91 +243,122 @@ function HeroIllustration() {
   );
 }
 
-// --- Stat tiles --------------------------------------------------------------------------
+// --- Figures strip -----------------------------------------------------------------------
 
-type Tone = "brand" | "amber" | "green" | "red";
-const toneChip: Record<Tone, string> = {
-  brand: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300",
-  amber: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
-  green: "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400",
-  red: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
-};
-
-function StatTile({
-  icon: Icon,
-  tone,
-  label,
-  value,
-  unit,
-  sub,
-  subNode,
+// The four headline figures as one bordered strip divided by hairlines, rather than four
+// separately-bordered cards each carrying a coloured icon chip. The icons and chips were pure
+// decoration — the numbers are the information. The only surviving colour is on Nearest exam when
+// it's genuinely urgent (≤3 days), where red means something.
+//
+// Internal dividers come from a per-cell `border-l border-t` with the grid pulled out by `-m-px`,
+// so the outermost borders tuck under the container's own border and every seam is a single line
+// at any column count (2-up on mobile, 4-up from sm).
+function FiguresStrip({
+  streak,
+  due,
+  quiz,
+  exam,
 }: {
-  icon: typeof Flame;
-  tone: Tone;
-  label: string;
-  value: number | string;
-  unit?: string;
-  sub?: string;
-  subNode?: React.ReactNode;
+  streak: ReturnType<typeof computeStreak>;
+  due: ReturnType<typeof computeDue>;
+  quiz: ReturnType<typeof computeQuizStats>;
+  exam: ReturnType<typeof nearestExam>;
 }) {
-  const numeric = typeof value === "number";
-  const shown = useCountUp(numeric ? (value as number) : 0);
+  const quizUp = (quiz.deltaPct ?? 0) >= 0;
+  const examUrgent = exam ? exam.days <= 3 : false;
+
   return (
-    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-      <div className="flex items-center gap-2.5">
-        <span className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-lg", toneChip[tone])}>
-          <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-        </span>
-        <span className="text-xs font-medium text-muted">{label}</span>
+    <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+      <div className="-m-px grid grid-cols-2 sm:grid-cols-4">
+        <Figure
+          value={streak.current}
+          unit={streak.current === 1 ? "day" : "days"}
+          label="Review streak"
+          foot={
+            streak.studiedToday ? (
+              <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+                <Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+                Studied today
+              </span>
+            ) : streak.current > 0 ? (
+              "Study today to keep it"
+            ) : (
+              "Start today"
+            )
+          }
+        />
+        <Figure
+          value={due.due}
+          label="Cards due today"
+          foot={
+            due.subjectsCount > 0
+              ? `Across ${due.subjectsCount} subject${due.subjectsCount === 1 ? "" : "s"}`
+              : "All caught up"
+          }
+        />
+        <Figure
+          value={quiz.avgPct === null ? "—" : `${quiz.avgPct}%`}
+          label="Avg quiz score"
+          foot={
+            quiz.avgPct === null ? (
+              "No quizzes yet"
+            ) : quiz.deltaPct === null ? (
+              "This week"
+            ) : (
+              <span className={cn("inline-flex items-center gap-1", quizUp ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                {quizUp ? <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden /> : <TrendingDown className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />}
+                {Math.abs(quiz.deltaPct)}% this week
+              </span>
+            )
+          }
+        />
+        <Figure
+          value={exam ? exam.days : "—"}
+          unit={exam ? (exam.days === 1 ? "day" : "days") : undefined}
+          label="Nearest exam"
+          urgent={examUrgent}
+          foot={
+            exam ? (
+              <span className="flex items-baseline gap-1">
+                <span className="max-w-[10ch] truncate font-medium text-ink-2">{exam.subject.name}</span>
+                <span>· {formatDate(exam.examDate)}</span>
+              </span>
+            ) : (
+              "No exam scheduled"
+            )
+          }
+        />
       </div>
-      <div className="mt-3 flex items-baseline gap-1">
-        <span className="text-2xl font-bold tabular-nums text-ink">
-          {numeric ? Math.round(shown) : value}
-        </span>
-        {unit ? <span className="text-sm font-medium text-muted">{unit}</span> : null}
-      </div>
-      <div className="mt-0.5 min-h-[16px] text-xs text-muted">{subNode ?? sub}</div>
     </div>
   );
 }
 
-function QuizStatTile({ quiz }: { quiz: ReturnType<typeof computeQuizStats> }) {
-  if (quiz.avgPct === null) {
-    return <StatTile icon={TrendingUp} tone="brand" label="Avg quiz score" value="—" sub="No quizzes yet" />;
-  }
-  const up = (quiz.deltaPct ?? 0) >= 0;
-  const TrendIcon = up ? TrendingUp : TrendingDown;
-  const subNode =
-    quiz.deltaPct === null ? (
-      "This week"
-    ) : (
-      <span className={cn("inline-flex items-center gap-1 font-medium", up ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-        <TrendIcon className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
-        {Math.abs(quiz.deltaPct)}% this week
-      </span>
-    );
-  return <StatTile icon={TrendingUp} tone="brand" label="Avg quiz score" value={`${quiz.avgPct}%`} subNode={subNode} />;
-}
-
-function ExamStatTile({ exam }: { exam: ReturnType<typeof nearestExam> }) {
-  if (!exam) {
-    return <StatTile icon={CalendarDays} tone="brand" label="Nearest exam" value="—" sub="No exam scheduled" />;
-  }
-  const tone: Tone = exam.days <= 3 ? "red" : exam.days <= 10 ? "amber" : "brand";
+function Figure({
+  value,
+  unit,
+  label,
+  foot,
+  urgent = false,
+}: {
+  value: number | string;
+  unit?: string;
+  label: string;
+  foot: React.ReactNode;
+  urgent?: boolean;
+}) {
+  const numeric = typeof value === "number";
+  const shown = useCountUp(numeric ? (value as number) : 0);
   return (
-    <StatTile
-      icon={CalendarDays}
-      tone={tone}
-      label="Nearest exam"
-      value={exam.days}
-      unit={exam.days === 1 ? "day" : "days"}
-      subNode={
-        <span className="flex items-baseline gap-1">
-          <span className="max-w-[10ch] truncate font-medium text-ink-2">{exam.subject.name}</span>
-          <span>· {formatDate(exam.examDate)}</span>
+    <div className="border-l border-t border-line p-4">
+      <div className="flex items-baseline gap-1">
+        <span className={cn("text-2xl font-bold tabular-nums", urgent ? "text-red-600 dark:text-red-400" : "text-ink")}>
+          {numeric ? Math.round(shown) : value}
         </span>
-      }
-    />
+        {unit ? <span className={cn("text-sm font-medium", urgent ? "text-red-600/80 dark:text-red-400/80" : "text-muted")}>{unit}</span> : null}
+      </div>
+      <div className="mt-0.5 text-xs text-muted">{label}</div>
+      <div className="mt-1.5 min-h-[16px] text-[11px] font-medium text-muted">{foot}</div>
+    </div>
   );
 }
 
@@ -365,7 +392,7 @@ function SubjectsSection({
 }) {
   return (
     <section>
-      <SectionHeader title="Your subjects" href="/subjects" cta="View all" />
+      <SectionHeader title="Your subjects" href="/subjects" cta={`View all ${data.subjects.length}`} />
       {subjects.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line-strong/80 bg-surface/50 px-6 py-10 text-center">
           <p className="text-sm font-medium text-ink">No subjects yet</p>
@@ -380,18 +407,26 @@ function SubjectsSection({
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {subjects.map((s) => (
-            <SubjectMiniCard
-              key={s.id}
-              subject={s}
-              examDate={subjectExamDate(s.id, data.exams)}
-              cards={data.cards.filter((c) => c.subject_id === s.id)}
-              readiness={computeReadiness({ subjectId: s.id }, data)}
-              quizAvg={quizAvgs.get(s.id) ?? null}
-              now={now}
-            />
-          ))}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {subjects.map((s) => {
+            const subjectCards = data.cards.filter((c) => c.subject_id === s.id);
+            // The subject's single weakest topic, folded onto its own card (this replaced the
+            // standalone "Focus areas" row, which forced you to map a topic back to its subject by
+            // colour). `minCards: 2` keeps a lone card from being flagged as a weak "topic".
+            const weakest = focusAreas(subjectCards, [s], { limit: 1, minCards: 2 })[0] ?? null;
+            return (
+              <SubjectMiniCard
+                key={s.id}
+                subject={s}
+                examDate={subjectExamDate(s.id, data.exams)}
+                cards={subjectCards}
+                readiness={computeReadiness({ subjectId: s.id }, data)}
+                quizAvg={quizAvgs.get(s.id) ?? null}
+                weakestTopic={weakest?.topic ?? null}
+                now={now}
+              />
+            );
+          })}
         </div>
       )}
     </section>
@@ -404,6 +439,7 @@ function SubjectMiniCard({
   cards,
   readiness,
   quizAvg,
+  weakestTopic,
   now,
 }: {
   subject: Subject;
@@ -411,6 +447,7 @@ function SubjectMiniCard({
   cards: DashboardData["cards"];
   readiness: Readiness;
   quizAvg: number | null;
+  weakestTopic: string | null;
   now: number;
 }) {
   const p = computeProgress(cards);
@@ -460,7 +497,10 @@ function SubjectMiniCard({
         ) : (
           <div className="h-2 w-full overflow-hidden rounded-full bg-line">
             <div
-              className="h-full rounded-full bg-[var(--sc-solid)] transition-[width] duration-700 ease-out"
+              className={cn(
+                "h-full rounded-full transition-[width] duration-700 ease-out",
+                VERDICT_FILL[readiness.verdict],
+              )}
               style={{ width: `${readiness.score}%` }}
             />
           </div>
@@ -472,6 +512,15 @@ function SubjectMiniCard({
         <MiniStat value={p.dueNow} label="Due now" tone={p.dueNow > 0 ? "amber" : undefined} />
         <MiniStat value={quizAvg === null ? "—" : `${quizAvg}%`} label="Quiz avg" />
       </dl>
+
+      {weakestTopic ? (
+        <p className="mt-3 flex items-center gap-1.5 border-t border-line pt-3 text-xs text-muted">
+          <span aria-hidden className="h-1.5 w-1.5 flex-none rounded-full bg-amber-500" />
+          <span className="truncate">
+            Weakest: <span className="font-medium text-ink-2">{weakestTopic}</span>
+          </span>
+        </p>
+      ) : null}
     </Link>
   );
 }
@@ -487,119 +536,42 @@ function MiniStat({ value, label, tone }: { value: number | string; label: strin
   );
 }
 
-// --- Focus areas -------------------------------------------------------------------------
-
-function FocusAreasSection({ areas }: { areas: ReturnType<typeof focusAreas> }) {
-  return (
-    <section>
-      <SectionHeader title="Focus areas" href="/progress" cta="View all weak topics" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {areas.map((a) => (
-          <div key={a.topic} style={subjectVars(a.subjectId)} className="rounded-xl border border-line bg-surface p-4 shadow-card">
-            <div className="flex items-center gap-2">
-              <span aria-hidden className="h-2 w-2 flex-none rounded-full bg-[var(--sc-solid)]" />
-              <p className="truncate text-sm font-semibold text-ink" title={a.topic}>
-                {a.topic}
-              </p>
-            </div>
-            <p className="mt-0.5 truncate text-xs text-muted">{a.subjectName}</p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-                <div className="h-full rounded-full bg-[var(--sc-solid)]" style={{ width: `${a.masteredPct}%` }} />
-              </div>
-              <span className="text-xs font-semibold tabular-nums text-ink-2">{a.masteredPct}%</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// --- Right rail --------------------------------------------------------------------------
-
-function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={cn("rounded-xl border border-line bg-surface p-5 shadow-card", className)}>{children}</section>;
-}
-
-function AddMaterialCard() {
-  return (
-    <RailCard>
-      <h2 className="text-base font-semibold tracking-tight text-ink">Add study material</h2>
-      <p className="mt-1 text-sm text-muted">Upload your notes, PDFs or slides.</p>
-      <Link
-        href="/upload"
-        className="mt-4 flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-6 text-center transition duration-200 hover:border-brand-300 hover:bg-brand-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10"
-      >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-          <Upload className="h-5 w-5" strokeWidth={2} aria-hidden />
-        </span>
-        <span className="text-sm font-semibold text-brand-700 dark:text-brand-200">Upload files</span>
-        <span className="text-xs text-muted">PDF, DOCX, PPTX or TXT</span>
-      </Link>
-
-      <div className="mt-4 flex items-center gap-3 rounded-xl bg-surface-2/60 p-3">
-        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-brand-sm">
-          <Sparkles className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink">Claude generates</p>
-          <p className="truncate text-xs text-muted">Flashcards, quizzes &amp; summaries</p>
-        </div>
-        <div className="ml-auto flex items-center gap-1 text-muted" aria-hidden>
-          <Layers className="h-4 w-4" strokeWidth={2} />
-          <HelpCircle className="h-4 w-4" strokeWidth={2} />
-          <FileText className="h-4 w-4" strokeWidth={2} />
-        </div>
-      </div>
-    </RailCard>
-  );
-}
-
+// The closing region: the weekly-activity chart, now full width instead of squeezed into the rail.
+// On wide screens the chart and the total sit side by side (chart | stat); they stack under xl.
 function WeeklyActivityCard({ activity }: { activity: WeeklyActivity }) {
   return (
-    <RailCard>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold tracking-tight text-ink">Your weekly activity</h2>
-        <Link
-          href="/progress"
-          className="inline-flex items-center gap-1 rounded-lg px-1 text-xs font-medium text-brand-600 transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-brand-300"
-        >
-          View full progress
-          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-        </Link>
-      </div>
-
-      {activity.hasData ? (
-        <>
-          <ActivityChart activity={activity} />
-          <div className="mt-4 flex items-end justify-between border-t border-line pt-3">
-            <div>
+    <section>
+      <SectionHeader title="This week" href="/progress" cta="Full progress" />
+      <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        {activity.hasData ? (
+          <div className="grid grid-cols-1 items-end gap-6 xl:grid-cols-[minmax(0,1fr)_220px]">
+            <ActivityChart activity={activity} />
+            <div className="border-t border-line pt-4 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
               <p className="text-xs text-muted">Study time this week</p>
-              <p className="text-xl font-bold tabular-nums text-ink">{formatMinutes(activity.totalMinutes)}</p>
+              <p className="text-2xl font-bold tabular-nums text-ink">{formatMinutes(activity.totalMinutes)}</p>
+              {activity.deltaPct !== null ? (
+                <span
+                  className={cn(
+                    "mt-1 inline-flex items-center gap-1 text-xs font-medium",
+                    activity.deltaPct >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                  )}
+                >
+                  {activity.deltaPct >= 0 ? <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.5} /> : <TrendingDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                  {Math.abs(activity.deltaPct)}% vs last week
+                </span>
+              ) : null}
             </div>
-            {activity.deltaPct !== null ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 text-xs font-medium",
-                  activity.deltaPct >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-                )}
-              >
-                {activity.deltaPct >= 0 ? <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.5} /> : <TrendingDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
-                {Math.abs(activity.deltaPct)}% vs last week
-              </span>
-            ) : null}
           </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-surface-2/50 px-4 py-8 text-center">
-          <p className="text-sm font-medium text-ink">No study time yet</p>
-          <p className="mt-1 max-w-[24ch] text-xs text-muted">
-            Start a review or quiz and your weekly study time will show up here.
-          </p>
-        </div>
-      )}
-    </RailCard>
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-xl bg-surface-2/50 px-4 py-8 text-center">
+            <p className="text-sm font-medium text-ink">No study time yet</p>
+            <p className="mt-1 max-w-[32ch] text-xs text-muted">
+              Start a review or quiz and your weekly study time will show up here.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -636,46 +608,5 @@ function ActivityChart({ activity }: { activity: WeeklyActivity }) {
         );
       })}
     </div>
-  );
-}
-
-function UpcomingReviewsCard({ upcoming, now }: { upcoming: ReturnType<typeof upcomingReviews>; now: number }) {
-  return (
-    <RailCard>
-      <h2 className="mb-3 text-base font-semibold tracking-tight text-ink">Upcoming reviews</h2>
-      {upcoming.length === 0 ? (
-        <p className="rounded-xl bg-surface-2/50 px-4 py-6 text-center text-sm text-muted">Nothing due soon.</p>
-      ) : (
-        <ul className="space-y-1">
-          {upcoming.map(({ subject, count, soonestDue }) => {
-            const overdue = soonestDue <= now;
-            return (
-              <li key={subject.id}>
-                <Link
-                  href={`/subjects/${subject.id}`}
-                  style={subjectVars(subject.id)}
-                  className="group flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <span
-                    aria-hidden
-                    className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)] dark:ring-[color:var(--sc-solid)]/25"
-                  >
-                    {subjectInitials(subject.name)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink">{subject.name}</p>
-                    <p className="text-xs text-muted">{count} card{count === 1 ? "" : "s"}</p>
-                  </div>
-                  <span className={cn("flex-none text-xs font-medium tabular-nums", overdue ? "text-red-600 dark:text-red-400" : "text-muted")}>
-                    {formatDueIn(soonestDue, now)}
-                  </span>
-                  <ChevronRight className="h-4 w-4 flex-none text-subtle transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </RailCard>
   );
 }

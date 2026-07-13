@@ -16,7 +16,7 @@ import type { ReviewCardContext } from "@/components/ReviewSession";
 import { Button, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Attempt, Card, Exam, Question, Quiz, Subject } from "@/lib/api/types";
-import { computeStreak, subjectExamDate } from "@/lib/dashboard";
+import { computeStreak, estimateReviewMinutes, subjectExamDate } from "@/lib/dashboard";
 import { daysUntil, subjectInitials } from "@/lib/format";
 import { computeReadiness, overallReadiness, VERDICT_COPY, type Readiness } from "@/lib/readiness";
 import { DEFAULT_REVIEW_SETTINGS, QUESTION_COUNTS, SESSION_SIZES, setReviewSettings, useReviewSettings, type ReviewOrder, type ReviewSettings } from "@/lib/reviewSettings";
@@ -68,10 +68,6 @@ function rows(
     );
 }
 
-// Rough per-card review time (~47s), rounded to whole minutes.
-function estimateMinutes(cardCount: number): number {
-  return Math.max(1, Math.round((cardCount * 47) / 60));
-}
 
 function scaleLabel(subject: Subject): string {
   const base = subject.grading_scale === "german" ? "German scale" : "Swiss scale";
@@ -138,7 +134,7 @@ export function ReviewHubView({
           {/* Stat cards */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard icon={Layers} tone="violet" label="Cards due today" value={String(totalDue)} sub={subjectsDue === 0 ? "Nothing scheduled" : `Across ${subjectsDue} subject${subjectsDue === 1 ? "" : "s"}`} />
-            <StatCard icon={CalendarClock} tone="amber" label="Estimated time" value={`${estimateMinutes(totalDue)} min`} sub="For today's review" />
+            <StatCard icon={CalendarClock} tone="amber" label="Estimated time" value={`${estimateReviewMinutes(totalDue)} min`} sub="For today's review" />
             <StatCard icon={TrendingUp} tone="green" label="Review streak" value={`${streak} day${streak === 1 ? "" : "s"}`} sub={streak > 0 ? "Keep it going!" : "Start today"} />
             <StatCard icon={Target} tone="sky" label="Exam readiness" value={readiness == null ? "—" : `${readiness}%`} sub={readiness == null ? "Run a review to find out" : "Across all subjects"} />
           </div>
@@ -172,9 +168,14 @@ export function ReviewHubView({
                           <span className="sm:hidden">{subject.name} · </span>
                           {due > 0 ? `${due} card${due === 1 ? "" : "s"} due` : "Nothing due"}
                         </p>
+                        {/* Share of this subject's deck that is due — a workload signal, so it takes
+                            the amber "catch-up" tone, never the subject's identity accent. */}
                         <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
                           <div
-                            className="h-full rounded-full bg-[var(--sc-solid)] transition-all duration-500"
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              due > 0 ? "bg-amber-500" : "bg-line-strong",
+                            )}
                             style={{ width: `${Math.max(6, total > 0 ? Math.round((due / total) * 100) : 0)}%` }}
                           />
                         </div>

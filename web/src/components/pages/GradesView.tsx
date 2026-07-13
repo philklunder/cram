@@ -96,18 +96,25 @@ export function GradesView({
   const displayScale = useDisplayScale();
   const rows = useMemo(() => buildRows(subjects, entries), [subjects, entries]);
   const graded = rows.filter((r) => r.currentPct != null);
-  const overallPct =
-    entries.length === 0
-      ? null
-      : Math.round(
-          entries.reduce((s, e) => {
-            const scale = subjects.find((sub) => sub.id === e.subject_id)?.grading_scale;
-            return s + (scale ? gradePercent(scale, e.score) : 0);
-          }, 0) / entries.length,
-        );
-  const avgBySubject =
-    graded.length === 0 ? null : Math.round(graded.reduce((s, r) => s + (r.currentPct ?? 0), 0) / graded.length);
-  const passing = graded.filter((r) => isPassing(r.subject.grading_scale, r.current as number)).length;
+  // The one true average: every grade counts by its own weight, so a 40% final outweighs a 10%
+  // quiz. (It used to be an unweighted mean, shown beside a second "average by subject" tile with
+  // no explanation of why the two disagreed.) Entries carry `weight` as a fraction; a missing or
+  // zero weight falls back to 1 so an unweighted entry still counts once.
+  const overallPct = useMemo(() => {
+    const scaleOf = new Map(subjects.map((s) => [s.id, s.grading_scale] as const));
+    let weighted = 0;
+    let total = 0;
+    for (const e of entries) {
+      const scale = scaleOf.get(e.subject_id);
+      if (!scale) continue;
+      const w = e.weight > 0 ? e.weight : 1;
+      weighted += gradePercent(scale, e.score) * w;
+      total += w;
+    }
+    return total === 0 ? null : Math.round(weighted / total);
+  }, [subjects, entries]);
+
+  const belowTarget = graded.filter((r) => r.status === "below" || r.status === "slightly-below");
 
   const recent = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   const subjectById = new Map(subjects.map((s) => [s.id, s] as const));
@@ -119,10 +126,21 @@ export function GradesView({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <StatCard icon={TrendingUp} label="Overall average" value={overallPct == null ? "—" : formatPercentInScale(displayScale, overallPct)} sub={displayScale === "percentage" ? "Normalized across scales" : `${gradingScaleLabel[displayScale].split(" ")[0]} scale`} />
-            <StatCard icon={BarChart3} label="Average by subject" value={avgBySubject == null ? "—" : formatPercentInScale(displayScale, avgBySubject)} sub={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
+            <StatCard icon={TrendingUp} label="Overall average" value={overallPct == null ? "—" : formatPercentInScale(displayScale, overallPct)} sub="Weighted across every grade" />
+            <StatCard
+              icon={BarChart3}
+              label="Below target"
+              value={String(belowTarget.length)}
+              sub={
+                belowTarget.length === 0
+                  ? "Every subject on track"
+                  : belowTarget.slice(0, 2).map((r) => r.subject.name).join(", ") +
+                    (belowTarget.length > 2 ? ` +${belowTarget.length - 2} more` : "")
+              }
+              tone={belowTarget.length ? "red" : "green"}
+            />
             <StatCard icon={LayoutGrid} label="Total subjects" value={String(subjects.length)} sub="Active subjects" />
-            <StatCard icon={CheckCircle2} label="Passing subjects" value={String(passing)} sub={graded.length ? `${Math.round((passing / graded.length) * 100)}% passing` : "—"} tone="green" />
+            <StatCard icon={CheckCircle2} label="Grades logged" value={String(entries.length)} sub={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
           </div>
 
           <Panel className="p-0">
@@ -255,18 +273,21 @@ function SubjectRow({ row, displayScale, onChanged }: { row: Row; displayScale: 
           </span>
         </Link>
       </td>
+      {/* Current, Target and Latest all read in the subject's OWN scale. Converting the first two
+          to a percent while Latest stayed a raw mark put "74% · target 86% · 2.0" in one row —
+          three numbers on two scales. `currentPct` survives for sorting, status and the trend. */}
       <td className="px-3 py-3">
         {current == null || currentPct == null ? (
           <span className="text-muted">—</span>
         ) : (
           <div>
-            <span className="font-semibold tabular-nums text-ink">{formatPercentInScale(displayScale, currentPct)}</span>
+            <span className="font-semibold tabular-nums text-ink">{formatGrade(scale, current)}</span>
             <span className={cn("block text-xs", STATUS[status].className)}>{STATUS[status].label}</span>
           </div>
         )}
       </td>
       <td className="px-3 py-3 font-medium tabular-nums text-ink-2">
-        {subject.target_grade == null || row.targetPct == null ? "—" : formatPercentInScale(displayScale, row.targetPct)}
+        {subject.target_grade == null ? "—" : formatGrade(scale, subject.target_grade)}
       </td>
       <td className="px-3 py-3">
         {latest ? (
@@ -340,12 +361,18 @@ function StatCard({
   label: string;
   value: string;
   sub: string;
-  tone?: "brand" | "green";
+  tone?: "brand" | "green" | "red";
 }) {
+  const chip =
+    tone === "green"
+      ? "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400"
+      : tone === "red"
+        ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400"
+        : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300";
   return (
     <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
       <div className="flex items-center gap-2.5">
-        <span className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-lg", tone === "green" ? "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400" : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300")}>
+        <span className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-lg", chip)}>
           <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
         </span>
         <span className="text-xs font-medium text-muted">{label}</span>
