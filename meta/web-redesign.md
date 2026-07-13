@@ -44,6 +44,27 @@ captures the cross-cutting decisions; per-surface visual history stays in
   progress bar all removed. The topic pill is **neutral, not the subject accent**, since this is a
   single-subject view with no monogram and a rose tint sat beside the red Shaky chip. The disabled
   "Edit (coming soon)" affordance was removed entirely.
+- **Subjects list `/subjects` (2026-07-13):** the old card grid showed subjects but **no exams at
+  all** (a comment had even stripped exam dates out). Replaced by a dense list **grouped by state**
+  (Needs attention = exam ≤14d or readiness <60% · Exam booked, on track · No exam booked · Past
+  exams) where **each subject row expands to reveal its exams** — each with date, countdown chip,
+  per-exam readiness, card count and a "Prep plan" link — plus a **"New exam for X"** action inside
+  the drawer. Header totals, a search box (matches subject names *and* exam titles), and filter chips
+  with live counts. The most urgent subject auto-expands.
+- **Subject detail `/subjects/[id]` (2026-07-13):** kept the exam-centric model (each exam is a
+  collapsible group of its own cards + quiz) but added the honest-readiness overview it lacked. The
+  header now carries the nearest-exam **countdown chip**, an **"X% ready · <verdict>"** read, and the
+  **primary Study action** (previously a separate band). A two-card **overview** row was added: *Exam
+  readiness* (score + verdict hint + mastered/learning/shaky split) and *Topics* (weakest first). The
+  ProgressPanel section was dropped (the readiness card's split replaces it). The subject page still
+  routes "Study" to **Flashcards practice, not Review** — it browses/organises, it does not assess
+  (progress-model.md), so the action is deliberately not mislabelled "Review".
+- **`SubjectBundle` gained `attempts`.** The detail page can't compute exam readiness without the
+  quiz-attempt half; `loadSubjectBundle` now slices attempts (by the subject's question ids) from
+  the same cached snapshot it already reads.
+- **Both `SubjectsList` and `SubjectDetail` were split into a self-fetching wrapper + a pure
+  `…View({ data })`** (matching `DashboardView`/`FlashcardsView`), so the `/preview` harness can
+  render each full page from mock data without a backend — the only way to verify them visually.
 - **`estimateReviewMinutes` is one shared helper** (`lib/dashboard.ts`), used by the dashboard hero
   and the Review hub so the "~X min" figure can't disagree between them.
 
@@ -94,7 +115,10 @@ captures the cross-cutting decisions; per-surface visual history stays in
   decision); whether a 0.7 should contribute 0.7 to readiness vs pass/fail at 0.6 is unresolved.
 - **Review / Quizzes session flows** and the shared focus-shell concept from the mockup are not yet
   built in the app. The owner is happy with Review/Quizzes for now and will decide later whether to
-  touch them; Flashcards (the hub) is done.
+  touch them. Flashcards, the Subjects list, and the Subject detail page are done.
+- **Per-exam readiness inside the detail page's `ExamSection` headers** was left as-is (they show a
+  countdown + cramming mastery %); adding a scored-readiness bar there is a possible follow-up but
+  risks conflicting with the page's browse-not-assess stance.
 
 ## Last updated
 2026-07-13
