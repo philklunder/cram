@@ -103,6 +103,12 @@ export function computeDue(cards: Card[], now: number = Date.now()): DueStats {
   return { due, subjectsCount: subjects.size };
 }
 
+// Rough wall-clock estimate for reviewing N cards (~47s each), floored at 1 minute. Shared by the
+// dashboard hero and the Review hub so the "about X minutes" figure never disagrees between them.
+export function estimateReviewMinutes(cardCount: number): number {
+  return Math.max(1, Math.round((cardCount * 47) / 60));
+}
+
 // --- Quiz average ------------------------------------------------------------------------
 
 export interface QuizStats {

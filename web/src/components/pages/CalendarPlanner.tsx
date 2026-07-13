@@ -10,8 +10,8 @@ import { Button, EmptyState, ErrorBox, Skeleton, cn, inputClass, labelClass, sel
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, StudySession, Subject } from "@/lib/api/types";
 import { subjectExamDate, weeklyActivity } from "@/lib/dashboard";
-import { readinessBySubject } from "@/lib/readiness";
-import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
+import { VERDICT_FILL, readinessBySubject } from "@/lib/readiness";
+import { DATE_LOCALE, daysUntil, formatDate, subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
 
@@ -140,7 +140,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
     return { ts, day: d.getDate(), inMonth: d.getMonth() === view.getMonth(), isToday: startOfLocalDay(ts) === startOfLocalDay(now) };
   });
 
-  const monthLabel = view.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = view.toLocaleDateString(DATE_LOCALE, { month: "long", year: "numeric" });
 
   // "% ready" is the app-wide readiness score, written only by Reviews — not card mastery alone.
   const readinessOf = useMemo(
@@ -252,7 +252,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
                         <div className="text-right"><p className={cn("text-lg font-bold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-ink")}>{days}</p><p className="text-[10px] uppercase text-muted">days left</p></div>
                       </div>
                       <div className="mt-3 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-[var(--sc-solid)]" style={{ width: `${untested ? 0 : r.score}%` }} /></div>
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"><div className={cn("h-full rounded-full", VERDICT_FILL[r.verdict])} style={{ width: `${untested ? 0 : r.score}%` }} /></div>
                         <span className="text-xs font-medium tabular-nums text-muted">{untested ? "Untested" : `${r.score}% ready`}</span>
                       </div>
                     </Link>
@@ -278,7 +278,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
                         <span className="truncate font-medium text-ink">{s.name}</span>
                         <span className={cn("flex-none font-semibold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-muted")}>{days}d</span>
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-[var(--sc-solid)]" style={{ width: `${readiness}%` }} /></div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-line"><div className={cn("h-full rounded-full", VERDICT_FILL[r.verdict])} style={{ width: `${readiness}%` }} /></div>
                     </li>
                   );
                 })}

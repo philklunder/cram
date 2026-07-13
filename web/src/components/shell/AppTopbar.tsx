@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu, Search } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, Plus, Search } from "lucide-react";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/components/ui";
@@ -34,12 +35,28 @@ export function AppTopbar({
         <SearchField />
 
         <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
+          <AddMaterialButton />
           <ThemeToggle />
           <NotificationsBell />
           <UserMenu email={email} />
         </div>
       </div>
     </header>
+  );
+}
+
+// The primary "get material into Cram" action, promoted out of the old dashboard-only rail card so
+// it's reachable from every page. Icon-only under `sm` to save the narrow top bar; full label above.
+function AddMaterialButton() {
+  return (
+    <Link
+      href="/upload"
+      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-2.5 text-sm font-medium text-ink-2 shadow-sm transition duration-200 ease-out hover:border-brand-300 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:border-brand-500/40"
+      aria-label="Add study material"
+    >
+      <Plus className="h-4 w-4 flex-none" strokeWidth={2.5} aria-hidden />
+      <span className="hidden sm:inline">Add material</span>
+    </Link>
   );
 }
 
