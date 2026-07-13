@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, ChevronRight, GraduationCap, LayoutGrid, TrendingUp } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 
 import { GradesPanel } from "@/components/GradesPanel";
+import { Modal } from "@/components/Modal";
 import { PageHeader } from "@/components/pages/shared";
 import {
   Button,
@@ -118,32 +119,41 @@ export function GradesView({
 
   const recent = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   const subjectById = new Map(subjects.map((s) => [s.id, s] as const));
+  const [logOpen, setLogOpen] = useState(false);
 
   return (
     <section>
-      <PageHeader title="Grades" subtitle="Manage subjects, marks, and averages." />
+      <PageHeader
+        title="Grades"
+        subtitle="The marks you actually received. Cram uses them to pace your revision."
+        action={
+          <Button size="sm" onClick={() => setLogOpen(true)} disabled={subjects.length === 0}>
+            <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Log a grade
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <StatCard icon={TrendingUp} label="Overall average" value={overallPct == null ? "—" : formatPercentInScale(displayScale, overallPct)} sub="Weighted across every grade" />
-            <StatCard
-              icon={BarChart3}
+      <div className="space-y-6">
+        {/* Three figures as one hairline strip (matches the other pages). */}
+        <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+          <div className="-m-px grid grid-cols-1 sm:grid-cols-3">
+            <Figure value={overallPct == null ? "—" : formatPercentInScale(displayScale, overallPct)} label="Overall average" foot="Weighted across every grade" />
+            <Figure
+              value={belowTarget.length}
               label="Below target"
-              value={String(belowTarget.length)}
-              sub={
+              tone={belowTarget.length ? "red" : "green"}
+              foot={
                 belowTarget.length === 0
                   ? "Every subject on track"
                   : belowTarget.slice(0, 2).map((r) => r.subject.name).join(", ") +
                     (belowTarget.length > 2 ? ` +${belowTarget.length - 2} more` : "")
               }
-              tone={belowTarget.length ? "red" : "green"}
             />
-            <StatCard icon={LayoutGrid} label="Total subjects" value={String(subjects.length)} sub="Active subjects" />
-            <StatCard icon={CheckCircle2} label="Grades logged" value={String(entries.length)} sub={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
+            <Figure value={entries.length} label="Grades logged" foot={`Across ${graded.length} subject${graded.length === 1 ? "" : "s"}`} />
           </div>
+        </div>
 
-          <Panel className="p-0">
+        <Panel className="p-0">
             <div className="flex items-center justify-between px-5 pt-5">
               <h2 className="text-base font-semibold tracking-tight text-ink">Subject overview</h2>
               <Link href="/subjects" className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300">
@@ -224,26 +234,14 @@ export function GradesView({
           </Panel>
         </div>
 
-        {/* Right rail: log a grade (subjects are created in the Subjects section, not here) */}
-        <aside className="min-w-0 space-y-6">
-          <AddGradeForm subjects={subjects} exams={exams} entries={entries} onAdded={onChanged} />
-          <div className="rounded-xl border border-line bg-surface-2/40 p-4">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden />
-              <p className="text-sm font-semibold text-ink">How grades work</p>
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted">
-              Grade an exam once it&apos;s over and it moves to that subject&apos;s{" "}
-              <span className="font-medium text-ink-2">Past exams</span> — its flashcards and quiz stay,
-              but it drops out of your active revision. New subjects are created in{" "}
-              <Link href="/subjects" className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300">
-                Subjects
-              </Link>
-              .
-            </p>
-          </div>
-        </aside>
-      </div>
+      <LogGradeModal
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        subjects={subjects}
+        exams={exams}
+        entries={entries}
+        onAdded={onChanged}
+      />
     </section>
   );
 }
@@ -350,35 +348,14 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  tone = "brand",
-}: {
-  icon: typeof TrendingUp;
-  label: string;
-  value: string;
-  sub: string;
-  tone?: "brand" | "green" | "red";
-}) {
-  const chip =
-    tone === "green"
-      ? "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400"
-      : tone === "red"
-        ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400"
-        : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300";
+// Icon-less figure cell for the strip (mirrors the dashboard/progress). Colour = quality only.
+function Figure({ value, label, foot, tone }: { value: number | string; label: string; foot: React.ReactNode; tone?: "green" | "red" }) {
+  const color = tone === "green" ? "text-green-600 dark:text-green-400" : tone === "red" ? "text-red-600 dark:text-red-400" : "text-ink";
   return (
-    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-      <div className="flex items-center gap-2.5">
-        <span className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-lg", chip)}>
-          <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-        </span>
-        <span className="text-xs font-medium text-muted">{label}</span>
-      </div>
-      <p className="mt-3 text-2xl font-bold tabular-nums text-ink">{value}</p>
-      <p className="mt-0.5 text-xs text-muted">{sub}</p>
+    <div className="border-l border-t border-line p-4">
+      <div className={cn("text-2xl font-bold tabular-nums", color)}>{value}</div>
+      <div className="mt-0.5 text-xs text-muted">{label}</div>
+      <div className="mt-1.5 min-h-[16px] text-[11px] font-medium text-muted">{foot}</div>
     </div>
   );
 }
@@ -406,12 +383,16 @@ function ungradedExamsFor(subjectId: string, exams: Exam[], entries: GradeEntry[
     });
 }
 
-function AddGradeForm({
+function LogGradeModal({
+  open,
+  onClose,
   subjects,
   exams,
   entries,
   onAdded,
 }: {
+  open: boolean;
+  onClose: () => void;
   subjects: Subject[];
   exams: Exam[];
   entries: GradeEntry[];
@@ -497,13 +478,14 @@ function AddGradeForm({
         weight: weightVal / 100,
         date: new Date(date).toISOString(),
       });
-      // Keep the subject in context; reset the rest so a second grade is quick to log.
+      // Reset the transient fields, tell the page to reload, and close the modal.
       setExamChoice("");
       setTitle("");
       setScore("");
       setKind("exam");
       setDate(today());
       onAdded();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the grade.");
     } finally {
@@ -512,12 +494,7 @@ function AddGradeForm({
   }
 
   return (
-    <Panel className="space-y-5">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight text-ink">Log a grade</h2>
-        <p className="mt-0.5 text-sm text-muted">Pick a subject, then the exam it&apos;s for.</p>
-      </div>
-
+    <Modal open={open} onClose={onClose} title="Log a grade" description="Pick a subject, then the exam it's for.">
       {subjects.length === 0 ? (
         <EmptyState
           title="No subjects yet"
@@ -611,12 +588,15 @@ function AddGradeForm({
           ) : null}
 
           {error ? <ErrorBox message={error} /> : null}
-          <Button type="submit" className="w-full" loading={busy} disabled={!subject || !detailsReady}>
-            Save grade
-          </Button>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={busy} disabled={!subject || !detailsReady}>
+              Save grade
+            </Button>
+          </div>
         </form>
       )}
-    </Panel>
+    </Modal>
   );
 }
 

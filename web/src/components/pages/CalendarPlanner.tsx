@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { Modal } from "@/components/Modal";
 import { PageHeader, SelectChevron } from "@/components/pages/shared";
 import { Button, EmptyState, ErrorBox, Skeleton, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, StudySession, Subject } from "@/lib/api/types";
-import { subjectExamDate, weeklyActivity } from "@/lib/dashboard";
+import { subjectExamDate } from "@/lib/dashboard";
 import { VERDICT_FILL, readinessBySubject } from "@/lib/readiness";
 import { DATE_LOCALE, daysUntil, formatDate, subjectInitials } from "@/lib/format";
 import { subjectVars } from "@/lib/subjectColor";
@@ -100,8 +100,6 @@ function buildEvents(subjects: Subject[], exams: Exam[], blocks: StudyBlock[], m
   return map;
 }
 
-const KIND_LABEL: Record<EventKind, string> = { exam: "Exam", study: "Study" };
-
 export function CalendarPlanner({ subjects, exams, cards, studySessions, questions, quizzes, attempts, now = Date.now() }: PlannerData & { now?: number }) {
   const today = new Date(now);
   const [view, setView] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -166,119 +164,107 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
     .sort((a, b) => a.block.date.localeCompare(b.block.date))
     .slice(0, 6);
 
-  const activity = weeklyActivity(studySessions, now);
-  const goalHours = 10;
-  const doneHours = activity.totalMinutes / 60;
-  const goalPct = Math.min(100, Math.round((doneHours / goalHours) * 100));
-
-  // Today's agenda = suggested events on today (if the visible month contains today).
-  const agenda = (events.get(dayKey(startOfLocalDay(now))) ?? []).slice(0, 4);
+  // Cards-due workload per day, from today onward — an amber count badge on each day so the
+  // calendar shows what's coming, not only the exam deadlines. Overdue cards are "due now" and
+  // belong on the Review page, not scattered across past days, so they're skipped here.
+  const dueByDay = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cards) {
+      const dueTs = startOfLocalDay(new Date(c.due_date).getTime());
+      if (dueTs < startOfLocalDay(now)) continue;
+      const k = dayKey(dueTs);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [cards, now]);
 
   return (
     <section>
       <PageHeader
-        title="Study planner"
-        subtitle="See every exam date at a glance and block out your own study time."
+        title="Calendar"
+        subtitle="Every exam date, plus the study time you block out for it."
         action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" disabled title="Claude-generated study plans are coming soon">
-              <Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden /> Plan with Claude
-            </Button>
-            <Button size="sm" onClick={() => setAddOpen(true)} disabled={subjects.length === 0}>
-              <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Add session
-            </Button>
-          </div>
+          <Button size="sm" onClick={() => setAddOpen(true)} disabled={subjects.length === 0}>
+            <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Block out study time
+          </Button>
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
-            {/* Calendar toolbar */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-1">
-                <button type="button" aria-label="Previous month" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-ink-2 transition hover:bg-surface-2"><ChevronLeft className="h-4 w-4" strokeWidth={2} /></button>
-                <button type="button" onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))} className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:bg-surface-2">Today</button>
-                <button type="button" aria-label="Next month" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-ink-2 transition hover:bg-surface-2"><ChevronRight className="h-4 w-4" strokeWidth={2} /></button>
-              </div>
-              <h2 className="text-lg font-semibold tracking-tight text-ink">{monthLabel}</h2>
-              <div className="flex gap-3 text-xs text-muted">
-                <Legend color="#f59e0b" label="Exam" />
-                <Legend color="#7c4dff" label="Study" />
-              </div>
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+          {/* Calendar toolbar */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1">
+              <button type="button" aria-label="Previous month" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-ink-2 transition hover:bg-surface-2"><ChevronLeft className="h-4 w-4" strokeWidth={2} /></button>
+              <button type="button" onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))} className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:bg-surface-2">Today</button>
+              <button type="button" aria-label="Next month" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-ink-2 transition hover:bg-surface-2"><ChevronRight className="h-4 w-4" strokeWidth={2} /></button>
             </div>
-
-            {/* Weekday header */}
-            <div className="grid grid-cols-7 border-b border-line pb-2 text-center text-xs font-medium text-muted">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <span key={d}>{d}</span>)}
+            <h2 className="text-lg font-semibold tracking-tight text-ink">{monthLabel}</h2>
+            <div className="flex gap-3 text-xs text-muted">
+              <Legend color="#dc2626" label="Exam" />
+              <Legend color="#7c4dff" label="Study" />
+              <Legend color="#d97706" label="Cards due" />
             </div>
-            {/* Day grid */}
-            <div className="grid grid-cols-7">
-              {cells.map((c) => {
-                const evs = events.get(dayKey(c.ts)) ?? [];
-                return (
-                  <div key={c.ts} className={cn("min-h-[76px] border-b border-r border-line p-1.5 [&:nth-child(7n)]:border-r-0", !c.inMonth && "bg-surface-2/30")}>
-                    <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium tabular-nums", c.isToday ? "bg-brand-500 text-white" : c.inMonth ? "text-ink-2" : "text-subtle")}>{c.day}</span>
-                    <div className="mt-1 space-y-1">
-                      {evs.slice(0, 2).map((e, i) => (
-                        <EventPill key={i} event={e} />
-                      ))}
-                      {evs.length > 2 ? <p className="px-1 text-[10px] font-medium text-muted">+{evs.length - 2} more</p> : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-xs text-muted">
-              Exam dates come from your subjects. Study sessions you add are saved on this device only (not yet synced to iOS).
-            </p>
           </div>
 
-          {/* Upcoming exams */}
-          {upcoming.length > 0 ? (
-            <div>
-              <h2 className="mb-3 text-lg font-semibold tracking-tight text-ink">Upcoming exams</h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Weekday header */}
+          <div className="grid grid-cols-7 border-b border-line pb-2 text-center text-xs font-medium text-muted">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <span key={d}>{d}</span>)}
+          </div>
+          {/* Day grid */}
+          <div className="grid grid-cols-7">
+            {cells.map((c) => {
+              const evs = events.get(dayKey(c.ts)) ?? [];
+              const due = dueByDay.get(dayKey(c.ts)) ?? 0;
+              return (
+                <div key={c.ts} className={cn("min-h-[84px] border-b border-r border-line p-1.5 [&:nth-child(7n)]:border-r-0", !c.inMonth && "bg-surface-2/30")}>
+                  <div className="flex items-center justify-between">
+                    <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium tabular-nums", c.isToday ? "bg-brand-500 text-white" : c.inMonth ? "text-ink-2" : "text-subtle")}>{c.day}</span>
+                    {due > 0 && c.inMonth ? (
+                      <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" title={`${due} card${due === 1 ? "" : "s"} due`}>
+                        {due}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 space-y-1">
+                    {evs.slice(0, 2).map((e, i) => (
+                      <EventPill key={i} event={e} />
+                    ))}
+                    {evs.length > 2 ? <p className="px-1 text-[10px] font-medium text-muted">+{evs.length - 2} more</p> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            Exam dates come from your subjects. The amber count is cards falling due that day. Study sessions you add are saved on this device only (not yet synced to iOS).
+          </p>
+        </div>
+
+        {/* Coming up + your own study sessions, side by side below the calendar. */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div>
+            <h2 className="mb-3 text-base font-semibold tracking-tight text-ink">Coming up</h2>
+            {upcoming.length === 0 ? (
+              <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted shadow-card">No exams scheduled. Add an exam to a subject to start the countdown.</p>
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
                 {upcoming.map(({ s, days, examDate }) => {
                   const r = readinessOf.get(s.id)!;
                   const untested = r.verdict === "untested";
                   return (
-                    <Link key={s.id} href={`/subjects/${s.id}`} style={subjectVars(s.id)} className="rounded-xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <span aria-hidden className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">{subjectInitials(s.name)}</span>
-                          <div><p className="font-semibold text-ink">{s.name} exam</p><p className="text-xs text-muted">{formatDate(examDate)}</p></div>
+                    <li key={s.id} style={subjectVars(s.id)} className="border-b border-line last:border-b-0">
+                      <Link href={`/subjects/${s.id}`} className="flex items-center gap-3 p-3 transition hover:bg-surface-2/60">
+                        <span aria-hidden className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ring-[var(--sc-line)] bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">{subjectInitials(s.name)}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-ink">{s.name} exam</p>
+                          <p className="text-xs text-muted">{formatDate(examDate)} · {untested ? "Untested" : `${r.score}% ready`}</p>
                         </div>
-                        <div className="text-right"><p className={cn("text-lg font-bold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-ink")}>{days}</p><p className="text-[10px] uppercase text-muted">days left</p></div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"><div className={cn("h-full rounded-full", VERDICT_FILL[r.verdict])} style={{ width: `${untested ? 0 : r.score}%` }} /></div>
-                        <span className="text-xs font-medium tabular-nums text-muted">{untested ? "Untested" : `${r.score}% ready`}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Rail */}
-        <aside className="min-w-0 space-y-5">
-          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <h2 className="mb-3 text-base font-semibold tracking-tight text-ink">Readiness countdown</h2>
-            {upcoming.length === 0 ? <p className="text-sm text-muted">No exams scheduled.</p> : (
-              <ul className="space-y-3">
-                {upcoming.slice(0, 3).map(({ s, days }) => {
-                  const r = readinessOf.get(s.id)!;
-                  const readiness = r.verdict === "untested" ? 0 : r.score;
-                  return (
-                    <li key={s.id} style={subjectVars(s.id)}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className="truncate font-medium text-ink">{s.name}</span>
-                        <span className={cn("flex-none font-semibold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-muted")}>{days}d</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-line"><div className={cn("h-full rounded-full", VERDICT_FILL[r.verdict])} style={{ width: `${readiness}%` }} /></div>
+                        <span className="w-[88px] flex-none">
+                          <span className="h-1.5 block overflow-hidden rounded-full bg-line"><span className={cn("block h-full rounded-full", VERDICT_FILL[r.verdict])} style={{ width: `${untested ? 0 : r.score}%` }} /></span>
+                        </span>
+                        <span className={cn("w-12 flex-none text-right text-sm font-semibold tabular-nums", (days as number) <= 7 ? "text-red-600 dark:text-red-400" : "text-muted")}>{days}d</span>
+                      </Link>
                     </li>
                   );
                 })}
@@ -286,31 +272,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
             )}
           </div>
 
-          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <h2 className="mb-3 text-base font-semibold tracking-tight text-ink">Today&rsquo;s agenda</h2>
-            {agenda.length === 0 ? <p className="text-sm text-muted">Nothing planned for today.</p> : (
-              <ul className="space-y-2">
-                {agenda.map((e, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <span className="w-12 flex-none text-xs font-medium tabular-nums text-muted">{e.time}</span>
-                    <span style={subjectVars(e.subject.id)} className="h-2 w-2 flex-none rounded-full bg-[var(--sc-solid)]" />
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{e.subject.name} <span className="text-muted">{KIND_LABEL[e.kind]}</span></span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-semibold tracking-tight text-ink">Weekly goal</h2><Link href="/progress" className="text-xs font-medium text-brand-600 dark:text-brand-300">Details</Link></div>
-            <div className="flex items-center gap-4">
-              <GoalRing pct={goalPct} />
-              <div><p className="text-sm text-muted">This week</p><p className="text-lg font-bold tabular-nums text-ink">{doneHours.toFixed(1)}h <span className="text-sm font-medium text-muted">/ {goalHours}h</span></p></div>
-            </div>
-          </div>
-
-          {/* Your study sessions — the blocks the learner has added (local to this device). */}
-          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
+          <div>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold tracking-tight text-ink">Your study sessions</h2>
               <Button variant="ghost" size="sm" onClick={() => setAddOpen(true)} disabled={subjects.length === 0}>
@@ -318,11 +280,11 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
               </Button>
             </div>
             {upcomingBlocks.length === 0 ? (
-              <p className="text-sm text-muted">No study sessions yet. Add one to block out time before an exam.</p>
+              <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted shadow-card">No study sessions yet. Block out time before an exam and it appears on the calendar.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
                 {upcomingBlocks.map(({ block, subject }) => (
-                  <li key={block.id} className="flex items-center gap-3" style={subjectVars(subject.id)}>
+                  <li key={block.id} className="flex items-center gap-3 border-b border-line p-3 last:border-b-0" style={subjectVars(subject.id)}>
                     <span className="h-2 w-2 flex-none rounded-full bg-[var(--sc-solid)]" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-ink">{subject.name}{block.note ? <span className="font-normal text-muted"> · {block.note}</span> : null}</p>
@@ -336,13 +298,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
               </ul>
             )}
           </div>
-
-          <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/30 p-5 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
-            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden /><h2 className="text-base font-semibold tracking-tight text-ink">Plan with Claude</h2></div>
-            <p className="mt-2 text-sm text-ink-2">Soon, Claude will build a study plan across your subjects — weighted by exam dates, your grades, and what&rsquo;s weakest — and drop the sessions straight onto this calendar.</p>
-            <p className="mt-2 text-xs font-medium text-muted">Coming soon</p>
-          </div>
-        </aside>
+        </div>
       </div>
 
       <AddSessionModal
@@ -429,7 +385,8 @@ function AddSessionModal({
   );
 }
 
-const KIND_COLOR: Record<EventKind, string> = { exam: "#f59e0b", study: "#7c4dff" };
+// Exam = red (a deadline, urgency); study block = violet (the learner's own planned action).
+const KIND_COLOR: Record<EventKind, string> = { exam: "#dc2626", study: "#7c4dff" };
 function EventPill({ event }: { event: CalEvent }) {
   const color = KIND_COLOR[event.kind];
   const text = event.kind === "exam" ? event.label : `${event.subject.name}${event.note ? `: ${event.note}` : " study"}`;
@@ -443,16 +400,6 @@ function EventPill({ event }: { event: CalEvent }) {
 
 function Legend({ color, label, style }: { color: string; label: string; style?: React.CSSProperties }) {
   return <span className="inline-flex items-center gap-1" style={style}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />{label}</span>;
-}
-
-function GoalRing({ pct }: { pct: number }) {
-  const size = 76, stroke = 8, r = (size - stroke) / 2, c = 2 * Math.PI * r, len = (pct / 100) * c;
-  return (
-    <div className="relative flex-none" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><g transform={`rotate(-90 ${size / 2} ${size / 2})`}><circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(148 163 184 / 0.2)" strokeWidth={stroke} /><circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#7c4dff" strokeWidth={stroke} strokeDasharray={`${len} ${c - len}`} strokeLinecap="round" /></g></svg>
-      <div className="absolute inset-0 flex items-center justify-center"><span className="text-sm font-bold tabular-nums text-ink">{pct}%</span></div>
-    </div>
-  );
 }
 
 export function CalendarPlannerPage() {
