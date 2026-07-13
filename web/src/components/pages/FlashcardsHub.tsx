@@ -9,24 +9,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  Layers,
-  Pencil,
-  Play,
-  Search,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Play, Search, Sparkles } from "lucide-react";
 
 import { FlashcardPractice } from "@/components/FlashcardPractice";
 import { PageHeader } from "@/components/pages/shared";
-import { Badge, Button, EmptyState, ErrorBox, Skeleton, buttonClass, cn, difficultyTone, inputClass } from "@/components/ui";
+import { Button, EmptyState, ErrorBox, Skeleton, buttonClass, cn, inputClass } from "@/components/ui";
 import { listSources, loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Card, Exam, Source, Subject } from "@/lib/api/types";
-import { computeProgress, type SubjectProgress } from "@/lib/progress";
+import { computeProgress } from "@/lib/progress";
 import { WHOLE_SUBJECT, examsForSubject, inExamScope, scopeLabel } from "@/lib/scope";
 import { subjectVars } from "@/lib/subjectColor";
 import { ALL_SUBJECTS } from "@/lib/studyLink";
@@ -40,18 +30,28 @@ function cardMastery(c: Card): Mastery {
   if (c.lapses > 0 || c.repetitions === 0) return "low";
   return "medium";
 }
-const MASTERY_META: Record<Mastery, { label: string; bar: string; text: string; pct: number }> = {
-  high: { label: "Mastered", bar: "bg-green-500", text: "text-green-600 dark:text-green-400", pct: 100 },
-  medium: { label: "Learning", bar: "bg-amber-400", text: "text-amber-600 dark:text-amber-400", pct: 55 },
-  low: { label: "Needs work", bar: "bg-red-500", text: "text-red-600 dark:text-red-400", pct: 22 },
+// A three-state chip, no internal SM-2 scalar. `chip` is a full pill (surface tint + ring) shown on
+// each card row; `text` is the bare coloured label reused where a pill would be too heavy.
+const MASTERY_META: Record<Mastery, { label: string; chip: string; text: string }> = {
+  high: {
+    label: "Mastered",
+    chip: "bg-green-50 text-green-700 ring-green-600/15 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-400/20",
+    text: "text-green-600 dark:text-green-400",
+  },
+  medium: {
+    label: "Learning",
+    chip: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  low: {
+    label: "Shaky",
+    chip: "bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/20",
+    text: "text-red-600 dark:text-red-400",
+  },
 };
 
-// The ring's number. Unlike "% of cards mastered" (which needs a card to reach a 21-day interval
-// before it moves at all), this gives half credit for a card that's being learned, so a single
-// honest Review visibly moves it. Matches the card-mastery term in lib/readiness.ts.
-function masteryScore(p: SubjectProgress): number {
-  return p.total === 0 ? 0 : Math.round(((p.mastered + 0.5 * p.learning) / p.total) * 100);
-}
+// Weakest → strongest, for the "Weakest first" sort.
+const MASTERY_RANK: Record<Mastery, number> = { low: 0, medium: 1, high: 2 };
 
 const PAGE_SIZE = 8;
 
@@ -91,7 +91,6 @@ export function FlashcardsView({
   const [examScope, setExamScope] = useState(scope?.examScope ?? WHOLE_SUBJECT);
   const [deckId, setDeckId] = useState("all");
   const [query, setQuery] = useState("");
-  const [difficulty, setDifficulty] = useState("all");
   const [status, setStatus] = useState("all");
   const [dueOnly, setDueOnly] = useState(scope?.dueOnly ?? false);
   const [sort, setSort] = useState("newest");
@@ -127,7 +126,6 @@ export function FlashcardsView({
     const q = query.trim().toLowerCase();
     const out = scopeCards.filter((c) => {
       if (deckId !== "all" && c.source_id !== deckId) return false;
-      if (difficulty !== "all" && String(c.difficulty) !== difficulty) return false;
       if (status !== "all" && cardMastery(c) !== status) return false;
       if (dueOnly && new Date(c.due_date).getTime() > now) return false;
       if (q && !(c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q)))
@@ -135,13 +133,15 @@ export function FlashcardsView({
       return true;
     });
     return out.sort((a, b) => {
-      if (sort === "difficulty") return b.difficulty - a.difficulty;
+      // "Weakest first" sorts by mastery bucket (shaky → learning → mastered), a user-facing
+      // signal, not the internal SM-2 difficulty scalar the D1–D5 codes exposed.
+      if (sort === "weakest") return MASTERY_RANK[cardMastery(a)] - MASTERY_RANK[cardMastery(b)];
       const d = a.created_at.localeCompare(b.created_at);
       return sort === "oldest" ? d : -d;
     });
     // `now` is deliberately not a dep — it's re-read on every render that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeCards, deckId, difficulty, status, dueOnly, query, sort]);
+  }, [scopeCards, deckId, status, dueOnly, query, sort]);
 
   // Arriving from a Subject-page "Study" deep-link opens practice once. The guard must survive a
   // re-render, or Exit would land on a page whose `?start=1` is still in the URL and immediately
@@ -156,8 +156,6 @@ export function FlashcardsView({
   const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const p = computeProgress(scopeCards);
-  const difficult = scopeCards.filter((c) => c.difficulty >= 4).length;
-  const score = masteryScore(p);
 
   if (subjectsWithCards.length === 0) {
     return (
@@ -191,14 +189,20 @@ export function FlashcardsView({
   return (
     <section style={subjectVars(subject?.id ?? "cram")}>
       <PageHeader
-        title="Flashcards"
-        subtitle="Browse, search and cram your decks. Practice here is free — your progress is measured in Review."
+        title={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            Flashcards
+            <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-inset ring-line">
+              Free practice · doesn&rsquo;t change your score
+            </span>
+          </span>
+        }
+        subtitle="Browse, search and cram every card you own. To move your readiness, run a Review instead."
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-5 lg:col-span-2">
-          {/* Selectors + actions */}
-          <div className="flex flex-wrap items-end gap-3">
+      <div className="space-y-5">
+        {/* Selectors + actions */}
+        <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[130px] flex-1">
               <span className="mb-1 block text-xs font-medium text-muted">Subject</span>
               <select
@@ -268,18 +272,17 @@ export function FlashcardsView({
             </Link>
           </div>
 
-          {/* Stat cards — the current subject + exam scope. */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MiniStat icon={Layers} tone="brand" value={p.total} label="Total cards" />
-            <MiniStat icon={BookOpen} tone="amber" value={p.dueNow} label="Due today" />
-            <MiniStat icon={Play} tone="green" value={p.mastered} label="Mastered" sub={`${p.masteredPct}%`} />
-            <MiniStat
-              icon={TriangleAlert}
-              tone="red"
-              value={difficult}
-              label="Difficult"
-              sub={p.total ? `${Math.round((difficult / p.total) * 100)}%` : "0%"}
-            />
+          {/* Figures for the current subject + exam scope, as one hairline strip (matches the
+              dashboard). Colour is quality only: Mastered green, Shaky red; Total and Due are
+              neutral counts. Reads scopeCards, never the filtered list, so searching one card
+              never rewrites these. */}
+          <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+            <div className="-m-px grid grid-cols-2 sm:grid-cols-4">
+              <Figure value={p.total} label={`Cards in ${scopeName}`} />
+              <Figure value={p.dueNow} label="Due now" foot={p.dueNow > 0 ? "Cram or review them" : "All caught up"} />
+              <Figure value={p.mastered} sub={p.total ? `${p.masteredPct}%` : undefined} label="Mastered" tone="green" />
+              <Figure value={p.shaky} label="Shaky" tone="red" foot={p.shaky > 0 ? "Needs attention" : "None"} />
+            </div>
           </div>
 
           {/* Filters */}
@@ -315,24 +318,16 @@ export function FlashcardsView({
               <BookOpen className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
               Due only
             </button>
-            <FilterSelect value={difficulty} onChange={reset(setDifficulty)} label="Difficulty">
-              <option value="all">Any difficulty</option>
-              {[1, 2, 3, 4, 5].map((d) => (
-                <option key={d} value={String(d)}>
-                  D{d}
-                </option>
-              ))}
-            </FilterSelect>
             <FilterSelect value={status} onChange={reset(setStatus)} label="Status">
               <option value="all">Any status</option>
               <option value="high">Mastered</option>
               <option value="medium">Learning</option>
-              <option value="low">Needs work</option>
+              <option value="low">Shaky</option>
             </FilterSelect>
             <FilterSelect value={sort} onChange={reset(setSort)} label="Sort">
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
-              <option value="difficulty">Hardest</option>
+              <option value="weakest">Weakest first</option>
             </FilterSelect>
           </div>
 
@@ -371,166 +366,57 @@ export function FlashcardsView({
             </>
           )}
         </div>
-
-        {/* Rail */}
-        <aside className="min-w-0 space-y-5">
-          <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <h2 className="text-base font-semibold tracking-tight text-ink">Your progress</h2>
-            <p className="mb-4 truncate text-xs text-muted">
-              {allSubjects ? "Across all subjects" : (scopeLabel(subjectExams, examScope) ?? scopeName)}
-            </p>
-            <div className="flex items-center gap-4">
-              <ProgressRing pct={score} />
-              <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
-                <LegendRow color="#16a34a" label="Mastered" value={p.mastered} />
-                <LegendRow color="#f59e0b" label="Learning" value={p.learning} />
-                <LegendRow color="#ef4444" label="Needs work" value={p.shaky} />
-              </ul>
-            </div>
-            <p className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-subtle">
-              Cramming doesn&rsquo;t change these.{" "}
-              <Link href="/review" className="font-medium text-brand-600 hover:underline dark:text-brand-300">
-                Run a Review
-              </Link>{" "}
-              to test yourself and move your mastery.
-            </p>
-          </div>
-
-          {decks.length > 0 ? (
-            <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-              <h2 className="mb-3 text-base font-semibold tracking-tight text-ink">Decks in {subject!.name}</h2>
-              <ul className="space-y-1">
-                {decks.slice(0, 5).map((d) => {
-                  const n = scopeCards.filter((c) => c.source_id === d.id).length;
-                  return (
-                    <li key={d.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeckId(d.id);
-                          setPage(0);
-                        }}
-                        className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                      >
-                        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
-                          <Layers className="h-4 w-4" strokeWidth={2} aria-hidden />
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{d.title}</span>
-                        <span className="flex-none text-xs tabular-nums text-muted">{n}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/30 p-5 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden />
-              <h2 className="text-base font-semibold tracking-tight text-ink">Suggestions</h2>
-            </div>
-            <ul className="mt-3 space-y-2">
-              {p.dueNow > 0 ? (
-                <li className="rounded-lg bg-surface/70 p-3">
-                  <Link href="/review" className="text-sm font-medium text-ink hover:underline">
-                    Clear today&rsquo;s backlog
-                  </Link>
-                  <p className="text-xs text-muted">
-                    {p.dueNow} {p.dueNow === 1 ? "card is" : "cards are"} due in {scopeName}
-                  </p>
-                </li>
-              ) : null}
-              {p.shaky > 0 ? (
-                <li className="rounded-lg bg-surface/70 p-3">
-                  <p className="text-sm font-medium text-ink">Cram your weak cards</p>
-                  <p className="text-xs text-muted">
-                    {p.shaky} {p.shaky === 1 ? "card needs" : "cards need"} attention
-                  </p>
-                </li>
-              ) : null}
-              <li className="rounded-lg bg-surface/70 p-3">
-                <Link href="/upload" className="text-sm font-medium text-ink hover:underline">
-                  Generate more cards
-                </Link>
-                <p className="text-xs text-muted">Add material to deepen this subject</p>
-              </li>
-            </ul>
-          </div>
-        </aside>
-      </div>
     </section>
   );
 }
 
+// A card is one dense row: front + answer + topic on the left, a three-state mastery chip and Edit
+// on the right. The old D1–D5 badge and the per-card progress bar are gone — the internal SM-2
+// difficulty scalar meant nothing to a learner, and the bar restated the chip in twelve tiny copies.
 function CardRow({ card }: { card: Card }) {
   const m = MASTERY_META[cardMastery(card)];
   return (
-    <li
-      style={subjectVars(card.subject_id)}
-      className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-card sm:flex-row sm:items-center"
-    >
+    <li className="flex items-center gap-4 rounded-xl border border-line bg-surface px-4 py-3 shadow-card">
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-ink">{card.front}</p>
         <p className="mt-0.5 truncate text-sm text-muted">{card.back}</p>
-        <span className="mt-2 inline-flex items-center rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
+        {/* Topic is a neutral pill, not the subject accent: this is a single-subject view (no
+            monogram), and a rose subject tint sat right beside the red "Shaky" chip. */}
+        <span className="mt-2 inline-flex items-center rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-medium text-muted">
           {card.topic}
         </span>
       </div>
-      <div className="flex items-center gap-4 sm:flex-col sm:items-end sm:gap-1.5">
-        <div className="w-28">
-          <div className="mb-1 flex items-center justify-between text-xs">
-            <span className={cn("font-medium", m.text)}>{m.label}</span>
-            <Badge tone={difficultyTone(card.difficulty)}>D{card.difficulty}</Badge>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-line">
-            <div className={cn("h-full rounded-full", m.bar)} style={{ width: `${m.pct}%` }} />
-          </div>
-        </div>
-        <button
-          type="button"
-          title="Editing cards is coming soon"
-          disabled
-          className="inline-flex flex-none items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-muted opacity-60"
-        >
-          <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden /> Edit
-        </button>
-      </div>
+      <span className={cn("flex-none rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", m.chip)}>
+        {m.label}
+      </span>
     </li>
   );
 }
 
-function MiniStat({
-  icon: Icon,
-  tone,
+// Icon-less figure cell for the strip (mirrors the dashboard). Colour is quality only, applied to
+// the value; the label and foot stay muted.
+function Figure({
   value,
-  label,
   sub,
+  label,
+  foot,
+  tone,
 }: {
-  icon: typeof Layers;
-  tone: "brand" | "amber" | "green" | "red";
-  value: number;
-  label: string;
+  value: number | string;
   sub?: string;
+  label: string;
+  foot?: string;
+  tone?: "green" | "red";
 }) {
-  const chip =
-    tone === "green"
-      ? "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400"
-      : tone === "amber"
-        ? "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
-        : tone === "red"
-          ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400"
-          : "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300";
+  const color = tone === "green" ? "text-green-600 dark:text-green-400" : tone === "red" ? "text-red-600 dark:text-red-400" : "text-ink";
   return (
-    <div className="rounded-xl border border-line bg-surface p-3.5 shadow-card">
-      <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", chip)}>
-        <Icon className="h-4 w-4" strokeWidth={2} aria-hidden />
-      </span>
-      <p className="mt-2.5 flex items-baseline gap-1">
-        <span className="text-xl font-bold tabular-nums text-ink">{value}</span>
-        {sub ? <span className="text-xs font-medium text-muted">{sub}</span> : null}
-      </p>
-      <p className="text-xs text-muted">{label}</p>
+    <div className="border-l border-t border-line p-4">
+      <div className="flex items-baseline gap-1">
+        <span className={cn("text-2xl font-bold tabular-nums", color)}>{value}</span>
+        {sub ? <span className="text-sm font-medium text-muted">{sub}</span> : null}
+      </div>
+      <div className="mt-0.5 text-xs text-muted">{label}</div>
+      {foot ? <div className="mt-1.5 min-h-[16px] text-[11px] font-medium text-muted">{foot}</div> : null}
     </div>
   );
 }
@@ -571,65 +457,16 @@ function PageBtn({ disabled, onClick, children }: { disabled: boolean; onClick: 
   );
 }
 
-function LegendRow({ color, label, value }: { color: string; label: string; value: number }) {
-  return (
-    <li className="flex items-center gap-2">
-      <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: color }} />
-      <span className="min-w-0 flex-1 truncate text-ink-2">{label}</span>
-      <span className="flex-none font-semibold tabular-nums text-ink">{value}</span>
-    </li>
-  );
-}
-
-function ProgressRing({ pct }: { pct: number }) {
-  const size = 96,
-    stroke = 10,
-    r = (size - stroke) / 2,
-    c = 2 * Math.PI * r,
-    len = (pct / 100) * c;
-  return (
-    <div className="relative flex-none" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(148 163 184 / 0.2)" strokeWidth={stroke} />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke="#7c4dff"
-            strokeWidth={stroke}
-            strokeDasharray={`${len} ${c - len}`}
-            strokeLinecap="round"
-            className="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
-          />
-        </g>
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-lg font-bold tabular-nums text-ink">{pct}%</span>
-        <span className="text-[10px] text-muted">Mastery</span>
-      </div>
-    </div>
-  );
-}
-
 export function FlashcardsHubPage({ scope }: { scope?: FlashcardsScope }) {
   const { loading, error, data } = useAsync(() => Promise.all([loadDashboard(), listSources()]), []);
   // Practice writes nothing this page displays, so there's no refetch after a session — and hence
   // no way for a reload to unmount the view and re-trigger the `?start=1` auto-open.
   if (loading && !data) {
     return (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
-          <Skeleton className="h-12 w-full rounded-lg" />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="h-64 rounded-xl" />
-        </div>
-        <Skeleton className="h-72 rounded-2xl" />
+      <div className="space-y-5">
+        <Skeleton className="h-12 w-full rounded-lg" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       </div>
     );
   }
