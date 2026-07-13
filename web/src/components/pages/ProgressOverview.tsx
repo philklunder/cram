@@ -2,17 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  CalendarDays,
-  Flame,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Trophy,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { PageHeader } from "@/components/pages/shared";
 import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
@@ -23,19 +13,12 @@ import {
   computeStreak,
   formatMinutes,
   masteryBuckets,
-  nearestExam,
   subjectExamDate,
 } from "@/lib/dashboard";
-import { daysUntil, formatDate, subjectInitials } from "@/lib/format";
-import {
-  currentGrade,
-  formatPercentDeltaInScale,
-  formatPercentInScale,
-  gradePercent,
-  higherIsBetter,
-} from "@/lib/grades";
+import { daysUntil, subjectInitials } from "@/lib/format";
+import { currentGrade, formatPercentInScale, gradePercent } from "@/lib/grades";
 import { computeProgress } from "@/lib/progress";
-import { computeReadiness, examReadiness, overallReadiness, readinessBySubject, type Readiness, type ScopedReadiness } from "@/lib/readiness";
+import { computeReadiness, overallReadiness, readinessBySubject, type Readiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
 import { useDisplayScale } from "@/lib/useDisplayScale";
@@ -75,98 +58,89 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
   const scaleOf = useMemo(() => new Map(subjects.map((s) => [s.id, s.grading_scale] as const)), [subjects]);
 
   const streak = computeStreak(reviewLogs, now);
-  const buckets = masteryBuckets(cards);
+  const p = computeProgress(cards);
   // Weighted across subjects, excluding ones never tested — null until a Review has happened.
   const readiness = useMemo(() => overallReadiness([...readinessBySubject(subjects, data).values()]), [subjects, data]);
-  const exam = nearestExam(subjects, exams);
-  // Scored against the exam's own material where it has any, else the whole subject (material
-  // uploaded without picking an exam is filed under "General"). `scope` says which.
-  const examScore = exam ? examReadiness(exam.subject.id, exam.exam.id, data) : null;
 
   const allPoints = useMemo(() => trendPoints(gradeEntries, scaleOf), [gradeEntries, scaleOf]);
-  const currentAvg = allPoints.length ? Math.round(allPoints.reduce((s, p) => s + p.pct, 0) / allPoints.length) : null;
-  const prior = allPoints.filter((p) => p.t < now - 7 * 86_400_000);
-  const delta =
-    currentAvg != null && prior.length
-      ? currentAvg - Math.round(prior.reduce((s, p) => s + p.pct, 0) / prior.length)
-      : null;
-
   const targetPcts = subjects
     .filter((s) => s.target_grade != null)
     .map((s) => gradePercent(s.grading_scale, s.target_grade as number));
   const targetPct = targetPcts.length ? Math.round(targetPcts.reduce((a, b) => a + b, 0) / targetPcts.length) : null;
-  const targetSubject = exam?.subject ?? subjects.find((s) => s.target_grade != null) ?? null;
+
+  // Study time this month vs last, an honest trend (unlike a fabricated "readiness 30 days ago").
+  const nowD = new Date(now);
+  const thisMonthMin = monthMinutes(studySessions, nowD.getFullYear(), nowD.getMonth());
+  const lastD = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1);
+  const lastMonthMin = monthMinutes(studySessions, lastD.getFullYear(), lastD.getMonth());
+  const monthDelta = lastMonthMin > 0 ? Math.round(((thisMonthMin - lastMonthMin) / lastMonthMin) * 100) : null;
 
   return (
     <section>
-      <PageHeader title="Progress" subtitle="Track your performance and stay on top of your goals." />
+      <PageHeader title="Progress" subtitle="How your recall and your real grades have moved over time." />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          {/* Stat row */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-            <Stat icon={TrendingUp} tone="brand" label="Current average" value={currentAvg == null ? "—" : formatPercentInScale(displayScale, currentAvg)} sub={delta != null ? <Delta v={delta} scale={displayScale} /> : "No trend yet"} />
-            <Stat icon={Target} tone="red" label="Target grade" value={targetSubject?.target_grade != null ? String(targetSubject.target_grade) : "—"} sub={targetSubject ? `${targetSubject.grading_scale} scale` : "Set a target"} />
-            <Stat icon={Award} tone="brand" label="Readiness" value={readiness == null ? "—" : `${readiness}%`} sub={readiness == null ? "Run a review" : readinessLabel(readiness)} />
-            <Stat icon={Flame} tone="amber" label="Study streak" value={String(streak.current)} sub={streak.current === 1 ? "day in a row" : "days in a row"} />
-            <Stat icon={BookOpen} tone="green" label="Cards mastered" value={buckets.mastered.toLocaleString()} sub={`of ${buckets.total.toLocaleString()}`} />
+      <div className="space-y-6">
+        {/* Four figures — all read as movement, not static snapshots. Current-average and target
+            live on Grades; here it's readiness, consistency and volume. */}
+        <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+          <div className="-m-px grid grid-cols-2 sm:grid-cols-4">
+            <Figure value={readiness == null ? "—" : `${readiness}%`} label="Readiness, all subjects" foot={readiness == null ? "Run a review" : readinessLabel(readiness)} />
+            <Figure value={streak.current} unit={streak.current === 1 ? "day" : "days"} label="Study streak" foot={streak.studiedToday ? "Studied today" : streak.current > 0 ? "Keep it going" : "Start today"} />
+            <Figure value={p.mastered} label="Cards mastered" foot={`of ${p.total} total`} tone="green" />
+            <Figure
+              value={formatMinutes(thisMonthMin)}
+              label="Studied this month"
+              foot={
+                monthDelta == null ? (
+                  thisMonthMin > 0 ? "First month tracked" : "No study time yet"
+                ) : (
+                  <span className={cn("inline-flex items-center gap-1", monthDelta >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                    {monthDelta >= 0 ? "↑" : "↓"} {Math.abs(monthDelta)}% vs last month
+                  </span>
+                )
+              }
+            />
           </div>
-
-          {/* Grade trend + topic mastery */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-            <div className="min-w-0 lg:col-span-3">
-              <GradeTrend points={allPoints} targetPct={targetPct} now={now} displayScale={displayScale} />
-            </div>
-            <div className="min-w-0 lg:col-span-2">
-              <TopicMastery buckets={buckets} />
-            </div>
-          </div>
-
-          <SubjectsPerformance subjects={subjects} data={data} now={now} displayScale={displayScale} />
-
-          <Achievements streak={streak.current} mastered={buckets.mastered} />
         </div>
 
-        {/* Right rail */}
-        <aside className="min-w-0 space-y-6">
-          <UpcomingExam exam={exam} scored={examScore} />
-          <StudyActivity sessions={studySessions} streak={streak.current} now={now} />
-          <AIInsight />
-        </aside>
+        {/* Grade trend + topic mastery */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+          <div className="min-w-0 lg:col-span-3">
+            <GradeTrend points={allPoints} targetPct={targetPct} now={now} displayScale={displayScale} />
+          </div>
+          <div className="min-w-0 lg:col-span-2">
+            <TopicMastery progress={p} />
+          </div>
+        </div>
+
+        <SubjectsPerformance subjects={subjects} data={data} now={now} displayScale={displayScale} />
+
+        <StudyActivityYear sessions={studySessions} now={now} />
       </div>
     </section>
   );
 }
 
-// `v` is a change in normalized performance percent; a positive `v` always means "did better".
-// The arrow/colour follow that, while the number itself is shown in the chosen display scale
-// (percentage points, or grade points — where "better" may be a lower number, e.g. German).
-function Delta({ v, scale }: { v: number; scale: GradingScale }) {
-  const better = v >= 0;
-  return (
-    <span className={cn("inline-flex items-center gap-0.5 font-medium", better ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-      {better ? "↑" : "↓"} {formatPercentDeltaInScale(scale, v).replace(/^[+−]/, "")} vs last 7 days
-    </span>
-  );
+// Whole minutes of study in a given calendar month.
+function monthMinutes(sessions: StudySession[], year: number, month: number): number {
+  let s = 0;
+  for (const x of sessions) {
+    const d = new Date(x.started_at ?? x.created_at);
+    if (d.getFullYear() === year && d.getMonth() === month) s += x.duration_seconds / 60;
+  }
+  return Math.round(s);
 }
 
-type Tone = "brand" | "amber" | "green" | "red";
-const chip: Record<Tone, string> = {
-  brand: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300",
-  amber: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
-  green: "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400",
-  red: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
-};
-
-function Stat({ icon: Icon, tone, label, value, sub }: { icon: typeof Target; tone: Tone; label: string; value: string; sub: React.ReactNode }) {
+// Icon-less figure cell for the strip (mirrors the dashboard). Colour = quality only.
+function Figure({ value, unit, label, foot, tone }: { value: number | string; unit?: string; label: string; foot: React.ReactNode; tone?: "green" }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-      <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", chip[tone])}>
-        <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-      </span>
-      <p className="mt-3 text-xs font-medium text-muted">{label}</p>
-      <p className="mt-0.5 text-2xl font-bold tabular-nums text-ink">{value}</p>
-      <p className="mt-0.5 text-xs text-muted">{sub}</p>
+    <div className="border-l border-t border-line p-4">
+      <div className="flex items-baseline gap-1">
+        <span className={cn("text-2xl font-bold tabular-nums", tone === "green" ? "text-green-600 dark:text-green-400" : "text-ink")}>{value}</span>
+        {unit ? <span className="text-sm font-medium text-muted">{unit}</span> : null}
+      </div>
+      <div className="mt-0.5 text-xs text-muted">{label}</div>
+      <div className="mt-1.5 min-h-[16px] text-[11px] font-medium text-muted">{foot}</div>
     </div>
   );
 }
@@ -254,63 +228,52 @@ function GradeTrend({ points, targetPct, now, displayScale }: { points: { t: num
   );
 }
 
-// --- Topic mastery donut -----------------------------------------------------------------
+// --- Topic mastery bars ------------------------------------------------------------------
 
-function TopicMastery({ buckets }: { buckets: ReturnType<typeof masteryBuckets> }) {
-  const segs = [
-    { label: "Mastered", value: buckets.mastered, color: "#16a34a" },
-    { label: "Strong", value: buckets.strong, color: "#7c4dff" },
-    { label: "Practice", value: buckets.practice, color: "#f59e0b" },
-    { label: "Weak", value: buckets.weak, color: "#ef4444" },
+// Three semantic bars, not a four-slice donut: a donut where one slice is 0% is hard to read, and
+// mastered/learning/shaky is the same three-state vocabulary the rest of the app uses.
+function TopicMastery({ progress }: { progress: ReturnType<typeof computeProgress> }) {
+  const total = progress.total || 1;
+  const rows = [
+    { label: "Mastered", value: progress.mastered, fill: "bg-green-500" },
+    { label: "Learning", value: progress.learning, fill: "bg-amber-500" },
+    { label: "Shaky", value: progress.shaky, fill: "bg-red-500" },
   ];
+  const weak = progress.total ? Math.round((progress.shaky / total) * 100) : 0;
   return (
-    <div className="h-full rounded-xl border border-line bg-surface p-5 shadow-card">
-      <h2 className="text-base font-semibold tracking-tight text-ink">Topic mastery</h2>
-      {/* Donut on top, legend full-width below — the card is only ~2/5 wide, so a side-by-side
-          layout squeezes the legend and pushes the %/labels out of the box. Stacking always fits. */}
-      <div className="mt-4 flex flex-col items-center gap-5">
-        <Donut segments={segs} centerValue={`${buckets.masteredPct}%`} centerSub="Mastered" />
-        <ul className="w-full space-y-2">
-          {segs.map((s) => {
-            const pct = buckets.total ? Math.round((s.value / buckets.total) * 100) : 0;
-            return (
-              <li key={s.label} className="flex items-center gap-2 text-sm">
-                <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="min-w-0 flex-1 truncate text-ink-2">{s.label}</span>
-                <span className="flex-none font-semibold tabular-nums text-ink">{pct}%</span>
-              </li>
-            );
-          })}
-        </ul>
+    <div className="flex h-full flex-col rounded-xl border border-line bg-surface p-5 shadow-card">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-base font-semibold tracking-tight text-ink">Topic mastery</h2>
+        <span className="text-xs text-muted">All subjects</span>
       </div>
-    </div>
-  );
-}
-
-function Donut({ segments, centerValue, centerSub, size = 128, stroke = 15 }: { segments: { value: number; color: string }[]; centerValue: string; centerSub: string; size?: number; stroke?: number }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  let offset = 0;
-  return (
-    <div className="relative flex-none" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(148 163 184 / 0.2)" strokeWidth={stroke} />
-          {segments.map((seg, i) => {
-            const len = (seg.value / total) * c;
-            const el = (
-              <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={seg.color} strokeWidth={stroke} strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} strokeLinecap="butt" />
-            );
-            offset += len;
-            return el;
-          })}
-        </g>
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl font-bold tabular-nums text-ink">{centerValue}</span>
-        <span className="text-[10px] text-muted">{centerSub}</span>
+      <div className="mt-4 space-y-3.5">
+        {rows.map((r) => {
+          const pct = progress.total ? Math.round((r.value / total) * 100) : 0;
+          return (
+            <div key={r.label}>
+              <div className="mb-1 flex items-baseline justify-between text-sm">
+                <span className="text-ink-2">{r.label}</span>
+                <span className="font-semibold tabular-nums text-ink">{pct}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-line">
+                <div className={cn("h-full rounded-full", r.fill)} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
+      {progress.total > 0 ? (
+        <p className="mt-auto pt-4 text-xs text-muted">
+          {weak > 0 ? (
+            <>
+              {weak}% of cards are still shaky.{" "}
+              <Link href="/review" className="font-medium text-brand-600 hover:underline dark:text-brand-300">Review the weak ones →</Link>
+            </>
+          ) : (
+            "Nothing shaky right now — nicely held."
+          )}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -432,106 +395,86 @@ function MiniSpark({ values }: { values: number[] }) {
   return <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" aria-hidden><polyline points={pts} stroke={dir > 3 ? "#16a34a" : dir < -3 ? "#dc2626" : "#7c4dff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-// --- Right rail --------------------------------------------------------------------------
+// --- Study activity: a year-long contribution graph ------------------------------------------
 
-function UpcomingExam({ exam, scored }: { exam: ReturnType<typeof nearestExam>; scored: ScopedReadiness | null }) {
-  const readiness = scored?.readiness ?? null;
-  const untested = readiness == null || readiness.verdict === "untested";
-  const score = readiness?.score ?? 0;
-  // Whether the number describes this exam's own deck, or the subject as a whole because nothing is
-  // filed under the exam. Saying which is the difference between a useful score and a mystery one.
-  const scopeNote = untested
-    ? "Run a review — Cram can't score you until it has tested you."
-    : scored?.scope === "exam"
-      ? `Measured by your reviews of ${exam!.exam.title}.`
-      : "No material is filed under this exam, so this scores the whole subject.";
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// GitHub-style contribution graph in BLUE — a rolling year, one column per week, one row per
+// weekday. Blue is a deliberate fifth hue: not the violet brand accent, not the semantic
+// green/amber/red, so the graph reads as *volume* (how much you studied), never as good/urgent.
+function StudyActivityYear({ sessions, now }: { sessions: StudySession[]; now: number }) {
+  const { grid } = activityHeatmap(sessions, 52, now);
+
+  // A month label sits above the first week column that falls in a new month. dayKey is
+  // "year-month0-date"; the Monday of each column is week[0].
+  let seenMonth = -1;
+  const monthCols = grid.map((week) => {
+    const month = Number(week[0].key.split("-")[1]);
+    if (month !== seenMonth) {
+      seenMonth = month;
+      return MONTHS[month] ?? "";
+    }
+    return "";
+  });
+
+  const days = grid.flat().filter((d) => !d.inFuture);
+  const studied = days.filter((d) => d.minutes > 0).length;
+  const totalMin = days.reduce((s, d) => s + d.minutes, 0);
+  const hours = Math.round(totalMin / 60);
+
   return (
     <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold tracking-tight text-ink">Upcoming exam</h2>
-        <Link href="/subjects" className="text-xs font-medium text-brand-600 dark:text-brand-300">View subjects</Link>
-      </div>
-      {exam ? (
-        <>
-          <div style={subjectVars(exam.subject.id)} className="flex items-center gap-3">
-            <span className="flex h-12 w-12 flex-none flex-col items-center justify-center rounded-xl bg-[var(--sc-soft)] text-[color:var(--sc-ink)] dark:bg-[color:var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
-              <span className="text-lg font-bold leading-none tabular-nums">{exam.days}</span>
-              <span className="text-[9px] uppercase">days</span>
-            </span>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-ink">{exam.exam.title}</p>
-              <p className="truncate text-xs text-muted">
-                {exam.subject.name} · {formatDate(exam.examDate)}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center gap-4">
-            <Donut
-              segments={[{ value: score, color: "#7c4dff" }, { value: 100 - score, color: "transparent" }]}
-              centerValue={untested ? "—" : `${score}%`}
-              centerSub={untested ? "Untested" : readinessLabel(score)}
-              size={84}
-              stroke={10}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink">
-                Readiness
-                {!untested && scored?.scope === "subject" ? (
-                  <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                    Whole subject
-                  </span>
-                ) : null}
-              </p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted">{scopeNote}</p>
-            </div>
-          </div>
-          <Link href={`/subjects/${exam.subject.id}`} className="mt-4 block">
-            <Button className="w-full">Exam prep plan <ArrowRight className="h-4 w-4" strokeWidth={2.5} aria-hidden /></Button>
-          </Link>
-        </>
-      ) : (
-        <p className="rounded-xl bg-surface-2/50 px-4 py-6 text-center text-sm text-muted">No exam scheduled.</p>
-      )}
-    </section>
-  );
-}
-
-const WEEKDAY = ["M", "T", "W", "T", "F", "S", "S"];
-
-function StudyActivity({ sessions, streak, now }: { sessions: StudySession[]; streak: number; now: number }) {
-  const { grid, max } = activityHeatmap(sessions, 8, now);
-  return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-base font-semibold tracking-tight text-ink">Study activity</h2>
-        <span className="text-xs text-muted">Last 8 weeks</span>
+        <span className="text-xs text-muted">Last 12 months</span>
       </div>
-      <div className="flex gap-2">
-        <div className="flex flex-col justify-between py-0.5 text-[9px] text-subtle">
-          {WEEKDAY.map((d, i) => (<span key={i} className="h-3 leading-3">{i % 2 === 0 ? d : ""}</span>))}
-        </div>
-        <div className="flex flex-1 justify-between gap-1">
-          {grid.map((week, wi) => (
-            <div key={wi} className="flex flex-1 flex-col gap-1">
-              {week.map((day) => (
-                <span
-                  key={day.key}
-                  title={`${day.minutes} min`}
-                  className="aspect-square w-full rounded-[3px]"
-                  style={{ backgroundColor: heatColor(day.minutes, max, day.inFuture) }}
-                />
+
+      <div className="overflow-x-auto pb-1">
+        <div className="flex w-max gap-1.5">
+          {/* weekday labels */}
+          <div className="mt-[18px] grid grid-rows-7 gap-[3px] pr-0.5 text-right text-[9px] leading-[12px] text-muted" aria-hidden>
+            <span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span /><span />
+          </div>
+          <div className="flex flex-col gap-[3px]">
+            {/* month labels */}
+            <div className="grid grid-flow-col auto-cols-[12px] gap-[3px] text-[9.5px] leading-[15px] text-muted" aria-hidden>
+              {monthCols.map((m, i) => (
+                <span key={i} className="overflow-visible whitespace-nowrap">{m}</span>
               ))}
             </div>
-          ))}
+            {/* cells: column-major (grid.flat() is week-by-week), grid-rows-7 fills each column */}
+            <div
+              className="grid grid-flow-col auto-cols-[12px] grid-rows-7 gap-[3px]"
+              role="img"
+              aria-label={`Study activity for the last year: studied on ${studied} of ${days.length} days, about ${hours} hours total`}
+            >
+              {grid.flat().map((d) =>
+                d.inFuture ? (
+                  <span key={d.key} className="h-3 w-3" />
+                ) : (
+                  <span
+                    key={d.key}
+                    title={`${d.minutes} min on ${formatCellDate(d.key)}`}
+                    className={cn("h-3 w-3 rounded-[3px]", heatLevel(d.minutes))}
+                  />
+                ),
+              )}
+            </div>
+          </div>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between">
-        <p className="flex items-center gap-1.5 text-xs text-muted">
-          <Flame className="h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-hidden /> Longest streak: {streak} days
-        </p>
-        <span className="flex items-center gap-1 text-[10px] text-subtle">
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span>
+          <b className="tabular-nums text-ink">{studied}</b> days studied · <b className="tabular-nums text-ink">{hours}h</b> total
+        </span>
+        <span className="flex items-center gap-1 text-[10px]">
           Less
-          {[0.1, 0.35, 0.6, 1].map((o) => (<span key={o} className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: `rgb(124 77 255 / ${o})` }} />))}
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-[#eef1f5] dark:bg-white/10" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-blue-200" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-blue-400" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-blue-600" />
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-blue-800" />
           More
         </span>
       </div>
@@ -539,68 +482,19 @@ function StudyActivity({ sessions, streak, now }: { sessions: StudySession[]; st
   );
 }
 
-function heatColor(minutes: number, max: number, future: boolean): string {
-  if (future) return "rgb(148 163 184 / 0.08)";
-  if (minutes <= 0) return "rgb(148 163 184 / 0.16)";
-  const o = 0.25 + 0.75 * Math.min(1, minutes / Math.max(1, max));
-  return `rgb(124 77 255 / ${o.toFixed(2)})`;
+// Five steps, like GitHub: empty then four ramping blues.
+function heatLevel(minutes: number): string {
+  if (minutes <= 0) return "bg-[#eef1f5] dark:bg-white/10";
+  if (minutes < 20) return "bg-blue-200 dark:bg-blue-500/40";
+  if (minutes < 35) return "bg-blue-400 dark:bg-blue-500/70";
+  if (minutes < 50) return "bg-blue-600";
+  return "bg-blue-800 dark:bg-blue-500";
 }
 
-// Static, honest stub until an insights backend exists.
-function AIInsight() {
-  const items = [
-    { icon: Target, title: "Review weak topics", sub: "Topics that need more practice" },
-    { icon: BookOpen, title: "Space out your reviews", sub: "Short daily sessions beat cramming" },
-    { icon: Trophy, title: "Try a full mock exam", sub: "Simulate exam conditions" },
-  ];
-  return (
-    <section className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/30 p-5 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-brand-600 dark:text-brand-300" strokeWidth={2} aria-hidden />
-        <h2 className="text-base font-semibold tracking-tight text-ink">Study tips</h2>
-      </div>
-      <ul className="mt-3 space-y-2">
-        {items.map((it) => (
-          <li key={it.title} className="flex items-center gap-3 rounded-lg bg-surface/70 p-2.5">
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-              <it.icon className="h-4 w-4" strokeWidth={2} aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{it.title}</p>
-              <p className="truncate text-xs text-muted">{it.sub}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function Achievements({ streak, mastered }: { streak: number; mastered: number }) {
-  const items = [
-    { icon: Flame, tone: "amber" as Tone, title: `${streak} days`, sub: "Streak milestone" },
-    { icon: BookOpen, tone: "green" as Tone, title: `${mastered.toLocaleString()}`, sub: "Cards mastered" },
-    { icon: TrendingUp, tone: "brand" as Tone, title: "On track", sub: "Keep it up" },
-    { icon: Trophy, tone: "brand" as Tone, title: "Consistent", sub: "Study habit" },
-  ];
-  return (
-    <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
-      <h2 className="mb-4 text-base font-semibold tracking-tight text-ink">Recent achievements</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {items.map((it) => (
-          <div key={it.sub} className="flex items-center gap-2.5">
-            <span className={cn("flex h-9 w-9 flex-none items-center justify-center rounded-lg", chip[it.tone])}>
-              <it.icon className="h-4 w-4" strokeWidth={2} aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold tabular-nums text-ink">{it.title}</p>
-              <p className="truncate text-[11px] text-muted">{it.sub}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+// dayKey is "year-month0-date". Render a friendly "13 Jul" for the tooltip.
+function formatCellDate(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return `${d} ${MONTHS[m] ?? ""} ${y}`;
 }
 
 // --- Fetching wrapper --------------------------------------------------------------------

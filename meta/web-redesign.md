@@ -69,6 +69,28 @@ captures the cross-cutting decisions; per-surface visual history stays in
   during a generation run would be a downgrade). `flex-none` on the mascot is **load-bearing**:
   inside a flex row the mascot's outer box gets `flex-shrink`-compressed while its inner sprite keeps
   full height, squashing him horizontally — the same trap will bite any inline mascot placement.
+- **Calendar (was "Study planner") (2026-07-13).** Full-width month, no rail. Exam pills went
+  **amber → red** (a deadline is urgency, per the colour law); study blocks stay violet; each day
+  gains an **amber cards-due count badge** (from today onward — overdue cards are "due now" and
+  belong on Review, not scattered across past days). Dropped the whole rail — readiness-countdown
+  duplicated "Coming up", today's-agenda was usually empty, weekly-goal belongs on Progress, and the
+  "Plan with Claude — coming soon" promo earned no space. "Coming up" (exams + readiness) and "Your
+  study sessions" (the local block list, the only place to delete a block) sit below the grid.
+- **Progress (2026-07-13).** Five stat cards → **four figures, all movement**: readiness, streak,
+  cards mastered, and *studied this month* with a genuine month-over-month delta. Current-average and
+  target-grade were dropped (they live on Grades). No fabricated "readiness 30 days ago" trend — only
+  the study-time delta, which is computable from session dates. Topic-mastery **donut → three
+  semantic bars** (mastered/learning/shaky; a donut with a 0% slice is hard to read). Study activity
+  **8-week violet rail heatmap → full-width blue GitHub-style contribution graph over a rolling
+  year**; blue is a deliberate fifth hue (not the brand violet, not the semantic green/amber/red) so
+  it reads as *volume*. Dropped the rail: "Recent achievements" (gamified badges = the product
+  brief's own anti-reference), "Study tips" (three generic tips), and "Upcoming exam" (a mini-Calendar).
+- **Grades (2026-07-13).** Four stat cards → a **three-figure hairline strip** (Overall average,
+  Below target, Grades logged); "Total subjects" dropped (it's on Subjects). The persistent "Log a
+  grade" rail form became a **modal** from a header button, freeing the page for the table + recent
+  grades and matching how rare the action is. "How grades work" rail card dropped — its one useful
+  fact already appears inline in the modal. Builds on the earlier fix (native-scale rows, one
+  weighted average).
 - **Both `SubjectsList` and `SubjectDetail` were split into a self-fetching wrapper + a pure
   `…View({ data })`** (matching `DashboardView`/`FlashcardsView`), so the `/preview` harness can
   render each full page from mock data without a backend — the only way to verify them visually.
