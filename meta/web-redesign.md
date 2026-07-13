@@ -62,6 +62,13 @@ captures the cross-cutting decisions; per-surface visual history stays in
 - **`SubjectBundle` gained `attempts`.** The detail page can't compute exam readiness without the
   quiz-attempt half; `loadSubjectBundle` now slices attempts (by the subject's question ids) from
   the same cached snapshot it already reads.
+- **AI Decks "AI preview" card → "How it works" (2026-07-13).** Matched the mockup: title, the pixel
+  mascot with a one-line description at the top, and the four stages relabelled **Read → Extract →
+  Write → You approve** (were Ingest/Extract/Generate/Review). The card keeps its live-progress
+  behaviour (the mockup's static "Example" is just the idle case — losing real progress feedback
+  during a generation run would be a downgrade). `flex-none` on the mascot is **load-bearing**:
+  inside a flex row the mascot's outer box gets `flex-shrink`-compressed while its inner sprite keeps
+  full height, squashing him horizontally — the same trap will bite any inline mascot placement.
 - **Both `SubjectsList` and `SubjectDetail` were split into a self-fetching wrapper + a pure
   `…View({ data })`** (matching `DashboardView`/`FlashcardsView`), so the `/preview` harness can
   render each full page from mock data without a backend — the only way to verify them visually.
@@ -119,6 +126,14 @@ captures the cross-cutting decisions; per-surface visual history stays in
 - **Per-exam readiness inside the detail page's `ExamSection` headers** was left as-is (they show a
   countdown + cramming mastery %); adding a scored-readiness bar there is a possible follow-up but
   risks conflicting with the page's browse-not-assess stance.
+
+## Working notes
+
+- **One `next dev` per project dir.** Running several dev servers on different ports but the same
+  `web/` folder makes them share one `.next/` and write to it concurrently; force-killing one
+  mid-compile corrupts a chunk and throws `__webpack_modules__[moduleId] is not a function` at
+  runtime (seen on `login/page` + `supabase/server`). Fix: stop the server, `rm -rf .next`, restart.
+  Prefer a single dev server and a graceful shutdown when iterating with headless screenshots.
 
 ## Last updated
 2026-07-13
