@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BackToHomeLink, BrandMark, Button, ErrorBox } from "@/components/ui";
@@ -34,6 +34,17 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Surface a failed OAuth round-trip. The /auth/callback route bounces back to
+  // /login?error=oauth when the code exchange fails; show it once, then strip the param so a
+  // refresh doesn't keep the message around.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "oauth") {
+      setError("Google sign-in didn't complete. Please try again.");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,7 +84,8 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
     }
   }
 
-  // Google OAuth. signInWithOAuth redirects the browser to Google and back to /dashboard, so there's
+  // Google OAuth. signInWithOAuth redirects the browser to Google and back to our /auth/callback
+  // route, which exchanges the PKCE code for a session and then forwards to /dashboard — so there's
   // no manual navigation here. If the Google provider isn't enabled on the Supabase project, the
   // call returns an error and we surface it inline.
   async function onGoogle() {
@@ -83,7 +95,7 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/dashboard` },
     });
     if (error) {
       setError(error.message);
