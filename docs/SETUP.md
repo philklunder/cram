@@ -21,7 +21,34 @@ xcodebuild -project Cram.xcodeproj -scheme Cram \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-> The iOS project is scaffolded next; this section will be exact once `ios/Cram.xcodeproj` exists.
+### Supabase config (auth)
+
+The app resolves its Supabase project URL and **anon (publishable)** key in
+[`ios/Cram/Services/AppConfig.swift`](../ios/Cram/Services/AppConfig.swift), in order:
+
+1. The Run-scheme environment variables `SUPABASE_URL` / `SUPABASE_ANON_KEY` (and optional
+   `CRAM_BACKEND_URL`), when set — these override everything below.
+2. Otherwise the committed **non-secret fallbacks** in `AppConfig`.
+
+Xcode injects scheme env vars **only when it launches the app** (i.e. under the debugger), so the
+fallbacks are what keep a **standalone launch** — tapping the installed app icon after unplugging —
+authenticated instead of dropping into the offline "Studying offline on this device" stub path. Only
+the **anon** key ever ships in the client; **never** commit a `service_role` key (it bypasses
+Row-Level Security).
+
+### Google sign-in (owner / dashboard step)
+
+"Continue with Google" uses Supabase OAuth through `ASWebAuthenticationSession`. For the flow to
+return **into the app** (instead of the web app's Site URL), the iOS deep link must be allow-listed
+once in the Supabase dashboard — **Authentication → URL Configuration → Redirect URLs → Add URL:**
+
+```
+com.philippklunder.cram://login-callback
+```
+
+It must match `AppConfig.oauthRedirectURL` character-for-character. Without it, Supabase falls back to
+the Site URL and sign-in lands on the web app rather than the Today screen. Keep the Google provider
+enabled under the same settings.
 
 ## Backend
 

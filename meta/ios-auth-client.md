@@ -20,9 +20,12 @@
   stub-generation path. When it **is** configured, `RootView` gates the app behind sign-in.
 - **Remote generation requires both a backend URL and configured auth.** `GenerationServiceFactory`
   picks `RemoteGenerationService` only when both are present, else `StubGenerationService`.
-- **Config comes from the Run-scheme environment** (`SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  optional `CRAM_BACKEND_URL`), mirroring the existing `CRAM_BACKEND_URL` pattern, with `nil`
-  hardcoded fallbacks. `backendBaseURL` defaults to the live Railway deployment.
+- **Config resolves from the Run-scheme environment first, then committed non-secret fallbacks**
+  (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, optional `CRAM_BACKEND_URL`), mirroring the existing
+  `CRAM_BACKEND_URL` pattern. As of 2026-07-22 the `AppConfig` Supabase fallbacks are **populated**
+  (project URL + anon key) rather than `nil`: Xcode injects scheme env vars only when it launches the
+  app, so a standalone launch (installed app icon, no debugger) would otherwise get `nil` config and
+  fall into the offline stub path. `backendBaseURL` defaults to the live Railway deployment.
 - **Client-side security hardening (2026-06-22 review):**
   - **HTTPS-only bearer.** The token is refused over cleartext — `generate()` fails closed with
     `.insecureTransport` unless the backend URL is HTTPS (loopback `http` allowed for local dev).
@@ -67,14 +70,16 @@
   → `/v1/grade`) and v0.5 Phase 5 (delta-sync) — both reuse it with no new auth work.
 - The **anon (publishable) key only** ever ships in the client; a `service_role` key would bypass
   RLS catastrophically. This is enforced by convention + doc warnings, not by code.
-- Sideload/v1.0 will need a non-env config source (the Run-scheme env vars aren't present on a
-  device-installed build) — likely an `.xcconfig` or a committed non-secret default for URL/anon key.
+- **Resolved (2026-07-22):** the non-env config source for device-installed / standalone builds is a
+  **committed non-secret default** for URL + anon key in `AppConfig` (scheme env vars are absent when
+  the app is launched from the home screen rather than by Xcode). The anon key is safe to commit; a
+  `service_role` key would not be. A `.xcconfig` remains an option if per-environment builds are
+  needed later.
 
 ## Open questions
 - Should the app handle Supabase **email confirmation** in-flow (currently sign-up with confirmation
   enabled just shows "check your email, then sign in")? Decide alongside onboarding (v1.0).
 - Offline UX for an **expired/unrefreshable session** mid-session (v0.5 Phase 5): queue vs. block.
-- Where to source config for **sideloaded builds** (xcconfig vs. committed non-secret defaults).
 
 ## Last updated
 2026-07-22
