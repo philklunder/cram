@@ -13,7 +13,10 @@ struct RootView: View {
         } else {
             switch auth.state {
             case .loading:
-                ProgressView()
+                ZStack {
+                    CanvasBackground()
+                    ProgressView().tint(Theme.brand)
+                }
             case .signedOut:
                 LoginView()
             case .signedIn:
@@ -23,18 +26,28 @@ struct RootView: View {
     }
 }
 
-/// The signed-in app: studying happens per-subject, so the primary tab is the subjects list.
+/// The signed-in app. Studying is per-subject, but the home is a **Today** overview that answers
+/// "what should I do right now?"; Subjects and Progress round out the bottom tab bar.
 struct MainTabView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
-        TabView {
-            SubjectsView()
-                .tabItem { Label("Subjects", systemImage: "books.vertical") }
-            ProgressOverviewView()
-                .tabItem { Label("Progress", systemImage: "chart.bar.xaxis") }
+        @Bindable var router = router
+        TabView(selection: $router.selectedTab) {
+            TodayView()
+                .tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
+            ProgramsRootView(face: .subjects)
+                .tabItem { Label("Subjects", systemImage: "books.vertical.fill") }.tag(1)
+            ProgramsRootView(face: .study)
+                .tabItem { Label("Study", systemImage: "brain.head.profile") }.tag(2)
+            ProgramsRootView(face: .grades)
+                .tabItem { Label("Grades", systemImage: "chart.bar.fill") }.tag(3)
+            CalendarView()
+                .tabItem { Label("Calendar", systemImage: "calendar") }.tag(4)
         }
+        .tint(Theme.brand)
         // Initial sync (and a local-cache wipe if a different user signed in) when the signed-in
         // app appears; a foreground re-sync on each return to active.
         .task { await SyncService.shared.onSignedIn(context: context) }

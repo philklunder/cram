@@ -115,6 +115,16 @@ enum GradingScale: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+extension GradingScale {
+    /// `UserDefaults`/`@AppStorage` key backing the user's chosen default scale for new subjects.
+    static let defaultStorageKey = "defaultGradingScale"
+
+    /// The scale a newly created subject adopts — the user's Profile preference, else German.
+    static var preferredDefault: GradingScale {
+        UserDefaults.standard.string(forKey: defaultStorageKey).flatMap(GradingScale.init) ?? .german
+    }
+}
+
 /// How well the user recalled a card during review — maps to an SM-2 quality (0–5).
 enum ReviewRating: Int, Codable, CaseIterable, Identifiable {
     case again = 1   // didn't remember

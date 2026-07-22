@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Supabase
+import AuthenticationServices
 
 /// Owns the Supabase auth session for the whole app (ADR 0007: the backend verifies Supabase JWTs;
 /// the client signs in with Supabase directly and sends `Authorization: Bearer <access-token>`).
@@ -113,6 +114,36 @@ final class AuthManager {
         }
     }
 
+    /// Sign in with Google via Supabase OAuth. Opens an `ASWebAuthenticationSession` (the SDK manages
+    /// presentation and the PKCE callback), then lands the same `.signedIn` state as email sign-in.
+    /// Requires the Google provider enabled on the Supabase project and `AppConfig.oauthRedirectURL`
+    /// allow-listed under Supabase → Authentication → URL Configuration → Redirect URLs.
+    func signInWithGoogle() async {
+        guard let client else {
+            lastError = "Google sign-in is unavailable: Supabase is not configured."
+            return
+        }
+        isBusy = true
+        lastError = nil
+        defer { isBusy = false }
+        do {
+            let session = try await client.auth.signInWithOAuth(
+                provider: .google,
+                redirectTo: AppConfig.oauthRedirectURL
+            ) { webSession in
+                webSession.prefersEphemeralWebBrowserSession = false
+            }
+            currentUserID = session.user.id.uuidString
+            state = .signedIn(email: session.user.email)
+        } catch is CancellationError {
+            // The user backed out of the web sheet — not an error.
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // The user dismissed the Google sheet — not an error.
+        } catch {
+            lastError = Self.oauthMessage(for: error)
+        }
+    }
+
     /// Clear the last user-facing error (e.g. when switching between sign-in and sign-up).
     func clearError() {
         lastError = nil
@@ -149,5 +180,12 @@ final class AuthManager {
             return "Couldn't reach the sign-in service. Check your connection and try again."
         }
         return "Couldn't sign you in. Check your email and password and try again."
+    }
+
+    private static func oauthMessage(for error: Error) -> String {
+        if (error as? URLError) != nil {
+            return "Couldn't reach Google sign-in. Check your connection and try again."
+        }
+        return "Google sign-in didn't complete. Please try again."
     }
 }

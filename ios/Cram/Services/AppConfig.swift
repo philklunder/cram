@@ -62,4 +62,10 @@ enum AppConfig {
     /// env vars. (Both values are non-secret and may be committed if you prefer a zero-setup build.)
     static let supabaseURLFallback: URL? = nil
     static let supabaseAnonKeyFallback: String? = nil
+
+    /// The deep link the Google OAuth web flow returns to. Its scheme is handled internally by
+    /// `ASWebAuthenticationSession` (no `Info.plist` URL-scheme registration required). For sign-in to
+    /// complete, add this exact URL under **Supabase → Authentication → URL Configuration → Redirect
+    /// URLs**, and keep the Google provider enabled there.
+    static let oauthRedirectURL = URL(string: "com.philippklunder.cram://login-callback")
 }

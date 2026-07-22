@@ -4,6 +4,7 @@ import Foundation
 // domain. The stored properties they require were added to each model in v0.5 Phase 5.
 
 extension Subject: SyncableModel {}
+extension Exam: SyncableModel {}
 extension Source: SyncableModel {}
 extension Card: SyncableModel {}
 extension Quiz: SyncableModel {}

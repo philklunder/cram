@@ -6,6 +6,9 @@ import SwiftData
 final class Subject {
     @Attribute(.unique) var id: UUID
     var name: String
+    /// Legacy single exam date. The exam date lives on `Exam` now (a subject has many exams); this
+    /// column is kept only so pre-exams local rows can be migrated into an `Exam` on first launch
+    /// (see `ExamMigration`). Not synced anymore. Read `nextExam`/`daysUntilExam` instead.
     var examDate: Date?
     var gradingScaleRaw: String
     var targetGrade: Double?
@@ -31,6 +34,13 @@ final class Subject {
     @Relationship(deleteRule: .cascade, inverse: \GradeEntry.subject)
     var grades: [GradeEntry] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Exam.subject)
+    var exams: [Exam] = []
+
+    /// The term this subject belongs to. Local-only (see `Semester`) — never synced. `nil` means the
+    /// subject sits in the "Unassigned" bucket until the user files it under a semester.
+    var semester: Semester?
+
     var gradingScale: GradingScale {
         get { GradingScale(rawValue: gradingScaleRaw) ?? .german }
         set { gradingScaleRaw = newValue.rawValue }
@@ -51,13 +61,34 @@ final class Subject {
         self.needsSync = true
     }
 
-    /// Whole days from now until the exam, or nil if no exam date is set.
+    /// Live (non-deleted) exams, soonest first.
+    var activeExams: [Exam] {
+        exams.filter { $0.deletedAt == nil }
+            .sorted { ($0.examDate ?? .distantFuture) < ($1.examDate ?? .distantFuture) }
+    }
+
+    /// Exams still ahead of (or on) today — the ones you'd revise for.
+    var upcomingExams: [Exam] {
+        activeExams.filter { ($0.daysUntilExam ?? Int.max) >= 0 }
+    }
+
+    /// Exams whose date has passed — the "Past exams" bucket.
+    var pastExams: [Exam] {
+        activeExams.filter { ($0.daysUntilExam ?? Int.max) < 0 }
+    }
+
+    /// The soonest upcoming exam — drives the subject's headline countdown.
+    var nextExam: Exam? { upcomingExams.first }
+
+    /// Whole days until the soonest upcoming exam, or nil if none is scheduled. Falls back to the
+    /// legacy `examDate` for rows not yet migrated into an `Exam`.
     var daysUntilExam: Int? {
+        if let d = nextExam?.daysUntilExam { return d }
         guard let examDate else { return nil }
         let cal = Calendar.current
-        let start = cal.startOfDay(for: .now)
-        let end = cal.startOfDay(for: examDate)
-        return cal.dateComponents([.day], from: start, to: end).day
+        return cal.dateComponents([.day],
+                                  from: cal.startOfDay(for: .now),
+                                  to: cal.startOfDay(for: examDate)).day
     }
 
     /// The current grade: the manual value if set, otherwise the weighted average of entries.

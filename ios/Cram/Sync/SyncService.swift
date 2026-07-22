@@ -70,6 +70,7 @@ final class SyncService {
         try? context.delete(model: Quiz.self)
         try? context.delete(model: Source.self)
         try? context.delete(model: GradeEntry.self)
+        try? context.delete(model: Exam.self)
         try? context.delete(model: Subject.self)
         try? context.save()
     }
@@ -148,9 +149,14 @@ final class SyncService {
         // Parent→child so an upserted child's foreign key always resolves server-side.
         try await pushSyncable(
             Subject.self, resource: "subjects", client: client, context: context,
-            dto: { SubjectPushDTO(id: $0.id, name: $0.name, examDate: $0.examDate,
+            dto: { SubjectPushDTO(id: $0.id, name: $0.name,
                                   gradingScale: $0.gradingScale, targetGrade: $0.targetGrade,
                                   currentGrade: $0.manualCurrentGrade) })
+        try await pushSyncable(
+            Exam.self, resource: "exams", client: client, context: context,
+            dto: { ExamPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(),
+                               title: $0.title, examDate: $0.examDate) },
+            skip: { $0.subject == nil })
         try await pushSyncable(
             Source.self, resource: "sources", client: client, context: context,
             dto: { SourcePushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(), kind: $0.kind,
@@ -158,7 +164,8 @@ final class SyncService {
             skip: { $0.subject == nil })
         try await pushSyncable(
             Quiz.self, resource: "quizzes", client: client, context: context,
-            dto: { QuizPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(), title: $0.title) },
+            dto: { QuizPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(),
+                               examId: $0.exam?.id, title: $0.title) },
             skip: { $0.subject == nil })
         try await pushSyncable(
             Question.self, resource: "questions", client: client, context: context,
@@ -168,7 +175,8 @@ final class SyncService {
             skip: { $0.quiz == nil })
         try await pushSyncable(
             Card.self, resource: "cards", client: client, context: context,
-            dto: { CardPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(), sourceId: $0.source?.id,
+            dto: { CardPushDTO(id: $0.id, subjectId: $0.subject?.id ?? UUID(),
+                               examId: $0.exam?.id, sourceId: $0.source?.id,
                                front: $0.front, back: $0.back, topic: $0.topic,
                                difficulty: $0.difficulty, easeFactor: $0.easeFactor,
                                intervalDays: $0.intervalDays, repetitions: $0.repetitions,
@@ -243,6 +251,8 @@ final class SyncService {
     ) async throws {
         try await pullPages(SubjectReadDTO.self, resource: "subjects",
                             client: client, cursors: cursors, context: context, apply: applySubject)
+        try await pullPages(ExamReadDTO.self, resource: "exams",
+                            client: client, cursors: cursors, context: context, apply: applyExam)
         try await pullPages(SourceReadDTO.self, resource: "sources",
                             client: client, cursors: cursors, context: context, apply: applySource)
         try await pullPages(QuizReadDTO.self, resource: "quizzes",
@@ -289,10 +299,20 @@ final class SyncService {
         guard shouldApply(existing, remoteUpdatedAt: dto.updatedAt) else { return }
         let row = existing ?? insert(Subject(name: dto.name), context)
         row.name = dto.name
-        row.examDate = dto.examDate
         row.gradingScaleRaw = dto.gradingScale.rawValue
         row.targetGrade = dto.targetGrade
         row.manualCurrentGrade = dto.currentGrade
+        markSynced(row, id: dto.id, updatedAt: dto.updatedAt)
+    }
+
+    private func applyExam(_ dto: ExamReadDTO, _ context: ModelContext) {
+        let existing = exam(dto.id, context)
+        if dto.deletedAt != nil { existing.map(context.delete); return }
+        guard shouldApply(existing, remoteUpdatedAt: dto.updatedAt) else { return }
+        let row = existing ?? insert(Exam(title: dto.title, examDate: dto.examDate), context)
+        row.title = dto.title
+        row.examDate = dto.examDate
+        row.subject = subject(dto.subjectId, context)
         markSynced(row, id: dto.id, updatedAt: dto.updatedAt)
     }
 
@@ -316,6 +336,7 @@ final class SyncService {
         let row = existing ?? insert(Quiz(title: dto.title), context)
         row.title = dto.title
         row.subject = subject(dto.subjectId, context)
+        row.exam = dto.examId.flatMap { exam($0, context) }
         markSynced(row, id: dto.id, updatedAt: dto.updatedAt)
     }
 
@@ -353,6 +374,7 @@ final class SyncService {
         row.dueDate = dto.dueDate
         row.subject = subject(dto.subjectId, context)
         row.source = dto.sourceId.flatMap { source($0, context) }
+        row.exam = dto.examId.flatMap { exam($0, context) }
         markSynced(row, id: dto.id, updatedAt: dto.updatedAt)
     }
 
@@ -413,6 +435,7 @@ final class SyncService {
     private func setID(_ row: any SyncableModel, _ id: UUID) {
         switch row {
         case let r as Subject: r.id = id
+        case let r as Exam: r.id = id
         case let r as Source: r.id = id
         case let r as Card: r.id = id
         case let r as Quiz: r.id = id
@@ -426,6 +449,9 @@ final class SyncService {
     // a concrete model type.
     private func subject(_ id: UUID, _ c: ModelContext) -> Subject? {
         try? c.fetch(FetchDescriptor<Subject>(predicate: #Predicate { $0.id == id })).first
+    }
+    private func exam(_ id: UUID, _ c: ModelContext) -> Exam? {
+        try? c.fetch(FetchDescriptor<Exam>(predicate: #Predicate { $0.id == id })).first
     }
     private func source(_ id: UUID, _ c: ModelContext) -> Source? {
         try? c.fetch(FetchDescriptor<Source>(predicate: #Predicate { $0.id == id })).first

@@ -8,6 +8,9 @@ final class Quiz {
     var title: String
     var createdAt: Date
     var subject: Subject?
+    /// The exam this quiz was made for, or nil for the subject's unsorted bucket. Nullable link
+    /// (backend `quizzes.exam_id` ON DELETE SET NULL).
+    var exam: Exam?
 
     // Sync metadata (v0.5 Phase 5).
     var updatedAt: Date = Date()
@@ -17,11 +20,12 @@ final class Quiz {
     @Relationship(deleteRule: .cascade, inverse: \Question.quiz)
     var questions: [Question] = []
 
-    init(title: String, subject: Subject? = nil) {
+    init(title: String, subject: Subject? = nil, exam: Exam? = nil) {
         self.id = UUID()
         self.title = title
         self.createdAt = .now
         self.subject = subject
+        self.exam = exam
         self.updatedAt = .now
         self.needsSync = true
     }
