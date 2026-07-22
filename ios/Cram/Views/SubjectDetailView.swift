@@ -1,146 +1,173 @@
 import SwiftUI
 import SwiftData
 
-/// A subject's home: study now, its material, grades, and a quick readout of exam standing.
+/// The **Subjects-tab** subject leaf: focused on your **knowledge progress**. An identity header with
+/// overall mastery, then the exams — each showing how much you've mastered and whether it has material
+/// to learn. Tapping an exam opens its materials/progress; studying happens on the Study tab. Grades
+/// live on the Grades tab.
 struct SubjectDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Bindable var subject: Subject
 
-    /// The generation boundary (ADR 0003) — `StubGenerationService` until a backend URL is
-    /// configured, then `RemoteGenerationService`, chosen by the factory with no call-site change.
-    private let generator: GenerationService = GenerationServiceFactory.make()
+    @State private var showingAddExam = false
+    @State private var showingEditSubject = false
+    @State private var editingExam: Exam?
 
-    @State private var isGenerating = false
-    @State private var generationError: String?
-    @State private var showingAddMaterial = false
-
-    private var dueCards: [Card] { subject.cards.filter { $0.isDue() } }
+    private var upcoming: [Exam] { subject.upcomingExams }
+    private var past: [Exam] { subject.pastExams }
+    private var dueTotal: Int { subject.dueCount }
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink {
-                    StudySessionView(subject: subject)
-                } label: {
-                    Label(dueCards.isEmpty ? "Nothing due — review anyway"
-                                           : "Study \(dueCards.count) due card\(dueCards.count == 1 ? "" : "s")",
-                          systemImage: "play.circle")
-                }
-                .disabled(subject.cards.isEmpty)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.lg) {
+                header
+                examsSection
             }
-
-            Section("Exam") {
-                if let days = subject.daysUntilExam {
-                    LabeledContent("Days to exam", value: days >= 0 ? "\(days)" : "passed")
-                } else {
-                    LabeledContent("Exam", value: "no date set")
-                }
-                LabeledContent("Current grade",
-                               value: subject.currentGrade.map {
-                                   GradeFormat.string($0, scale: subject.gradingScale)
-                               } ?? "—")
-                if let target = subject.targetGrade {
-                    LabeledContent("Target",
-                                   value: GradeFormat.string(target, scale: subject.gradingScale))
-                }
-                NavigationLink {
-                    GradesView(subject: subject)
-                } label: {
-                    Label("Grades (\(subject.grades.count))", systemImage: "graduationcap")
-                }
+            .padding(Space.md)
+        }
+        .background(CanvasBackground())
+        .navigationTitle(subject.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { SyncService.shared.requestSync(context: context) }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingAddExam = true } label: { Image(systemName: "plus") }
+                    .tint(Theme.brand)
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { showingEditSubject = true } label: { Label("Edit subject", systemImage: "pencil") }
+                    Button(role: .destructive) { deleteSubject() } label: { Label("Delete subject", systemImage: "trash") }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .tint(Theme.brand)
+            }
+        }
+        .sheet(isPresented: $showingAddExam) { AddExamView(subject: subject) }
+        .sheet(isPresented: $showingEditSubject) { AddSubjectView(editing: subject) }
+        .sheet(item: $editingExam) { AddExamView(subject: subject, editing: $0) }
+    }
 
-            Section("Material") {
-                if subject.sources.isEmpty {
-                    Text("No material yet.").foregroundStyle(.secondary)
-                } else {
-                    ForEach(subject.sources) { source in
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(source.title)
-                                Text(subtitle(for: source))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: icon(for: source.kind))
+    private func deleteSubject() {
+        subject.softDelete()
+        SyncService.shared.requestSync(context: context)
+        dismiss()
+    }
+
+    // MARK: - Header (progress)
+
+    private var header: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: Space.md) {
+                HStack(spacing: Space.sm) {
+                    MonogramTile(subject: subject, size: 52)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(subject.name).font(.title3.weight(.bold)).tracking(-0.3)
+                            .foregroundStyle(Theme.ink).lineLimit(2)
+                        if let next = subject.nextExam {
+                            CountdownPill(days: next.daysUntilExam)
+                        } else {
+                            Badge(text: "No upcoming exam", tone: .neutral, systemImage: "calendar")
                         }
                     }
+                    Spacer()
+                    ReadinessRing(value: subject.readiness, verdict: subject.verdict, size: 64)
                 }
-                Button {
-                    showingAddMaterial = true
-                } label: {
-                    Label("Add material", systemImage: "plus")
+                HStack(spacing: Space.sm) {
+                    miniStat("\(subject.activeExams.count)", "Exams")
+                    miniStat("\(dueTotal)", "Due", tone: dueTotal == 0 ? Theme.ink : Theme.brand)
+                    miniStat(subject.readiness.map { "\(Int($0 * 100))%" } ?? "—", "Mastered")
                 }
-                .disabled(isGenerating)
-                if isGenerating {
-                    HStack {
-                        ProgressView()
-                        Text("Generating cards…").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func miniStat(_ value: String, _ label: String, tone: Color = Theme.ink) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.figure(.headline)).foregroundStyle(tone)
+            Text(label).font(.caption2).foregroundStyle(Theme.ink2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Space.xs)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+    }
+
+    // MARK: - Exams
+
+    private var examsSection: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            SectionHeader(title: "Exams", actionTitle: "Add") { showingAddExam = true }
+            if subject.activeExams.isEmpty {
+                Panel {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text("No exams yet").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                        Text("Add an exam, then add material to it and Cram generates the cards and quiz to study.")
+                            .font(.caption).foregroundStyle(Theme.ink2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button { showingAddExam = true } label: { Label("Add an exam", systemImage: "plus") }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .padding(.top, Space.xxs)
+                    }
+                }
+            } else {
+                VStack(spacing: Space.xs) {
+                    ForEach(upcoming) { exam in examLink(exam) }
+                }
+                if !past.isEmpty {
+                    Text("Past exams").font(.caption.weight(.semibold)).foregroundStyle(Theme.muted)
+                        .padding(.top, Space.xs)
+                    VStack(spacing: Space.xs) {
+                        ForEach(past) { exam in examLink(exam) }
                     }
                 }
             }
+        }
+    }
 
-            Section("Cards") {
-                LabeledContent("Total", value: "\(subject.cards.count)")
-                LabeledContent("Due now", value: "\(dueCards.count)")
+    private func examLink(_ exam: Exam) -> some View {
+        NavigationLink {
+            ExamMaterialsView(scope: StudyScope(subject: subject, exam: exam))
+        } label: {
+            ExamProgressRow(exam: exam)
+        }
+        .buttonStyle(PressableCardStyle())
+        .contextMenu {
+            Button { editingExam = exam } label: { Label("Edit exam", systemImage: "pencil") }
+            Button(role: .destructive) { delete(exam) } label: { Label("Delete exam", systemImage: "trash") }
+        }
+    }
+
+    private func delete(_ exam: Exam) {
+        exam.softDelete()
+        SyncService.shared.requestSync(context: context)
+    }
+}
+
+/// A subject-detail exam row focused on progress: mastery ring, and whether it has material to learn.
+private struct ExamProgressRow: View {
+    let exam: Exam
+
+    private var cardCount: Int { exam.cards.filter { $0.deletedAt == nil }.count }
+    private var hasMaterial: Bool { cardCount > 0 }
+
+    var body: some View {
+        Panel(padding: Space.sm) {
+            HStack(spacing: Space.sm) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(exam.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                    HStack(spacing: 6) {
+                        if hasMaterial {
+                            Badge(text: "\(cardCount) card\(cardCount == 1 ? "" : "s")", tone: .neutral, systemImage: "rectangle.stack.fill")
+                        } else {
+                            Badge(text: "No material", tone: .warning, systemImage: "tray")
+                        }
+                        CountdownPill(days: exam.daysUntilExam)
+                    }
+                }
+                Spacer(minLength: Space.xs)
+                ReadinessRing(value: exam.readiness, verdict: exam.verdict, size: 46, lineWidth: 5)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.muted)
             }
-        }
-        .navigationTitle(subject.name)
-        // Nudge a sync so this subject is pushed to the backend before any remote generate, which
-        // find-or-creates the subject by name — pushing first makes the server reuse this row's id.
-        .task { SyncService.shared.requestSync(context: context) }
-        .sheet(isPresented: $showingAddMaterial) {
-            AddMaterialView { captured in ingest(captured) }
-        }
-        .alert("Couldn't generate", isPresented: .constant(generationError != nil)) {
-            Button("OK") { generationError = nil }
-        } message: {
-            Text(generationError ?? "")
-        }
-    }
-
-    /// Run the (stubbed) generation for freshly captured material and persist the resulting deck,
-    /// carrying the real title and stored filenames onto the `Source`. The generation call site is
-    /// unchanged — `RemoteGenerationService` swaps in here later (v0.3) with no UI change.
-    private func ingest(_ captured: CapturedMaterial) {
-        isGenerating = true
-        Task {
-            defer { isGenerating = false }
-            do {
-                let request = GenerationRequest(
-                    kind: captured.kind,
-                    title: captured.title,
-                    subjectName: subject.name,
-                    fileURLs: captured.fileNames.map { SourceStore.shared.url(for: $0) })
-                let deck = try await generator.generate(request)
-                DeckIngest.ingest(deck,
-                                  kind: captured.kind,
-                                  title: captured.title,
-                                  fileNames: captured.fileNames,
-                                  into: subject,
-                                  context: context)
-                SyncService.shared.requestSync(context: context)
-            } catch {
-                generationError = error.localizedDescription
-            }
-        }
-    }
-
-    private func subtitle(for source: Source) -> String {
-        let when = source.addedAt.formatted(.relative(presentation: .named))
-        guard !source.fileNames.isEmpty else { return "\(source.kind.label) · added \(when)" }
-        let n = source.fileNames.count
-        return "\(n) file\(n == 1 ? "" : "s") · \(source.kind.label) · added \(when)"
-    }
-
-    private func icon(for kind: SourceKind) -> String {
-        switch kind {
-        case .pdf: "doc.text"
-        case .photo: "photo"
-        case .web: "globe"
-        case .youtube: "play.rectangle"
-        case .audio: "waveform"
         }
     }
 }
@@ -150,4 +177,5 @@ struct SubjectDetailView: View {
         SubjectDetailView(subject: PreviewData.container.mainContext.firstSubject())
     }
     .modelContainer(PreviewData.container)
+    .environment(AppRouter())
 }

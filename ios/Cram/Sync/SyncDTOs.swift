@@ -89,7 +89,6 @@ struct SubjectReadDTO: Decodable {
     let updatedAt: Date
     let deletedAt: Date?
     let name: String
-    let examDate: Date?
     let gradingScale: GradingScale
     let targetGrade: Double?
     let currentGrade: Double?
@@ -98,10 +97,28 @@ struct SubjectReadDTO: Decodable {
 struct SubjectPushDTO: Encodable {
     let id: UUID
     let name: String
-    let examDate: Date?
     let gradingScale: GradingScale
     let targetGrade: Double?
     let currentGrade: Double?
+}
+
+// MARK: - Exams
+
+struct ExamReadDTO: Decodable {
+    let id: UUID
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let subjectId: UUID
+    let title: String
+    let examDate: Date?
+}
+
+struct ExamPushDTO: Encodable {
+    let id: UUID
+    let subjectId: UUID
+    let title: String
+    let examDate: Date?
 }
 
 // MARK: - Sources
@@ -135,6 +152,7 @@ struct CardReadDTO: Decodable {
     let updatedAt: Date
     let deletedAt: Date?
     let subjectId: UUID
+    let examId: UUID?
     let sourceId: UUID?
     let front: String
     let back: String
@@ -150,6 +168,7 @@ struct CardReadDTO: Decodable {
 struct CardPushDTO: Encodable {
     let id: UUID
     let subjectId: UUID
+    let examId: UUID?
     let sourceId: UUID?
     let front: String
     let back: String
@@ -170,12 +189,14 @@ struct QuizReadDTO: Decodable {
     let updatedAt: Date
     let deletedAt: Date?
     let subjectId: UUID
+    let examId: UUID?
     let title: String
 }
 
 struct QuizPushDTO: Encodable {
     let id: UUID
     let subjectId: UUID
+    let examId: UUID?
     let title: String
 }
 

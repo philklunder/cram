@@ -17,8 +17,14 @@ enum DeckIngest {
                        title: String? = nil,
                        fileNames: [String] = [],
                        into subject: Subject,
+                       exam: Exam? = nil,
                        context: ModelContext) -> Source {
         let serverProvided = deck.sourceId != nil
+        // Cards/quizzes are tagged to their exam on the client (the /v1/generate endpoint doesn't
+        // take one). When the deck was server-persisted we normally leave those rows already-synced,
+        // but if we're attaching an exam the new `exam_id` still needs to be pushed as an update —
+        // so keep `needsSync` set whenever an exam is assigned.
+        let markChildrenSynced = serverProvided && exam == nil
 
         let source = Source(kind: kind,
                             title: title ?? deck.sourceTitle,
@@ -33,17 +39,18 @@ enum DeckIngest {
                             topic: c.topic,
                             difficulty: c.difficulty,
                             subject: subject,
-                            source: source)
+                            source: source,
+                            exam: exam)
             if let id = c.serverId { card.id = id }
             context.insert(card)
-            if serverProvided { card.needsSync = false }
+            if markChildrenSynced { card.needsSync = false }
         }
 
         if !deck.questions.isEmpty {
-            let quiz = Quiz(title: deck.sourceTitle, subject: subject)
+            let quiz = Quiz(title: deck.sourceTitle, subject: subject, exam: exam)
             if let id = deck.quizId { quiz.id = id }
             context.insert(quiz)
-            if serverProvided { quiz.needsSync = false }
+            if markChildrenSynced { quiz.needsSync = false }
             for q in deck.questions {
                 let question = Question(prompt: q.prompt,
                                         kind: q.kind,

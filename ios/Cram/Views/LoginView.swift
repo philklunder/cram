@@ -12,7 +12,7 @@ struct LoginView: View {
     @FocusState private var focused: Field?
 
     /// Scales the hero glyph with the user's Dynamic Type setting.
-    @ScaledMetric(relativeTo: .largeTitle) private var iconSize: CGFloat = 52
+    @ScaledMetric(relativeTo: .largeTitle) private var iconSize: CGFloat = 34
 
     private enum Field { case email, password }
 
@@ -24,7 +24,7 @@ struct LoginView: View {
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: Space.xl) {
                     header
                     form
                     if let error = auth.lastError {
@@ -32,8 +32,8 @@ struct LoginView: View {
                     }
                     actions
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 36)
+                .padding(.horizontal, Space.xl)
+                .padding(.vertical, Space.xxl)
                 .frame(maxWidth: 480)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 .animation(.snappy, value: auth.lastError)
@@ -42,22 +42,21 @@ struct LoginView: View {
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(CanvasBackground())
     }
 
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "graduationcap.fill")
-                .font(.system(size: iconSize))
-                .foregroundStyle(.tint)
+        VStack(spacing: Space.md) {
+            AppLogoMark(size: iconSize * 2)
                 .accessibilityHidden(true)
             Text("Cram")
-                .font(.largeTitle.bold())
+                .font(.serifDisplay(.largeTitle, .bold)).tracking(-0.5)
+                .foregroundStyle(Theme.ink)
             Text("Sign in to generate and sync your study material.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.ink2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -67,8 +66,8 @@ struct LoginView: View {
     // MARK: - Form
 
     private var form: some View {
-        VStack(spacing: 14) {
-            fieldRow(icon: "envelope") {
+        VStack(spacing: Space.sm) {
+            fieldRow(icon: "envelope.fill") {
                 TextField("Email", text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
@@ -80,7 +79,7 @@ struct LoginView: View {
                     .accessibilityLabel("Email")
             } isActive: { focused == .email }
 
-            fieldRow(icon: "lock") {
+            fieldRow(icon: "lock.fill") {
                 SecureField("Password", text: $password)
                     .textContentType(mode == .signIn ? .password : .newPassword)
                     .focused($focused, equals: .password)
@@ -92,30 +91,28 @@ struct LoginView: View {
         }
     }
 
-    /// A filled, rounded input row with a leading glyph and an accent focus ring — a modern but
-    /// native iOS look that reads more clearly than a bare bordered text field.
+    /// A filled, rounded input row with a leading glyph and a brand focus ring.
     private func fieldRow<Content: View>(
         icon: String,
         @ViewBuilder content: () -> Content,
         isActive: () -> Bool
     ) -> some View {
         let active = isActive()
-        return HStack(spacing: 12) {
+        return HStack(spacing: Space.sm) {
             Image(systemName: icon)
-                .foregroundStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(active ? AnyShapeStyle(Theme.brand) : AnyShapeStyle(Theme.muted))
                 .frame(width: 22)
                 .accessibilityHidden(true)
             content()
+                .foregroundStyle(Theme.ink)
         }
         .font(.body)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 13)
-        .background(Color(.secondarySystemGroupedBackground),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, 15)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(active ? Color.accentColor : Color(.separator),
-                              lineWidth: active ? 1.5 : 0.5)
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                .strokeBorder(active ? Theme.brand : Theme.line, lineWidth: active ? 1.5 : 1)
         )
         .animation(.snappy(duration: 0.15), value: active)
     }
@@ -123,18 +120,17 @@ struct LoginView: View {
     // MARK: - Error
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Theme.danger)
                 .accessibilityHidden(true)
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.primary)
+                .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
-        .background(Color.orange.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(Space.sm)
+        .background(Theme.dangerSoft, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .transition(.opacity.combined(with: .move(edge: .top)))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Error: \(message)")
@@ -143,22 +139,34 @@ struct LoginView: View {
     // MARK: - Actions
 
     private var actions: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: Space.md) {
             Button(action: submit) {
                 ZStack {
                     // Keep the button height stable whether or not the spinner is showing.
                     Text(actionLabel).opacity(auth.isBusy ? 0 : 1)
                     if auth.isBusy {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(Theme.onBrand)
                     }
                 }
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(!canSubmit)
             .accessibilityLabel(actionLabel)
             .accessibilityHint(auth.isBusy ? "Working" : "")
+
+            orDivider
+
+            Button {
+                Task { await auth.signInWithGoogle() }
+            } label: {
+                HStack(spacing: Space.sm) {
+                    GoogleGlyph(size: 18)
+                    Text("Continue with Google")
+                }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(auth.isBusy)
+            .accessibilityLabel("Continue with Google")
 
             Button {
                 auth.clearError()
@@ -167,10 +175,21 @@ struct LoginView: View {
                 Text(mode == .signIn
                      ? "Don't have an account? Sign up"
                      : "Already have an account? Sign in")
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.brand)
             }
             .disabled(auth.isBusy)
         }
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: Space.sm) {
+            Rectangle().fill(Theme.line).frame(height: 1)
+            Text("or").font(.caption.weight(.medium)).foregroundStyle(Theme.muted)
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
+        .padding(.vertical, Space.xxs)
+        .accessibilityHidden(true)
     }
 
     private func submit() {
@@ -182,5 +201,39 @@ struct LoginView: View {
             case .signUp: await auth.signUp(email: email, password: password)
             }
         }
+    }
+}
+
+/// The Google "G", drawn with SwiftUI so it needs no bundled asset: four brand-coloured arcs plus the
+/// blue cross-bar.
+private struct GoogleGlyph: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        Canvas { ctx, sz in
+            let lineWidth = sz.width * 0.26
+            let center = CGPoint(x: sz.width / 2, y: sz.height / 2)
+            let radius = (sz.width - lineWidth) / 2
+
+            func arc(_ start: Double, _ end: Double, _ hex: UInt) {
+                var path = Path()
+                path.addArc(center: center, radius: radius,
+                            startAngle: .degrees(start), endAngle: .degrees(end), clockwise: false)
+                ctx.stroke(path, with: .color(Color(hex: hex)),
+                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+            }
+            // 0° = 3 o'clock, angles increase clockwise (y-down).
+            arc(-63, 26, 0x4285F4)   // blue — right
+            arc(26, 135, 0x34A853)   // green — bottom / lower-left
+            arc(135, 207, 0xFBBC05)  // yellow — left
+            arc(207, 297, 0xEA4335)  // red — top
+
+            // Blue cross-bar: from the centre out to the right edge at the vertical middle.
+            let bar = CGRect(x: center.x - lineWidth * 0.1, y: center.y - lineWidth / 2,
+                             width: radius + lineWidth / 2, height: lineWidth)
+            ctx.fill(Path(bar), with: .color(Color(hex: 0x4285F4)))
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }

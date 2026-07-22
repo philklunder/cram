@@ -26,6 +26,9 @@ final class Card {
 
     var subject: Subject?
     var source: Source?
+    /// The exam this card was made for, or nil for the subject's unsorted ("General") bucket.
+    /// Nullable link (backend `cards.exam_id` ON DELETE SET NULL) — a card outlives its exam.
+    var exam: Exam?
 
     // Sync metadata (v0.5 Phase 5). The SM-2 state above is what changes on review; bump
     // `updatedAt` / `needsSync` via `touch()` whenever the scheduler rewrites it.
@@ -41,7 +44,8 @@ final class Card {
          topic: String,
          difficulty: Int = 3,
          subject: Subject? = nil,
-         source: Source? = nil) {
+         source: Source? = nil,
+         exam: Exam? = nil) {
         self.id = UUID()
         self.front = front
         self.back = back
@@ -55,6 +59,7 @@ final class Card {
         self.dueDate = .now        // brand-new cards are due immediately
         self.subject = subject
         self.source = source
+        self.exam = exam
         self.updatedAt = .now
         self.needsSync = true
     }

@@ -30,6 +30,17 @@
     Keychain session is always cleared.
   - **Enumeration-safe errors.** Auth failures map to fixed, generic messages (no upstream text
     echoed); only the connectivity case is distinguished.
+- **Google OAuth on iOS (2026-07-22), matching the web's Google sign-in.** `AuthManager.signInWithGoogle()`
+  uses the SDK's `signInWithOAuth(provider: .google, redirectTo:configure:)`, which drives an
+  `ASWebAuthenticationSession` (PKCE) and lands the same `.signedIn` state as email sign-in. The login
+  screen gains a "Continue with Google" button (works for both sign-in and sign-up). Key choices:
+  - **No `Info.plist` URL scheme.** `ASWebAuthenticationSession` handles the callback via its
+    `callbackURLScheme` (derived from `redirectTo`), so the deep link needs no `CFBundleURLTypes`
+    registration — important because the project uses `GENERATE_INFOPLIST_FILE = YES` (no physical plist).
+  - **Redirect URL** = `AppConfig.oauthRedirectURL` (`com.philippklunder.cram://login-callback`); it must
+    be added to **Supabase → Auth → URL Configuration → Redirect URLs** (owner/dashboard step, like the web).
+  - **User cancellation is not an error** — `CancellationError` / `ASWebAuthenticationSessionError.canceledLogin`
+    are swallowed; other failures map to a generic OAuth message (same enumeration-safe posture).
 
 ## Reasoning
 - **SDK over hand-rolled REST:** token refresh, session persistence, and Keychain handling are
@@ -66,4 +77,4 @@
 - Where to source config for **sideloaded builds** (xcconfig vs. committed non-secret defaults).
 
 ## Last updated
-2026-06-22
+2026-07-22
