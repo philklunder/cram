@@ -58,10 +58,14 @@ enum AppConfig {
         return supabaseAnonKeyFallback
     }
 
-    /// Optional hardcoded Supabase config for convenience. Leave `nil` to require the Run-scheme
-    /// env vars. (Both values are non-secret and may be committed if you prefer a zero-setup build.)
-    static let supabaseURLFallback: URL? = nil
-    static let supabaseAnonKeyFallback: String? = nil
+    /// Hardcoded Supabase config so the app is authenticated on **every** launch, not just when run
+    /// from Xcode. Run-scheme env vars are only injected by the debugger; a standalone launch (tapping
+    /// the installed app icon) has none, which would otherwise drop the app into the offline stub path.
+    /// Both values are non-secret — the anon (publishable) key is designed to ship in clients and is
+    /// already committed in `Cram.xcscheme`. The Run-scheme env vars above still override these.
+    static let supabaseURLFallback: URL? = URL(string: "https://ckrjthwgcvtytdxfyjhr.supabase.co")
+    static let supabaseAnonKeyFallback: String? =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrcmp0aHdnY3Z0eXRkeGZ5amhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTMyOTgsImV4cCI6MjA5NzI4OTI5OH0.S7oiiyT0fMUBU8ioVRPdUUrd1kKkHXbaKbGwJhHfsxo"
 
     /// The deep link the Google OAuth web flow returns to. Its scheme is handled internally by
     /// `ASWebAuthenticationSession` (no `Info.plist` URL-scheme registration required). For sign-in to
