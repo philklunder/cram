@@ -16,8 +16,6 @@ import type {
 import { daysUntil } from "@/lib/format";
 import { computeProgress } from "@/lib/progress";
 
-const DAY_MS = 86_400_000;
-
 // Local-calendar-day key (YYYY-MM-DD in the viewer's timezone). Streaks and activity are read the
 // way a human reads a calendar, so bucketing is local, not UTC.
 function dayKey(ts: number): string {
@@ -30,12 +28,21 @@ function startOfLocalDay(ts: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
+// Step `days` calendar days from `ts`, anchored to local midnight. Uses the Date constructor's
+// month/date normalization rather than fixed-millisecond arithmetic, so it stays correct across
+// DST transitions — on a 23- or 25-hour local day, `ts + n*86_400_000` would drift by an hour and
+// two steps could land on the same calendar date (duplicate day keys); this never does.
+function addLocalDays(ts: number, days: number): number {
+  const d = new Date(ts);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime();
+}
+
 // Monday-anchored start of the local week containing `ts`.
 function startOfLocalWeek(ts: number): number {
   const start = startOfLocalDay(ts);
   const dow = new Date(start).getDay(); // 0=Sun..6=Sat
   const backToMonday = (dow + 6) % 7; // Mon=0
-  return start - backToMonday * DAY_MS;
+  return addLocalDays(start, -backToMonday);
 }
 
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
@@ -64,15 +71,15 @@ export function computeStreak(reviewLogs: ReviewLog[], now: number = Date.now())
   // Count consecutive active days. If today is still idle, a streak that ran through yesterday is
   // not broken yet, so start the walk at yesterday.
   let current = 0;
-  let cursor = studiedToday ? todayStart : todayStart - DAY_MS;
+  let cursor = studiedToday ? todayStart : addLocalDays(todayStart, -1);
   while (active.has(dayKey(cursor))) {
     current++;
-    cursor -= DAY_MS;
+    cursor = addLocalDays(cursor, -1);
   }
 
   const weekStart = startOfLocalWeek(now);
   const week: StreakDay[] = Array.from({ length: 7 }, (_, i) => {
-    const dayStart = weekStart + i * DAY_MS;
+    const dayStart = addLocalDays(weekStart, i);
     return {
       key: dayKey(dayStart),
       label: WEEKDAY_LABELS[i],
@@ -127,7 +134,7 @@ export function computeQuizStats(attempts: Attempt[], now: number = Date.now()):
   const avg = mean(attempts.map((a) => a.score)) ?? 0;
 
   const weekStart = startOfLocalWeek(now);
-  const lastWeekStart = weekStart - 7 * DAY_MS;
+  const lastWeekStart = addLocalDays(weekStart, -7);
   const thisWeek: number[] = [];
   const lastWeek: number[] = [];
   for (const a of attempts) {
@@ -363,14 +370,14 @@ export function activityHeatmap(
     byDay.set(k, (byDay.get(k) ?? 0) + s.duration_seconds / 60);
   }
   const weekStart = startOfLocalWeek(now);
-  const start = weekStart - (weeks - 1) * 7 * DAY_MS;
+  const start = addLocalDays(weekStart, -(weeks - 1) * 7);
   const todayStart = startOfLocalDay(now);
   const grid: HeatDay[][] = [];
   let max = 0;
   for (let w = 0; w < weeks; w++) {
     const col: HeatDay[] = [];
     for (let d = 0; d < 7; d++) {
-      const dayStart = start + (w * 7 + d) * DAY_MS;
+      const dayStart = addLocalDays(start, w * 7 + d);
       const minutes = Math.round(byDay.get(dayKey(dayStart)) ?? 0);
       max = Math.max(max, minutes);
       col.push({ key: dayKey(dayStart), minutes, isToday: dayStart === todayStart, inFuture: dayStart > todayStart });
@@ -398,7 +405,7 @@ export interface WeeklyActivity {
 
 export function weeklyActivity(sessions: StudySession[], now: number = Date.now()): WeeklyActivity {
   const weekStart = startOfLocalWeek(now);
-  const lastWeekStart = weekStart - 7 * DAY_MS;
+  const lastWeekStart = addLocalDays(weekStart, -7);
   const todayStart = startOfLocalDay(now);
 
   const minutesByDay = new Map<string, number>();
@@ -418,7 +425,7 @@ export function weeklyActivity(sessions: StudySession[], now: number = Date.now(
   }
 
   const days: ActivityDay[] = Array.from({ length: 7 }, (_, i) => {
-    const dayStart = weekStart + i * DAY_MS;
+    const dayStart = addLocalDays(weekStart, i);
     const k = dayKey(dayStart);
     return {
       key: k,
