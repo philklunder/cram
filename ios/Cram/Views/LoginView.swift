@@ -204,36 +204,15 @@ struct LoginView: View {
     }
 }
 
-/// The Google "G", drawn with SwiftUI so it needs no bundled asset: four brand-coloured arcs plus the
-/// blue cross-bar.
+/// The official multi-colour Google "G", from the vector asset in `Assets.xcassets/GoogleG`.
 private struct GoogleGlyph: View {
     var size: CGFloat = 18
 
     var body: some View {
-        Canvas { ctx, sz in
-            let lineWidth = sz.width * 0.26
-            let center = CGPoint(x: sz.width / 2, y: sz.height / 2)
-            let radius = (sz.width - lineWidth) / 2
-
-            func arc(_ start: Double, _ end: Double, _ hex: UInt) {
-                var path = Path()
-                path.addArc(center: center, radius: radius,
-                            startAngle: .degrees(start), endAngle: .degrees(end), clockwise: false)
-                ctx.stroke(path, with: .color(Color(hex: hex)),
-                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
-            }
-            // 0° = 3 o'clock, angles increase clockwise (y-down).
-            arc(-63, 26, 0x4285F4)   // blue — right
-            arc(26, 135, 0x34A853)   // green — bottom / lower-left
-            arc(135, 207, 0xFBBC05)  // yellow — left
-            arc(207, 297, 0xEA4335)  // red — top
-
-            // Blue cross-bar: from the centre out to the right edge at the vertical middle.
-            let bar = CGRect(x: center.x - lineWidth * 0.1, y: center.y - lineWidth / 2,
-                             width: radius + lineWidth / 2, height: lineWidth)
-            ctx.fill(Path(bar), with: .color(Color(hex: 0x4285F4)))
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
+        Image("GoogleG")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
