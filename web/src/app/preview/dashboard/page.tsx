@@ -223,7 +223,7 @@ export default function DashboardPreviewPage({ searchParams }: { searchParams: P
 
   return (
     <AppShell email="philipp@cram.study" activeHref="/dashboard">
-      <DashboardView data={(state && STATES[state]) || DATA} now={NOW} name="Philipp" />
+      <DashboardView data={state && Object.hasOwn(STATES, state) ? STATES[state] : DATA} now={NOW} name="Philipp" />
     </AppShell>
   );
 }
