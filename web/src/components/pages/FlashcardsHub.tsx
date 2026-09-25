@@ -161,7 +161,15 @@ export function FlashcardsView({
     return (
       <section>
         <PageHeader title="Flashcards" subtitle="Study your decks, track mastery, and remember more." />
-        <EmptyState title="No cards yet" hint="Upload material to a subject to generate your first deck." />
+        <EmptyState
+          title="No cards yet"
+          hint="Upload material to a subject to generate your first deck."
+          action={
+            <Link href="/upload" className={buttonClass("primary", "sm")}>
+              Add material
+            </Link>
+          }
+        />
       </section>
     );
   }

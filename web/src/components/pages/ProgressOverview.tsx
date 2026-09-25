@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { PageHeader } from "@/components/pages/shared";
-import { Button, ErrorBox, Skeleton, cn } from "@/components/ui";
+import { Button, EmptyState, ErrorBox, Skeleton, buttonClass, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, GradeEntry, GradingScale, StudySession, Subject } from "@/lib/api/types";
 import {
@@ -74,6 +74,24 @@ export function ProgressOverviewView({ data, now = Date.now() }: { data: Progres
   const lastD = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1);
   const lastMonthMin = monthMinutes(studySessions, lastD.getFullYear(), lastD.getMonth());
   const monthDelta = lastMonthMin > 0 ? Math.round(((thisMonthMin - lastMonthMin) / lastMonthMin) * 100) : null;
+
+  // Nothing studied, recorded or generated yet: every figure below would be a zero.
+  if (cards.length === 0 && gradeEntries.length === 0 && studySessions.length === 0) {
+    return (
+      <section>
+        <PageHeader title="Progress" subtitle="How your recall and your real grades have moved over time." />
+        <EmptyState
+          title="Your progress shows up here"
+          hint="Add material to get your first deck, then run a Review. Readiness, streaks and mastery build from there."
+          action={
+            <Link href="/upload" className={buttonClass("primary", "sm")}>
+              Add material
+            </Link>
+          }
+        />
+      </section>
+    );
+  }
 
   return (
     <section>

@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { Modal } from "@/components/Modal";
 import { PageHeader, SelectChevron } from "@/components/pages/shared";
-import { Button, EmptyState, ErrorBox, Skeleton, cn, inputClass, labelClass, selectClass } from "@/components/ui";
+import { Button, EmptyState, ErrorBox, Skeleton, buttonClass, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Exam, StudySession, Subject } from "@/lib/api/types";
 import { subjectExamDate } from "@/lib/dashboard";
@@ -347,7 +347,15 @@ function AddSessionModal({
   return (
     <Modal open={open} onClose={onClose} title="Add a study session" description="Block out study time before an exam. Saved on this device.">
       {subjects.length === 0 ? (
-        <EmptyState title="No subjects yet" hint="Create a subject first, then plan study time for it." />
+        <EmptyState
+          title="No subjects yet"
+          hint="Create a subject first, then plan study time for it."
+          action={
+            <Link href="/subjects?new=subject" className={buttonClass("primary", "sm")}>
+              New subject
+            </Link>
+          }
+        />
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div>

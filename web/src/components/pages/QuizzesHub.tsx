@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { BookOpen, Check, ChevronDown, Clock, FileText, HelpCircle, Layers, Play, Sparkles, Target } from "lucide-react";
 
 import { QuizRunner } from "@/components/QuizRunner";
 import { LibraryLoader, PageHeader, SelectChevron } from "@/components/pages/shared";
-import { Button, EmptyState, cn, selectClass } from "@/components/ui";
+import { Button, EmptyState, buttonClass, cn, selectClass } from "@/components/ui";
 import type { LibraryData } from "@/lib/api/client";
 import type { Question, Quiz } from "@/lib/api/types";
 import { GENERAL_SCOPE, WHOLE_SUBJECT, examsForSubject, inExamScope, scopeLabel } from "@/lib/scope";
@@ -63,7 +64,12 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
         />
         <EmptyState
           title="No quizzes yet"
-          hint="Generating a deck in AI Decks also creates a quiz. Upload some material to get started."
+          hint="Every deck Cram generates comes with a quiz. Upload some material to get started."
+          action={
+            <Link href="/upload" className={buttonClass("primary", "sm")}>
+              Add material
+            </Link>
+          }
         />
       </section>
     );

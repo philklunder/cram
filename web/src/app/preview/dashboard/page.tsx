@@ -4,6 +4,7 @@
 // screenshotted/iterated without a Supabase login. Gated to non-production. Delete with the rest of
 // the preview harness before shipping.
 import { notFound } from "next/navigation";
+import { use } from "react";
 
 import { AppShell } from "@/components/shell/AppShell";
 import { DashboardView } from "@/components/dashboard/DashboardView";
@@ -198,12 +199,31 @@ const DATA: DashboardData = {
   studySessions: STUDY_SESSIONS,
 };
 
-export default function DashboardPreviewPage() {
+const EMPTY: DashboardData = {
+  subjects: [],
+  exams: [],
+  cards: [],
+  quizzes: [],
+  questions: [],
+  attempts: [],
+  reviewLogs: [],
+  gradeEntries: [],
+  studySessions: [],
+};
+
+// ?state=new → a brand-new account; ?state=subject → one subject + exam, nothing uploaded yet.
+const STATES: Record<string, DashboardData> = {
+  new: EMPTY,
+  subject: { ...EMPTY, subjects: SUBJECTS.slice(0, 1), exams: EXAMS.filter((e) => e.subject_id === SUBJECTS[0].id) },
+};
+
+export default function DashboardPreviewPage({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
   if (process.env.NODE_ENV === "production") notFound();
+  const { state } = use(searchParams);
 
   return (
     <AppShell email="philipp@cram.study" activeHref="/dashboard">
-      <DashboardView data={DATA} now={NOW} name="Philipp" />
+      <DashboardView data={(state && STATES[state]) || DATA} now={NOW} name="Philipp" />
     </AppShell>
   );
 }

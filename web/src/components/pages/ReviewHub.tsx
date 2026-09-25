@@ -7,13 +7,14 @@
 // those two signals are the only inputs to your readiness score (lib/readiness.ts). This page plans
 // the work — what's due, how ready each subject is — and launches the run (ReviewRun.tsx).
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Brain, CalendarClock, ChevronRight, Clock, HelpCircle, Layers, ListOrdered, Play, RefreshCw, Shuffle, SlidersHorizontal, Sparkles, Target, TrendingUp } from "lucide-react";
 
 import { Modal } from "@/components/Modal";
 import { ReviewRun } from "@/components/ReviewRun";
 import type { ReviewCardContext } from "@/components/ReviewSession";
-import { Button, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
+import { Button, EmptyState, ErrorBox, Skeleton, buttonClass, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Attempt, Card, Exam, Question, Quiz, Subject } from "@/lib/api/types";
 import { computeStreak, estimateReviewMinutes, subjectExamDate } from "@/lib/dashboard";
@@ -130,6 +131,11 @@ export function ReviewHubView({
         <EmptyState
           title="Nothing to review yet"
           hint="Upload material to a subject and Cram will build the flashcards and questions a review needs."
+          action={
+            <Link href="/upload" className={buttonClass("primary", "sm")}>
+              Add material
+            </Link>
+          }
         />
       ) : (
         <div className="space-y-6">

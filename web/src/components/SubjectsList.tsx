@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronRight, Plus, Search } from "lucide-react";
 
 import { ExamFormModal } from "@/components/ExamFormModal";
@@ -244,6 +244,16 @@ export function SubjectsListView({
   // The first render seeds the expanded set from the data (open the most urgent subject) exactly
   // once, without an effect: a ref-free guard keyed on "have we seeded".
   const [seeded, setSeeded] = useState(false);
+
+  // /subjects?new=subject (the dashboard's setup checklist) opens the create dialog straight away.
+  // Read from window rather than useSearchParams so the static preview pages need no Suspense.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "subject") {
+      setCreating(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const rows = useMemo(() => (data ? buildRows(data) : []), [data]);
 

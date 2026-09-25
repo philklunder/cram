@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ChevronRight, Play, TrendingDown, TrendingUp, Upload } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Play, TrendingDown, TrendingUp, Upload } from "lucide-react";
 
 import { Button, cn } from "@/components/ui";
 import type { DashboardData } from "@/lib/api/client";
@@ -51,6 +51,20 @@ export function DashboardView({ data, now = Date.now(), name }: { data: Dashboar
   // which subject needs me → how was my week. The old right rail (add-material, a duplicate weekly
   // chart, upcoming-reviews) was the main source of clutter; "Add material" now lives in the top
   // bar and the weekly chart takes the full width as the closing note.
+  // Until there is something to study, the review hero and the figures are all zeros and point at
+  // empty pages. A new account gets the setup checklist instead; the regular dashboard takes over
+  // as soon as the first deck exists.
+  if (cards.length === 0) {
+    return (
+      <div className="space-y-6">
+        <GetStarted data={data} name={name} />
+        {subjects.length > 0 ? (
+          <SubjectsSection subjects={topSubjects} data={data} quizAvgs={quizAvgs} now={now} />
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <HeroBanner due={due.due} subjectsCount={due.subjectsCount} exam={exam} name={name} />
@@ -61,6 +75,111 @@ export function DashboardView({ data, now = Date.now(), name }: { data: Dashboar
 
       <WeeklyActivityCard activity={activity} />
     </div>
+  );
+}
+
+// --- First run ---------------------------------------------------------------------------
+
+// `after` is the step that must be done first; until then the step shows no button, so nothing
+// leads to an empty page (e.g. Review before there are cards).
+type SetupStep = { title: string; hint: string; href: string; cta: string; done: boolean; after?: number };
+
+// The path from an empty account to a first review, ticked off from the real rows so it stays
+// accurate whichever page the user took each step on.
+function GetStarted({ data, name }: { data: DashboardData; name?: string | null }) {
+  const steps: SetupStep[] = [
+    {
+      title: "Create a subject",
+      hint: "A course you're studying, such as Organic Chemistry.",
+      href: "/subjects?new=subject",
+      cta: "New subject",
+      done: data.subjects.length > 0,
+    },
+    {
+      title: "Add your exam date",
+      hint: "Cram spaces your reviews so what you learn peaks on exam day.",
+      href: "/subjects",
+      cta: "Add exam",
+      done: data.exams.some((e) => e.exam_date),
+      after: 0,
+    },
+    {
+      title: "Upload your notes",
+      hint: "A PDF, slides or a photo of a page. Claude turns it into flashcards and a quiz.",
+      href: "/upload",
+      cta: "Upload material",
+      done: data.cards.length > 0,
+      after: 0,
+    },
+    {
+      title: "Do your first review",
+      hint: "A few minutes a day: see a card, recall the answer, rate how well you knew it.",
+      href: "/review",
+      cta: "Start review",
+      done: data.reviewLogs.length > 0,
+      after: 2,
+    },
+  ];
+  const current = steps.findIndex((st) => !st.done);
+  const doneCount = steps.filter((st) => st.done).length;
+
+  return (
+    <section className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-brand-100/40 p-6 sm:p-8 dark:border-brand-500/20 dark:from-brand-500/12 dark:to-brand-500/5">
+      <p className="text-sm font-semibold text-brand-600 dark:text-brand-300">
+        {name ? `Welcome to Cram, ${name}` : "Welcome to Cram"} 👋
+      </p>
+      <h1 className="mt-2 text-2xl font-bold tracking-tight text-ink sm:text-3xl">Let&rsquo;s set up your first exam</h1>
+      <p className="mt-2 max-w-xl text-sm text-ink-2">
+        Four steps, about five minutes. Your dashboard fills in once your first deck is ready.
+      </p>
+
+      <ol className="mt-6 space-y-2.5" aria-label={`Setup, ${doneCount} of ${steps.length} done`}>
+        {steps.map((st, i) => {
+          const isCurrent = i === current;
+          const available = !st.done && (st.after === undefined || steps[st.after].done);
+          return (
+            <li
+              key={st.title}
+              className={cn(
+                "grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 rounded-xl border px-4 py-3.5 sm:grid-cols-[auto_1fr_auto]",
+                isCurrent
+                  ? "border-brand-200 bg-surface shadow-card dark:border-brand-500/30"
+                  : "border-transparent bg-surface/60",
+              )}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "flex h-8 w-8 flex-none items-center justify-center rounded-full text-sm font-semibold",
+                  st.done
+                    ? "bg-green-600 text-white dark:bg-green-500"
+                    : isCurrent
+                      ? "bg-brand-600 text-white"
+                      : "bg-surface-2 text-muted",
+                )}
+              >
+                {st.done ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
+              </span>
+              <div className="min-w-0">
+                <p className={cn("text-sm font-semibold", st.done ? "text-muted line-through" : "text-ink")}>
+                  {st.title}
+                  {st.done ? <span className="sr-only"> (done)</span> : null}
+                </p>
+                <p className="mt-0.5 text-sm text-muted">{st.hint}</p>
+              </div>
+              {available ? (
+                <Link href={st.href} className="col-start-2 justify-self-start sm:col-start-auto">
+                  <Button size="sm" variant={isCurrent ? "primary" : "secondary"}>
+                    {st.cta}
+                    {isCurrent ? <ArrowRight className="h-4 w-4" strokeWidth={2.25} aria-hidden /> : null}
+                  </Button>
+                </Link>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
