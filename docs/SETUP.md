@@ -161,6 +161,11 @@ quotes (Railway does not strip them).
   plain Postgres. The autogenerate drift caveat applies as with `0002` — discard any generated
   migration that wants to drop the `auth.users` FK. *(Already applied as of 2026-06-18 — re-verify
   the live DB is at head `0003` before deploy.)*
+- [ ] **Live DB at head `0008`.** Migrations are not run on deploy (the container only starts
+  nginx + uvicorn), so apply each new one by hand with `alembic upgrade head`; check with
+  `alembic current`. `0008` (2026-09-25) revokes the Supabase `anon` / `authenticated` roles'
+  access to `ai_usage_events` and `rate_limit_buckets`, so the Data API can never be used to reset
+  the spend cap or another user's rate limit. It is Supabase-specific like `0002`/`0003`.
 
 ## Web (added on Windows)
 
