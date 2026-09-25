@@ -7,6 +7,10 @@ const config: Config = {
   darkMode: "class",
   theme: {
     extend: {
+      // Extra opacity steps used by the brand tints (e.g. `dark:from-brand-500/12`). Tailwind's
+      // default scale only has multiples of 5, and a modifier outside the scale silently generates
+      // no class — which left the dark-mode hero panels on their light gradient.
+      opacity: { 8: "0.08", 12: "0.12", 16: "0.16" },
       colors: {
         // Semantic surface/text/line tokens — the load-bearing part of theming. Each maps to a
         // CSS variable (RGB triple) defined per theme in globals.css, so ONE class (e.g.
