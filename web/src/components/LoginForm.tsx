@@ -35,13 +35,13 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Surface a failed OAuth round-trip. The /auth/callback route bounces back to
+  // Surface a failed OAuth or email-link round-trip. The /auth/callback route bounces back to
   // /login?error=oauth when the code exchange fails; show it once, then strip the param so a
   // refresh doesn't keep the message around.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("error") === "oauth") {
-      setError("Google sign-in didn't complete. Please try again.");
+      setError("Sign-in didn't complete, or the link has expired. Please try again.");
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
@@ -60,7 +60,14 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
         router.push("/dashboard");
         router.refresh();
       } else {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        // The confirmation link must come back through /auth/callback: it carries a PKCE code
+        // that only that route exchanges for a session. Without it Supabase falls back to the
+        // Site URL ("/"), which drops the code and leaves the user signed out.
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` },
+        });
         // Don't leak whether an address is already registered: an "already registered"
         // error is shown as the same neutral confirmation as a fresh sign-up, so the two
         // cases are indistinguishable to an attacker probing for accounts.
@@ -115,8 +122,10 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
     // Fire-and-forget: always show the same neutral notice regardless of whether the address
     // has an account, so the reset flow can't be used to enumerate registered emails. Any
     // real error is logged for debugging but never distinguishes "no such user" to the client.
+    // The recovery link signs the user in via /auth/callback, which then forwards to the page
+    // where they choose a new password.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
     });
     if (error) console.warn("password reset:", error.message);
     setNotice("If that email has an account, we've sent a link to reset your password.");
@@ -340,7 +349,7 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
 
 // --- Form field (leading icon, optional trailing control) ------------------------------
 
-function Field({
+export function Field({
   id,
   label,
   icon,

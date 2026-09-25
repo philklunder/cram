@@ -49,6 +49,19 @@ npm run build      # production build
 npm run typecheck  # tsc --noEmit
 ```
 
+## Supabase redirect URLs
+
+Google sign-in, the sign-up confirmation email and the password-reset email all return through
+`/auth/callback`, which exchanges the link's code for a session and then forwards to `?next=`
+(`/dashboard` or `/reset-password`). Supabase only redirects to allow-listed URLs, so add each
+origin under **Authentication → URL Configuration → Redirect URLs**:
+
+- `http://localhost:3000/auth/callback**`
+- `https://<your-web-origin>/auth/callback**`
+
+The trailing `**` lets the `?next=` query through. A URL that isn't listed falls back to the Site
+URL, which drops the code and leaves the user signed out.
+
 ## CORS — required before live calls work
 
 The backend only answers cross-origin browser requests from origins in its `CRAM_CORS_ORIGINS`
