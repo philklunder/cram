@@ -18,6 +18,13 @@ import { PageHeader, SelectChevron } from "@/components/pages/shared";
 import { Button, ErrorBox, cn, inputClass, labelClass, selectClass } from "@/components/ui";
 import { generateDeck, listExams, listSubjects, updateSubject } from "@/lib/api/client";
 import type { GeneratedDeck } from "@/lib/api/types";
+import {
+  DENSITY_OPTIONS,
+  densityLabel,
+  setGenerationDensity,
+  useGenerationDensity,
+  type GenerationDensity,
+} from "@/lib/generationDensity";
 import { examsForSubject } from "@/lib/scope";
 import { useAsync } from "@/lib/useAsync";
 
@@ -56,6 +63,10 @@ export function UploadWork({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deck, setDeck] = useState<GeneratedDeck | null>(null);
+  // Coverage is remembered on this device; the level a finished deck used is kept separately so
+  // the success line stays true if the picker changes afterwards.
+  const density = useGenerationDensity();
+  const [deckDensity, setDeckDensity] = useState<GenerationDensity | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // The mascot celebrates or commiserates, then goes back to watching the cursor. It's a
@@ -123,7 +134,7 @@ export function UploadWork({
     setError(null);
     setDeck(null);
     try {
-      const result = await generateDeck({ subjectName, title: files[0].name, files, examId: examToSend });
+      const result = await generateDeck({ subjectName, title: files[0].name, files, examId: examToSend, density });
       // Persist the target grade onto the (possibly new) subject. Exam dates live on exams and are
       // set on the subject page — the AI Decks flow just files cards under the subject + chosen exam.
       if (result.subject_id && targetGrade) {
@@ -132,6 +143,7 @@ export function UploadWork({
         }).catch(() => {});
       }
       setDeck(result);
+      setDeckDensity(density);
       setFiles([]);
       reload();
       react("done");
@@ -271,9 +283,7 @@ export function UploadWork({
               </p>
             ) : null}
 
-            <p className="mt-5 text-sm text-ink-2">
-              Claude writes a set of flashcards and a quiz from your material and saves both to this subject.
-            </p>
+            <CoveragePicker value={density} onChange={setGenerationDensity} disabled={busy} />
 
             {error ? <div className="mt-4"><ErrorBox message={error} /></div> : null}
 
@@ -287,7 +297,7 @@ export function UploadWork({
             <div className="rounded-2xl border border-green-200 bg-green-50/70 p-5 dark:border-green-500/30 dark:bg-green-500/10">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-green-500 text-white"><Check className="h-4 w-4" strokeWidth={3} aria-hidden /></span>
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">Generated {deck.cards.length} cards and {deck.questions.length} questions from “{deck.source_title}”. Saved to your account.</p>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">Generated {deck.cards.length} cards and {deck.questions.length} questions from “{deck.source_title}”{deckDensity ? ` at ${densityLabel(deckDensity)} coverage` : ""}. Saved to your account.</p>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {deck.subject_id ? (
@@ -345,6 +355,96 @@ export function UploadWork({
         </aside>
       </div>
     </section>
+  );
+}
+
+// Coverage: how much of the material becomes cards + quiz. Native radios (visually hidden) inside
+// labels, so arrow keys, Tab and screen readers get the standard radio-group behaviour for free;
+// the tiles only restyle them. Mirrors ThemeToggle's selected treatment so it reads as the same
+// control family.
+function CoveragePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: GenerationDensity;
+  onChange: (value: GenerationDensity) => void;
+  disabled: boolean;
+}) {
+  return (
+    <fieldset className="mt-5 min-w-0" disabled={disabled} aria-describedby="ad-coverage-hint">
+      <legend className={labelClass}>Coverage</legend>
+      <p id="ad-coverage-hint" className="mt-0.5 text-xs text-muted">
+        How much of your material Claude turns into flashcards and quiz questions.
+      </p>
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
+        {DENSITY_OPTIONS.map((o) => {
+          const selected = o.value === value;
+          return (
+            <label
+              key={o.value}
+              className={cn(
+                "relative flex cursor-pointer flex-col rounded-xl border p-3 transition duration-200 ease-out",
+                "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface",
+                "has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60",
+                selected
+                  ? "border-brand-300 bg-brand-50/60 ring-1 ring-inset ring-brand-600/10 dark:border-brand-500/40 dark:bg-brand-500/12 dark:ring-brand-400/20"
+                  : "border-line bg-surface hover:border-line-strong hover:bg-surface-2/60",
+              )}
+            >
+              <input
+                type="radio"
+                name="ad-coverage"
+                value={o.value}
+                checked={selected}
+                onChange={() => onChange(o.value)}
+                className="sr-only"
+              />
+              <span className="flex items-center justify-between">
+                <DensityGlyph level={o.level} active={selected} />
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex h-4 w-4 flex-none items-center justify-center rounded-full border transition-colors",
+                    selected ? "border-brand-500 bg-brand-500 text-white" : "border-line-strong text-transparent",
+                  )}
+                >
+                  <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                </span>
+              </span>
+              <span className={cn("mt-2.5 text-sm font-semibold", selected ? "text-brand-700 dark:text-brand-200" : "text-ink")}>
+                {o.label}
+              </span>
+              <span className="mt-0.5 text-xs leading-relaxed text-muted text-pretty">{o.hint}</span>
+            </label>
+          );
+        })}
+      </div>
+      {value === "comprehensive" ? (
+        <p className="mt-2.5 text-xs text-muted">
+          Bigger decks take longer to generate and to review, and use more of your daily AI allowance.
+        </p>
+      ) : null}
+    </fieldset>
+  );
+}
+
+// Three rising bars, `level` of them lit — a quiet "how much" signal that doesn't pretend to be a
+// card count (the real number depends on the material).
+function DensityGlyph({ level, active }: { level: 1 | 2 | 3; active: boolean }) {
+  return (
+    <span aria-hidden className="flex h-4 items-end gap-[3px]">
+      {[1, 2, 3].map((i) => (
+        <span
+          key={i}
+          className={cn(
+            "w-[5px] rounded-full transition-colors duration-200",
+            i === 1 ? "h-2" : i === 2 ? "h-3" : "h-4",
+            i > level ? "bg-line" : active ? "bg-brand-500 dark:bg-brand-400" : "bg-muted",
+          )}
+        />
+      ))}
+    </span>
   );
 }
 

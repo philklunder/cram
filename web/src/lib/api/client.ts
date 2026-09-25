@@ -7,6 +7,7 @@
 
 import { BACKEND_URL } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
+import type { GenerationDensity } from "@/lib/generationDensity";
 
 import { cached, invalidate } from "./cache";
 
@@ -287,6 +288,8 @@ export interface GenerateParams {
   files: File[];
   // When set, the generated cards + quiz are filed under this exam; otherwise "General".
   examId?: string | null;
+  // How much of the material to cover; omitted ⇒ the server default ("balanced").
+  density?: GenerationDensity;
 }
 
 // Upload material and generate a deck (POST /v1/generate, multipart). The backend persists the
@@ -297,6 +300,7 @@ export async function generateDeck({
   title,
   files,
   examId,
+  density,
 }: GenerateParams): Promise<GeneratedDeck> {
   const kind = files.some((f) => f.type === "application/pdf") ? "pdf" : "photo";
   const form = new FormData();
@@ -304,6 +308,7 @@ export async function generateDeck({
   form.append("title", title);
   form.append("kind", kind);
   if (examId) form.append("exam_id", examId);
+  if (density) form.append("density", density);
   for (const f of files) form.append("files", f);
   // Do NOT set Content-Type — the browser sets the multipart boundary.
   const deck = await request<GeneratedDeck>("/v1/generate", { method: "POST", body: form });
