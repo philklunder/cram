@@ -51,6 +51,20 @@ export const gradingScaleLabel: Record<GradingScale, string> = {
   gpa: "GPA (0–4)",
 };
 
+// Short inline name for a subject's scale ("German scale", "GPA"). One place so every page agrees
+// on wording and casing; the pickers use the longer labels above.
+const SCALE_NAME: Record<GradingScale, string> = {
+  german: "German scale",
+  swiss: "Swiss scale",
+  percentage: "Percentage",
+  letter: "Letter grades",
+  gpa: "GPA",
+};
+
+export function scaleName(scale: GradingScale): string {
+  return SCALE_NAME[scale];
+}
+
 export const gradeKindLabel: Record<GradeKind, string> = {
   exam: "Exam",
   test: "Test",

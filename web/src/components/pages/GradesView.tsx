@@ -34,6 +34,7 @@ import {
   gradePercent,
   gradingScaleLabel,
   isPassing,
+  scaleName,
   scaleRange,
 } from "@/lib/grades";
 import { useAsync } from "@/lib/useAsync";
@@ -267,7 +268,7 @@ function SubjectRow({ row, displayScale, onChanged }: { row: Row; displayScale: 
           </span>
           <span className="min-w-0">
             <span className="block truncate font-medium text-ink">{subject.name}</span>
-            <span className="block text-xs capitalize text-muted">{scale} scale</span>
+            <span className="block text-xs text-muted">{scaleName(scale)}</span>
           </span>
         </Link>
       </td>

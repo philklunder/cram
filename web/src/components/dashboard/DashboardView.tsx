@@ -20,6 +20,7 @@ import {
   type WeeklyActivity,
 } from "@/lib/dashboard";
 import { daysUntil, formatCountdown, formatDate, subjectInitials } from "@/lib/format";
+import { scaleName } from "@/lib/grades";
 import { computeProgress } from "@/lib/progress";
 import { VERDICT_FILL, computeReadiness, type Readiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
@@ -476,7 +477,7 @@ function SubjectMiniCard({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold text-ink">{subject.name}</h3>
-          <p className="truncate text-xs capitalize text-muted">{subject.grading_scale} scale</p>
+          <p className="truncate text-xs text-muted">{scaleName(subject.grading_scale)}</p>
         </div>
         <span className={cn("flex-none rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", examChip[examTone])}>
           {days !== null && days >= 0 ? (days === 0 ? "Today" : `${days}d`) : formatCountdown(days)}

@@ -18,6 +18,7 @@ import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Attempt, Card, Exam, Question, Quiz, Subject } from "@/lib/api/types";
 import { computeStreak, estimateReviewMinutes, subjectExamDate } from "@/lib/dashboard";
 import { daysUntil, subjectInitials } from "@/lib/format";
+import { scaleName } from "@/lib/grades";
 import { computeReadiness, overallReadiness, VERDICT_COPY, type Readiness } from "@/lib/readiness";
 import { DEFAULT_REVIEW_SETTINGS, QUESTION_COUNTS, SESSION_SIZES, setReviewSettings, useReviewSettings, type ReviewOrder, type ReviewSettings } from "@/lib/reviewSettings";
 import { subjectStrength } from "@/lib/srs/grade-strength";
@@ -70,7 +71,7 @@ function rows(
 
 
 function scaleLabel(subject: Subject): string {
-  const base = subject.grading_scale === "german" ? "German scale" : "Swiss scale";
+  const base = scaleName(subject.grading_scale);
   return subject.target_grade != null ? `${base} · Target ${subject.target_grade}` : base;
 }
 

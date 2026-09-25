@@ -10,6 +10,7 @@ import { Button, EmptyState, ErrorBox, Skeleton, cn } from "@/components/ui";
 import { loadDashboard, type DashboardData } from "@/lib/api/client";
 import type { Card, Exam, Subject } from "@/lib/api/types";
 import { DATE_LOCALE, daysUntil, subjectInitials } from "@/lib/format";
+import { scaleName } from "@/lib/grades";
 import { computeProgress, type SubjectProgress } from "@/lib/progress";
 import { computeReadiness, examReadiness, VERDICT_FILL, type Readiness } from "@/lib/readiness";
 import { examsForSubject } from "@/lib/scope";
@@ -48,7 +49,7 @@ export function SubjectCard({ subject, cards, index }: { subject: Subject; cards
               {subject.name}
             </h3>
             <p className="mt-1 truncate text-sm text-muted">
-              <span className="capitalize">{subject.grading_scale}</span> scale
+              {scaleName(subject.grading_scale)}
               {subject.target_grade != null ? ` · target ${subject.target_grade}` : ""}
             </p>
           </div>
@@ -451,7 +452,7 @@ function SubjectRow({
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{subject.name}</span>
             <span className="block truncate text-xs text-muted">
-              <span className="capitalize">{subject.grading_scale}</span> scale
+              {scaleName(subject.grading_scale)}
               {subject.target_grade != null ? ` · target ${subject.target_grade}` : ""}
             </span>
           </span>

@@ -33,7 +33,7 @@ import {
   type Readiness,
   type TopicStat,
 } from "@/lib/readiness";
-import { formatGrade, isPassing } from "@/lib/grades";
+import { formatGrade, isPassing, scaleName } from "@/lib/grades";
 import { studyHref } from "@/lib/studyLink";
 import { subjectVars } from "@/lib/subjectColor";
 import { useAsync } from "@/lib/useAsync";
@@ -345,7 +345,7 @@ export function SubjectHero({
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
             <span>
-              <span className="capitalize">{subject.grading_scale}</span> scale
+              {scaleName(subject.grading_scale)}
             </span>
             {subject.target_grade != null ? (
               <>

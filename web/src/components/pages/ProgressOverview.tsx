@@ -16,7 +16,7 @@ import {
   subjectExamDate,
 } from "@/lib/dashboard";
 import { daysUntil, subjectInitials } from "@/lib/format";
-import { currentGrade, formatPercentInScale, gradePercent } from "@/lib/grades";
+import { currentGrade, formatPercentInScale, gradePercent, scaleName } from "@/lib/grades";
 import { computeProgress } from "@/lib/progress";
 import { computeReadiness, overallReadiness, readinessBySubject, type Readiness } from "@/lib/readiness";
 import { subjectVars } from "@/lib/subjectColor";
@@ -326,7 +326,7 @@ function SubjectPerfCard({ subject, data, now, displayScale }: { subject: Subjec
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-ink">{subject.name}</p>
-          <p className="truncate text-xs capitalize text-muted">{subject.grading_scale} scale</p>
+          <p className="truncate text-xs text-muted">{scaleName(subject.grading_scale)}</p>
         </div>
         {days != null && days >= 0 ? (
           <span className={cn("flex-none rounded-full px-2 py-0.5 text-[11px] font-medium", days <= 3 ? "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-surface-2 text-muted")}>

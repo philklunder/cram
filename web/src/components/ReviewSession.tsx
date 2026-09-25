@@ -29,6 +29,7 @@ import { Button, ErrorBox, cn } from "@/components/ui";
 import { createReviewLog, updateCard } from "@/lib/api/client";
 import type { Card, Subject } from "@/lib/api/types";
 import { subjectInitials } from "@/lib/format";
+import { scaleName } from "@/lib/grades";
 import { buildSessionQueue } from "@/lib/srs/queue";
 import { applyReview, REVIEW_RATINGS, type ReviewRating } from "@/lib/srs/scheduler";
 import type { ReviewOrder } from "@/lib/reviewSettings";
@@ -204,7 +205,7 @@ export function ReviewSession({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink">{ctx.subject.name}</p>
-                <p className="truncate text-xs capitalize text-muted">{ctx.subject.grading_scale} scale</p>
+                <p className="truncate text-xs text-muted">{scaleName(ctx.subject.grading_scale)}</p>
               </div>
               <span className="hidden flex-none rounded-full bg-[var(--sc-soft)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--sc-ink)] sm:inline dark:bg-[var(--sc-soft-dark)] dark:text-[color:var(--sc-ink-dark)]">
                 {card.topic}
