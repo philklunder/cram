@@ -49,7 +49,7 @@ export function SettingsView({ email }: { email: string | null }) {
             <p className="truncate text-sm font-semibold text-ink" title={email ?? undefined}>
               {email ?? "Signed in"}
             </p>
-            <p className="mt-0.5 text-xs text-muted">Signed in to Cram · Free plan</p>
+            <p className="mt-0.5 text-xs text-muted">Signed in to Cram</p>
           </div>
           <Button variant="secondary" size="sm" onClick={signOut} loading={busy}>
             <LogOut className="h-4 w-4" strokeWidth={2} aria-hidden />

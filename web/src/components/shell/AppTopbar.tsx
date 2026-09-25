@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu, Plus, Search } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Plus } from "lucide-react";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { cn } from "@/components/ui";
+import { BrandMark, cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { clearApiCache } from "@/lib/api/cache";
 
-// Sticky application top bar: mobile nav trigger, global search, theme toggle, notifications, and
-// the user menu (which owns sign-out). Search filtering and real notifications are wired in later
-// phases; the chrome is real now — ⌘K focuses the field, the bell opens an honest empty panel.
+// Sticky application top bar: mobile nav trigger (+ wordmark, since the sidebar is hidden there),
+// the add-material action, theme toggle and the user menu (which owns sign-out). Search and
+// notifications were placeholders with nothing behind them; they come back when they do something.
 export function AppTopbar({
   email,
   onOpenSidebar,
@@ -32,12 +32,17 @@ export function AppTopbar({
           <Menu className="h-5 w-5" strokeWidth={2} aria-hidden />
         </button>
 
-        <SearchField />
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas lg:hidden"
+        >
+          <BrandMark size={26} />
+          <span className="text-base font-bold tracking-tight text-ink">Cram</span>
+        </Link>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
           <AddMaterialButton />
           <ThemeToggle />
-          <NotificationsBell />
           <UserMenu email={email} />
         </div>
       </div>
@@ -60,78 +65,6 @@ function AddMaterialButton() {
   );
 }
 
-// Global search field. Behaviour (a command palette over loaded subjects/cards) lands with the
-// Dashboard phase; for now ⌘K / Ctrl+K focuses it so the affordance is genuine, not decorative.
-function SearchField() {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  return (
-    <div className="relative hidden max-w-md flex-1 sm:block">
-      <Search
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
-        strokeWidth={2}
-        aria-hidden
-      />
-      <input
-        ref={inputRef}
-        type="search"
-        aria-label="Search subjects, cards, quizzes"
-        placeholder="Search subjects, cards, quizzes…"
-        className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-14 text-sm text-ink shadow-sm transition duration-200 placeholder:text-subtle hover:border-line-strong focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15"
-      />
-      <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-0.5 font-sans text-[11px] font-medium text-muted md:inline-flex">
-        ⌘K
-      </kbd>
-    </div>
-  );
-}
-
-// Notifications. No notification backend yet, so the bell shows no fake count and the panel is an
-// honest empty state until one exists.
-function NotificationsBell() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, () => setOpen(false));
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Notifications"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted transition duration-200 ease-out hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-      >
-        <Bell className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-      </button>
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="Notifications"
-          className="absolute right-0 top-11 z-40 w-72 origin-top-right rounded-xl border border-line bg-surface p-4 shadow-card-hover"
-        >
-          <p className="text-sm font-semibold text-ink">Notifications</p>
-          <p className="mt-2 text-sm text-muted">You&rsquo;re all caught up.</p>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// User menu — avatar + email, opening a small menu that owns sign-out (previously a standalone
-// button in the old top nav).
 function UserMenu({ email }: { email: string | null }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles } from "lucide-react";
 
 import { BrandMark, cn } from "@/components/ui";
 import { SidebarStreak } from "@/components/dashboard/StreakCard";
@@ -67,21 +66,6 @@ export function AppSidebar({
 
         <SidebarStreak />
 
-        {/* Compact upsell — a single row so the whole rail fits on a 768px laptop without scrolling.
-            The two-line pitch it used to carry pushed the card past the viewport edge. */}
-        <Link
-          href="/premium"
-          onClick={onNavigate}
-          className="group flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2 shadow-card transition duration-200 ease-out hover:border-brand-200 hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:border-brand-500/40"
-        >
-          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 text-white shadow-brand-sm">
-            <Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-ink">Go Premium</span>
-            <span className="block truncate text-xs text-muted">AI explanations &amp; more</span>
-          </span>
-        </Link>
       </div>
     </div>
   );

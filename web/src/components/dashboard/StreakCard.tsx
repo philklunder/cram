@@ -67,7 +67,7 @@ export function StreakCard({ streak, subtitle }: { streak: StreakStats; subtitle
 //
 // Deliberately COMPACT — a single slim row rather than the tall dot-column card. The rail must fit
 // on a 768px laptop (≈660px of svh once browser chrome is subtracted) with the full grouped nav,
-// Settings and the Go Premium card all present and no scrollbar. The full week-dots card lives on
+// and Settings all present and no scrollbar. The full week-dots card lives on
 // the Dashboard's own streak tile; here we just need the number and a glanceable week.
 export function SidebarStreak() {
   const { loading, data } = useAsync(() => listReviewLogs(), []);

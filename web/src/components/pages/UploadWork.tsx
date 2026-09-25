@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  AlignLeft,
   ArrowRight,
   Check,
   FileText,
@@ -53,7 +52,6 @@ export function UploadWork({
   const [newName, setNewName] = useState(demoSubject ?? "");
   const [examId, setExamId] = useState<string>(""); // "" = General (no exam)
   const [targetGrade, setTargetGrade] = useState("");
-  const [gen, setGen] = useState({ flashcards: true, quiz: true, summary: false });
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -273,12 +271,9 @@ export function UploadWork({
               </p>
             ) : null}
 
-            <p className="mb-2 mt-5 text-sm font-medium text-ink-2">What should Claude generate?</p>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Toggle icon={Layers} label="Flashcards" hint="Key concepts" on={gen.flashcards} onClick={() => setGen((g) => ({ ...g, flashcards: !g.flashcards }))} />
-              <Toggle icon={HelpCircle} label="Quiz questions" hint="Test yourself" on={gen.quiz} onClick={() => setGen((g) => ({ ...g, quiz: !g.quiz }))} />
-              <Toggle icon={AlignLeft} label="Summary" hint="Soon" on={gen.summary} disabled onClick={() => {}} />
-            </div>
+            <p className="mt-5 text-sm text-ink-2">
+              Claude writes a set of flashcards and a quiz from your material and saves both to this subject.
+            </p>
 
             {error ? <div className="mt-4"><ErrorBox message={error} /></div> : null}
 
@@ -286,7 +281,6 @@ export function UploadWork({
               {busy ? "Generating… this can take a moment" : "Generate study deck"}
               {!busy ? <ArrowRight className="h-4 w-4" strokeWidth={2.5} aria-hidden /> : null}
             </Button>
-            <p className="mt-2 text-center text-xs text-muted">Claude adapts the content to how you&rsquo;re doing.</p>
           </div>
 
           {deck ? (
@@ -348,31 +342,13 @@ export function UploadWork({
             </ul>
           </PreviewCard>
 
-          <PreviewCard icon={AlignLeft} title="Summary" tag="soon">
-            <p className="text-sm text-muted">A concise overview of each topic — coming soon.</p>
-          </PreviewCard>
         </aside>
       </div>
     </section>
   );
 }
 
-function Toggle({ icon: Icon, label, hint, on, disabled, onClick }: { icon: typeof Layers; label: string; hint: string; on: boolean; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition", on ? "border-brand-300 bg-brand-50/50 dark:border-brand-500/40 dark:bg-brand-500/10" : "border-line bg-surface", disabled && "opacity-70")}>
-      <span className={cn("flex h-8 w-8 flex-none items-center justify-center rounded-lg", on ? "bg-brand-500 text-white" : "bg-surface-2 text-muted")}><Icon className="h-4 w-4" strokeWidth={2} aria-hidden /></span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">{label}</p>
-        <p className="truncate text-xs text-muted">{hint}</p>
-      </div>
-      <span className={cn("relative h-5 w-9 flex-none rounded-full transition-colors", on ? "bg-brand-500" : "bg-line-strong")}>
-        <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", on ? "left-[18px]" : "left-0.5")} />
-      </span>
-    </button>
-  );
-}
-
-const STEPS = ["Read", "Extract", "Write", "You approve"] as const;
+const STEPS = ["Read", "Extract", "Write", "Saved"] as const;
 function Pipeline({ busy, done }: { busy: boolean; done: boolean }) {
   // Horizontal stepper. Illustrative: an "example" run paused at Generate when idle, the live run
   // while busy (Generate pulses), all four complete when done. The connector into each reached node
