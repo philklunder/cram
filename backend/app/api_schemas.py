@@ -34,10 +34,16 @@ T = TypeVar("T")
 # worker's memory) with oversized rows. Short caps mirror the column widths (String(512) /
 # String(256)) so an overlong value is a clean 422 instead of a DB error; free-text caps are
 # generous — far above anything generation or a human produces — and exist only as a ceiling.
-Title = Annotated[str, Field(max_length=512)]
-Topic = Annotated[str, Field(max_length=256)]
-LongText = Annotated[str, Field(max_length=20_000)]
-Options = Annotated[list[Annotated[str, Field(max_length=2_000)]], Field(max_length=20)]
+TITLE_MAX = 512
+TOPIC_MAX = 256
+LONG_TEXT_MAX = 20_000
+OPTION_MAX = 2_000
+OPTIONS_MAX = 20
+
+Title = Annotated[str, Field(max_length=TITLE_MAX)]
+Topic = Annotated[str, Field(max_length=TOPIC_MAX)]
+LongText = Annotated[str, Field(max_length=LONG_TEXT_MAX)]
+Options = Annotated[list[Annotated[str, Field(max_length=OPTION_MAX)]], Field(max_length=OPTIONS_MAX)]
 StoragePaths = Annotated[list[Annotated[str, Field(max_length=1_024)]], Field(max_length=50)]
 
 # Rows per push. iOS sends every dirty row of a resource in one batch, so this is sized for a

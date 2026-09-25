@@ -8,33 +8,49 @@ whatever Claude returns before it goes back to the client.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+
+from .api_schemas import LONG_TEXT_MAX, OPTION_MAX, OPTIONS_MAX, TITLE_MAX, TOPIC_MAX
 
 # QuestionKind raw values shared with the iOS client (ADR 0005).
 QuestionKind = Literal["multipleChoice", "shortAnswer"]
 
 
+def _clip(limit: int):
+    return AfterValidator(lambda v: v[:limit])
+
+
+# Generated rows are held to the same caps as client writes (api_schemas.py), so the server never
+# stores a row that a client could not push back unchanged. Claude's output is clipped rather than
+# rejected: a rejection would throw away a call that has already been paid for, and in practice
+# only an overlong topic or title ever reaches a cap.
+_Title = Annotated[str, _clip(TITLE_MAX)]
+_Topic = Annotated[str, _clip(TOPIC_MAX)]
+_LongText = Annotated[str, _clip(LONG_TEXT_MAX)]
+_Options = Annotated[list[Annotated[str, _clip(OPTION_MAX)]], _clip(OPTIONS_MAX)]
+
+
 class Card(BaseModel):
-    front: str
-    back: str
-    topic: str
+    front: _LongText
+    back: _LongText
+    topic: _Topic
     difficulty: int = Field(ge=1, le=5)
 
 
 class Question(BaseModel):
-    prompt: str
+    prompt: _LongText
     kind: QuestionKind
-    topic: str
+    topic: _Topic
     # [] for short answer; 3–4 entries for multiple choice.
-    options: list[str] = Field(default_factory=list)
+    options: _Options = Field(default_factory=list)
     # MC: the correct option's text. Short answer: the model answer (graded in v0.4).
-    answer_key: str
+    answer_key: _LongText
 
 
 class GeneratedDeck(BaseModel):
-    source_title: str
+    source_title: _Title
     cards: list[Card]
     questions: list[Question]
 

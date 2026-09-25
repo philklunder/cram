@@ -22,9 +22,10 @@ load_dotenv()  # load .env before reading settings
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
+import anyio  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
-from starlette.concurrency import run_in_threadpool  # noqa: E402
 
+from .api_schemas import TITLE_MAX  # noqa: E402
 from .config import check_production_config, get_settings  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
 from .grading import grade_answer  # noqa: E402
@@ -58,6 +59,20 @@ _UPLOAD_PATHS = frozenset({"/v1/generate"})
 # check-then-spend window to a single call per user. In-process is enough — one worker
 # (deploy/entrypoint.sh); a multi-worker deploy would need a shared lock.
 _ai_calls_in_flight: set[uuid.UUID] = set()
+
+# Ceiling on paid Claude calls running at once across all users. It keeps the global spend cap's
+# overshoot to a handful of calls, and bounds the load a burst of generations puts on Anthropic
+# and on the worker's threadpool. Created lazily: anyio limiters bind to the running event loop.
+_AI_CONCURRENCY = 8
+_ai_limiter: anyio.CapacityLimiter | None = None
+
+
+async def _run_ai_call(fn, *args):
+    """Run a synchronous Anthropic call in a worker thread under the global limiter."""
+    global _ai_limiter
+    if _ai_limiter is None:
+        _ai_limiter = anyio.CapacityLimiter(_AI_CONCURRENCY)
+    return await anyio.to_thread.run_sync(lambda: fn(*args), limiter=_ai_limiter)
 
 
 @contextmanager
@@ -176,8 +191,13 @@ async def generate(
         raise HTTPException(status_code=500, detail="Server is missing ANTHROPIC_API_KEY.")
 
     # Cap free-text fields (H3): file caps don't cover form text, which also becomes tokens.
-    for name, value in (("subject_name", subject_name), ("title", title), ("kind", kind)):
-        if len(value) > settings.max_field_chars:
+    # subject_name and title are stored in String(512) columns, so they get that tighter cap.
+    for name, value, limit in (
+        ("subject_name", subject_name, TITLE_MAX),
+        ("title", title, TITLE_MAX),
+        ("kind", kind, settings.max_field_chars),
+    ):
+        if len(value) > limit:
             raise HTTPException(status_code=413, detail=f"Field '{name}' is too long.")
     if kind not in ("pdf", "photo"):
         raise HTTPException(status_code=422, detail="Field 'kind' must be 'pdf' or 'photo'.")
@@ -224,12 +244,15 @@ async def generate(
 
     # Spend cap (ADR 0009): refuse over-budget callers BEFORE spending on a Claude call.
     enforce_spend_cap(repo.session, repo.user_id, settings)
+    # End the read transaction the cap check opened, so its pooled connection isn't held idle for
+    # the whole Claude call (the session checks out a fresh one for the writes below).
+    repo.session.commit()
 
-    # The Anthropic SDK call is synchronous; run it in the threadpool so a long generation
+    # The Anthropic SDK call is synchronous; run it in a worker thread so a long generation
     # doesn't stall every other request on the single worker.
     try:
         with _one_ai_call_per_user(repo.user_id):
-            deck, usage = await run_in_threadpool(
+            deck, usage = await _run_ai_call(
                 generate_deck, settings, subject_name, title, kind, uploads
             )
     except GenerationError as e:
@@ -285,10 +308,11 @@ async def grade(
 
     # Spend cap (ADR 0009): refuse over-budget callers BEFORE spending on a Claude call.
     enforce_spend_cap(repo.session, repo.user_id, settings)
+    repo.session.commit()  # release the connection during the Claude call (see /v1/generate)
 
     try:
         with _one_ai_call_per_user(repo.user_id):
-            result, usage = await run_in_threadpool(
+            result, usage = await _run_ai_call(
                 grade_answer, settings, body.prompt, body.model_answer, body.response, body.topic
             )
     except GenerationError as e:

@@ -85,3 +85,27 @@ def test_one_ai_call_per_user():
             raise RuntimeError("claude failed")
     with main._one_ai_call_per_user(alice):
         pass
+
+
+def test_generated_deck_is_clipped_to_the_same_caps():
+    from app.schemas import GeneratedDeck
+
+    deck = GeneratedDeck.model_validate(
+        {
+            "source_title": "t" * 600,
+            "cards": [{"front": "f" * 25_000, "back": "b", "topic": "x" * 300, "difficulty": 3}],
+            "questions": [
+                {
+                    "prompt": "p", "kind": "multipleChoice", "topic": "t",
+                    "options": ["o" * 3_000] * 25, "answer_key": "a",
+                }
+            ],
+        }
+    )
+    assert len(deck.source_title) == s.TITLE_MAX
+    assert len(deck.cards[0].front) == s.LONG_TEXT_MAX
+    assert len(deck.cards[0].topic) == s.TOPIC_MAX
+    assert len(deck.questions[0].options) == s.OPTIONS_MAX
+    assert len(deck.questions[0].options[0]) == s.OPTION_MAX
+    # Whatever generation stores, a client can push back unchanged.
+    s.CardCreate(subject_id=uuid.uuid4(), **deck.cards[0].model_dump())
