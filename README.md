@@ -11,7 +11,8 @@ knowledge actually sticks — peaking on the day of your exam.
 ## The idea
 
 1. **Ingest** — drop in your material (PDF, slides, or a photo of a textbook page).
-2. **Generate** — Claude extracts the key concepts and writes flashcards + quiz questions, tagged
+2. **Generate** — you choose how much to cover (just the key concepts, a balanced deck, or
+   everything); Claude extracts the concepts and writes flashcards + quiz questions, tagged
    by topic and graded by difficulty.
 3. **Study** — a daily review session, scheduled by a spaced-repetition engine.
 4. **Adapt** — it tracks what you know, re-teaches the gaps, and (knowing your **real grades** and

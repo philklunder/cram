@@ -67,6 +67,19 @@ snake_case on the wire (FastAPI convention); the client maps it to its camelCase
 Non-2xx with a JSON body carrying a message under `detail` (FastAPI default) or `error`. The client
 surfaces it via `GenerationError` in the existing "Couldn't generate" alert.
 
+## Amendment — 2026-09-25: optional `density` field
+
+The request gains an optional text field, **additive and backward-compatible**:
+
+| Field     | Type | Notes |
+|-----------|------|-------|
+| `density` | text | Coverage level: `essentials` \| `balanced` \| `comprehensive`. Omitted ⇒ `balanced`, which is the pre-amendment behaviour. Any other value ⇒ `422` before any Claude call. |
+
+The response shape is unchanged. `comprehensive` may return a larger deck, generated with a
+higher output budget (16k tokens rather than 8k). A deck that still runs out of budget returns a
+non-2xx with a `detail` telling the user to pick a lighter level or split the upload. Clients
+that don't send the field (iOS today) are unaffected. Reasoning: `meta/generation-density.md`.
+
 ## Consequences
 
 - The backend has a frozen target; the iOS `RemoteGenerationService` is implementable and testable

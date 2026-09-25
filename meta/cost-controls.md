@@ -21,6 +21,14 @@
   forget it.
 - **Metering is committed *before* persistence, not atomically with it.** A paid Claude call's usage
   row is committed on its own the instant the call returns, before the deck/attempt is persisted.
+- **A billed call that then fails is metered too (2026-09-25).** A refusal, a response cut off at
+  `max_tokens`, or malformed JSON is billed by Anthropic, but it used to raise `GenerationError`
+  before `record_usage` ran, so it was never counted. The exception now carries the call's
+  `TokenUsage`, and `_meter_failed_call` in `main.py` records and commits it before the 502, for
+  both `/v1/generate` and `/v1/grade`. Pre-call failures (connection error, upstream 4xx/5xx) have
+  no usage and record nothing. This came up in the security review of the coverage-level change
+  (see generation-density.md): a `comprehensive` request on over-long material is a deliberate
+  way to reach the truncation path, at up to 16k output tokens per call.
 - **Cost controls are mandatory in prod.** `check_production_config` refuses to boot `CRAM_ENV=prod`
   unless all three ceilings are `> 0` (alongside auth + secrets). Default-off everywhere else.
 - **The rate limit must be sized for the sync client, not the wallet.** CRUD/sync requests cost zero
@@ -138,4 +146,4 @@
   map, which would forfeit exactly the guarantee that makes it worth having.
 
 ## Last updated
-2026-07-09
+2026-09-25

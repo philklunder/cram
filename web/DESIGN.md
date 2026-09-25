@@ -111,8 +111,10 @@ Each authenticated destination and its intent:
   progress bar, live score ring, topic breakdown, and a "why this matters" explanation.
 - **Flashcards** — subject/deck picker, mastery KPIs, a searchable/filterable card table with
   per-card mastery, and a progress ring + recent-decks + AI-suggestions rail.
-- **AI Decks** — upload materials → choose what Claude generates → a live AI-preview pipeline
-  (Ingest → Extract → Generate → Review) showing example flashcards/quiz/summary.
+- **AI Decks** — upload materials → choose the subject/exam and a **coverage level** → a live
+  AI-preview pipeline (Read → Extract → Write → Saved) showing example flashcards/quiz. Coverage is
+  a three-tile native radio group (Key concepts / Balanced / Everything) with a rising three-bar
+  glyph. It uses the same selected treatment as the Theme picker and is remembered per device.
 - **Calendar / Study planner** — month grid of suggested review/quiz sessions + real exams; rail:
   readiness countdown, today's agenda, weekly-goal ring, AI-recommended plan.
 - **Progress** — KPI strip, grade-trend line chart, topic-mastery donut, per-subject performance

@@ -81,9 +81,12 @@ requires them — ADR 0009):
 | `title`        | text            | Display title of the captured material.        |
 | `kind`         | text            | `pdf` or `photo`.                              |
 | `files`        | file (repeated) | One PDF, or one part per photo page.           |
+| `exam_id`      | text, optional  | UUID of an owned exam to file the deck under; omitted ⇒ "General". |
+| `density`      | text, optional  | Coverage: `essentials` \| `balanced` (default) \| `comprehensive`. Anything else ⇒ `422`. |
 
 Returns `200` with the deck (`source_title`, `cards`, `questions`) — see the ADR for
-the exact shape. Errors return a non-2xx with a `detail` message, which the iOS client
+the exact shape. A Claude call that is billed but then fails (refused, truncated, malformed) still
+counts toward the spend cap. Errors return a non-2xx with a `detail` message, which the iOS client
 surfaces via `GenerationError`.
 
 Supported file types: PDF, JPEG, PNG, GIF, WebP. **HEIC is not supported by the Claude

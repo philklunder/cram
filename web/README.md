@@ -5,6 +5,9 @@ the **live Cram backend** (`https://cram.up.railway.app`). It's the "study desk"
 your subjects and decks, upload material to generate flashcards + quizzes, take a quiz, review your
 cards, record your grades, and track exam progress.
 
+> **AI Decks** (Add material): upload a PDF or photos and pick a **coverage level** — Key concepts,
+> Balanced (default) or Everything — which is sent to `/v1/generate` as `density` and remembered on
+> this device.
 > **Quiz-taking** is live on the web (Quizzes tab → "Take quiz"): multiple-choice is graded in the
 > browser; short-answer is graded by the backend's Claude call.
 > **Spaced-repetition review** (Review tab): walks your due cards, and each rating runs a faithful
