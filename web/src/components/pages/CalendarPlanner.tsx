@@ -237,7 +237,7 @@ export function CalendarPlanner({ subjects, exams, cards, studySessions, questio
             })}
           </div>
           <p className="mt-3 text-xs text-muted">
-            Exam dates come from your subjects. The amber count is cards falling due that day. Study sessions you add are saved on this device only (not yet synced to iOS).
+            Exam dates come from the exams you add to each subject. The amber count is cards falling due that day. Study sessions you plan here are saved in this browser only.
           </p>
         </div>
 

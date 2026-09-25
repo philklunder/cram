@@ -253,6 +253,7 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
                     </button>
                   }
                 />
+                {mode === "signup" ? <p className="-mt-2 text-xs text-muted">At least 8 characters.</p> : null}
 
                 {mode === "signin" ? (
                   <div className="flex items-center justify-between pt-0.5">
@@ -330,16 +331,7 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: Mode } = {
             </div>
 
             {/* Footer under the card. */}
-            <p className="mt-6 flex flex-col items-center gap-1 text-center text-sm text-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3Z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
-                </svg>
-                Trusted by students worldwide
-              </span>
-              <span>Built for serious studying.</span>
-            </p>
+            <p className="mt-6 text-center text-sm text-muted">Built for serious studying.</p>
           </div>
         </div>
       </div>
