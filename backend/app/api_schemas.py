@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Annotated, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +28,21 @@ from .models.enums import GradeKind, GradingScale, QuestionKind, SourceKind, Stu
 # --- envelopes -------------------------------------------------------------------------
 
 T = TypeVar("T")
+
+# --- inbound size caps -----------------------------------------------------------------
+# Every client-writable string/list is bounded so one account can't bloat Postgres (or the
+# worker's memory) with oversized rows. Short caps mirror the column widths (String(512) /
+# String(256)) so an overlong value is a clean 422 instead of a DB error; free-text caps are
+# generous — far above anything generation or a human produces — and exist only as a ceiling.
+Title = Annotated[str, Field(max_length=512)]
+Topic = Annotated[str, Field(max_length=256)]
+LongText = Annotated[str, Field(max_length=20_000)]
+Options = Annotated[list[Annotated[str, Field(max_length=2_000)]], Field(max_length=20)]
+StoragePaths = Annotated[list[Annotated[str, Field(max_length=1_024)]], Field(max_length=50)]
+
+# Rows per push. iOS sends every dirty row of a resource in one batch, so this is sized for a
+# large first sync rather than a typical one; the JSON body cap in main.py bounds bytes.
+MAX_BATCH_ITEMS = 5_000
 
 
 class DeltaPage(BaseModel, Generic[T]):
@@ -45,7 +60,7 @@ class BatchUpsert(BaseModel, Generic[T]):
     """Push payload: a batch of rows to upsert (sync tables) or insert (append-only logs),
     each keyed by its client-generated ``id``."""
 
-    items: list[T]
+    items: list[T] = Field(max_length=MAX_BATCH_ITEMS)
 
 
 class _Read(BaseModel):
@@ -78,14 +93,14 @@ class SubjectRead(_SyncRead):
 
 class SubjectCreate(BaseModel):
     id: uuid.UUID | None = None
-    name: str
+    name: Title
     grading_scale: GradingScale = GradingScale.german
     target_grade: float | None = None
     current_grade: float | None = None
 
 
 class SubjectUpdate(BaseModel):
-    name: str | None = None
+    name: Title | None = None
     grading_scale: GradingScale | None = None
     target_grade: float | None = None
     current_grade: float | None = None
@@ -103,13 +118,13 @@ class ExamRead(_SyncRead):
 class ExamCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
-    title: str
+    title: Title
     exam_date: datetime | None = None
 
 
 class ExamUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
-    title: str | None = None
+    title: Title | None = None
     exam_date: datetime | None = None
 
 
@@ -128,16 +143,16 @@ class SourceCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
     kind: SourceKind
-    title: str
+    title: Title
     added_at: datetime | None = None
-    storage_paths: list[str] = Field(default_factory=list)
+    storage_paths: StoragePaths = Field(default_factory=list)
 
 
 class SourceUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
     kind: SourceKind | None = None
-    title: str | None = None
-    storage_paths: list[str] | None = None
+    title: Title | None = None
+    storage_paths: StoragePaths | None = None
 
 
 # --- cards -----------------------------------------------------------------------------
@@ -163,9 +178,9 @@ class CardCreate(BaseModel):
     subject_id: uuid.UUID
     exam_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
-    front: str
-    back: str
-    topic: str
+    front: LongText
+    back: LongText
+    topic: Topic
     difficulty: int = Field(default=3, ge=1, le=5)
     ease_factor: float | None = None
     interval_days: int | None = None
@@ -178,9 +193,9 @@ class CardUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
     exam_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
-    front: str | None = None
-    back: str | None = None
-    topic: str | None = None
+    front: LongText | None = None
+    back: LongText | None = None
+    topic: Topic | None = None
     difficulty: int | None = Field(default=None, ge=1, le=5)
     ease_factor: float | None = None
     interval_days: int | None = None
@@ -202,13 +217,13 @@ class QuizCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
     exam_id: uuid.UUID | None = None
-    title: str
+    title: Title
 
 
 class QuizUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
     exam_id: uuid.UUID | None = None
-    title: str | None = None
+    title: Title | None = None
 
 
 # --- questions -------------------------------------------------------------------------
@@ -226,20 +241,20 @@ class QuestionRead(_SyncRead):
 class QuestionCreate(BaseModel):
     id: uuid.UUID | None = None
     quiz_id: uuid.UUID
-    prompt: str
+    prompt: LongText
     kind: QuestionKind
-    topic: str
-    options: list[str] = Field(default_factory=list)
-    answer_key: str
+    topic: Topic
+    options: Options = Field(default_factory=list)
+    answer_key: LongText
 
 
 class QuestionUpdate(BaseModel):
     quiz_id: uuid.UUID | None = None
-    prompt: str | None = None
+    prompt: LongText | None = None
     kind: QuestionKind | None = None
-    topic: str | None = None
-    options: list[str] | None = None
-    answer_key: str | None = None
+    topic: Topic | None = None
+    options: Options | None = None
+    answer_key: LongText | None = None
 
 
 # --- grade_entries ---------------------------------------------------------------------
@@ -259,7 +274,7 @@ class GradeEntryCreate(BaseModel):
     id: uuid.UUID | None = None
     subject_id: uuid.UUID
     exam_id: uuid.UUID | None = None
-    title: str
+    title: Title
     kind: GradeKind
     score: float
     weight: float = 1.0
@@ -269,7 +284,7 @@ class GradeEntryCreate(BaseModel):
 class GradeEntryUpdate(BaseModel):
     subject_id: uuid.UUID | None = None
     exam_id: uuid.UUID | None = None
-    title: str | None = None
+    title: Title | None = None
     kind: GradeKind | None = None
     score: float | None = None
     weight: float | None = None
@@ -291,10 +306,10 @@ class AttemptRead(_AppendRead):
 class AttemptCreate(BaseModel):
     id: uuid.UUID | None = None
     question_id: uuid.UUID
-    response: str = ""
+    response: LongText = ""
     is_correct: bool
     score: float = Field(ge=0.0, le=1.0)
-    feedback: str = ""
+    feedback: LongText = ""
     graded_at: datetime | None = None
 
 

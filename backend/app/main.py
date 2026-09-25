@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 import mimetypes
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from dotenv import load_dotenv
 
@@ -21,6 +23,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
+from starlette.concurrency import run_in_threadpool  # noqa: E402
 
 from .config import check_production_config, get_settings  # noqa: E402
 from .generation import GenerationError, UploadedFile, generate_deck  # noqa: E402
@@ -43,6 +46,33 @@ check_production_config(settings)
 
 # Upload read granularity for the per-file streaming size check (see /v1/generate).
 _UPLOAD_CHUNK_BYTES = 1 << 20  # 1 MiB
+
+# Body ceiling for every route except the multipart upload. JSON CRUD/sync payloads are small;
+# without this the upload-sized cap applied everywhere, so a single sync batch could be ~33 MB.
+# Sized for a large first iOS sync (every dirty row of a resource in one push).
+_MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
+_UPLOAD_PATHS = frozenset({"/v1/generate"})
+
+# Users with a paid Claude call in flight. One per user: the calls now run in the threadpool
+# (so they no longer block the event loop for everyone else), and this keeps the spend cap's
+# check-then-spend window to a single call per user. In-process is enough — one worker
+# (deploy/entrypoint.sh); a multi-worker deploy would need a shared lock.
+_ai_calls_in_flight: set[uuid.UUID] = set()
+
+
+@contextmanager
+def _one_ai_call_per_user(user_id: uuid.UUID) -> Iterator[None]:
+    if user_id in _ai_calls_in_flight:
+        raise HTTPException(
+            status_code=429,
+            detail="Another AI request is still running. Wait for it to finish.",
+            headers={"Retry-After": "5"},
+        )
+    _ai_calls_in_flight.add(user_id)
+    try:
+        yield
+    finally:
+        _ai_calls_in_flight.discard(user_id)
 
 app = FastAPI(title="Cram backend", version="0.5")
 
@@ -87,9 +117,13 @@ async def limit_body_size(request: Request, call_next):
     cheaply. For real deployments, also cap the body at a reverse proxy.
     """
     cl = request.headers.get("content-length")
+    if request.url.path in _UPLOAD_PATHS:
+        limit = settings.max_total_bytes + (1 << 20)  # +1 MiB multipart overhead
+    else:
+        limit = _MAX_JSON_BODY_BYTES
     if cl is not None:
         try:
-            if int(cl) > settings.max_total_bytes + (1 << 20):  # +1 MiB multipart overhead
+            if int(cl) > limit:
                 return JSONResponse({"detail": "Request too large."}, status_code=413)
         except ValueError:
             return JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)
@@ -191,8 +225,13 @@ async def generate(
     # Spend cap (ADR 0009): refuse over-budget callers BEFORE spending on a Claude call.
     enforce_spend_cap(repo.session, repo.user_id, settings)
 
+    # The Anthropic SDK call is synchronous; run it in the threadpool so a long generation
+    # doesn't stall every other request on the single worker.
     try:
-        deck, usage = generate_deck(settings, subject_name, title, kind, uploads)
+        with _one_ai_call_per_user(repo.user_id):
+            deck, usage = await run_in_threadpool(
+                generate_deck, settings, subject_name, title, kind, uploads
+            )
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
@@ -248,9 +287,10 @@ async def grade(
     enforce_spend_cap(repo.session, repo.user_id, settings)
 
     try:
-        result, usage = grade_answer(
-            settings, body.prompt, body.model_answer, body.response, body.topic
-        )
+        with _one_ai_call_per_user(repo.user_id):
+            result, usage = await run_in_threadpool(
+                grade_answer, settings, body.prompt, body.model_answer, body.response, body.topic
+            )
     except GenerationError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
