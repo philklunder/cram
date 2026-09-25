@@ -34,12 +34,16 @@ export function ResetPasswordForm({ email, hasSession }: { email: string | null;
       return;
     }
     setBusy(true);
-    const { error } = await createClient().auth.updateUser({ password });
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({ password });
     if (error) {
       setError(error.message);
       setBusy(false);
       return;
     }
+    // A reset often follows a lost or compromised password: end every other session so the old
+    // password's sign-ins don't outlive it. Best-effort; this session stays signed in either way.
+    await supabase.auth.signOut({ scope: "others" });
     router.push("/dashboard");
     router.refresh();
   }
