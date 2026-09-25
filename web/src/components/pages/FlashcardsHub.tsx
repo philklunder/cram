@@ -265,7 +265,7 @@ export function FlashcardsView({
               </label>
             ) : null}
             <Button className="flex-none" onClick={() => setPractising(filtered)} disabled={filtered.length === 0}>
-              <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Cram {filtered.length}
+              <Play className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Practise {filtered.length}
             </Button>
             <Link href="/upload" className={cn(buttonClass("secondary", "md"), "flex-none")}>
               <Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden /> Generate

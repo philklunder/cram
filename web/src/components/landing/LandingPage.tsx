@@ -65,7 +65,7 @@ function SceneUpload() {
 function SceneGenerate() {
   return (
     <>
-      <div className={styles.sceneKicker}>AI Decks</div>
+      <div className={styles.sceneKicker}>Add material</div>
       <h4>Turning your files into a study deck.</h4>
 
       <div className={styles.aiBuildCard}>
@@ -601,7 +601,7 @@ export function LandingPage({ fontClassName }: { fontClassName: string }) {
                     <div className={styles.mockNav}>Review</div>
                     <div className={styles.mockNav}>Quizzes</div>
                     <div className={styles.mockNav}>Flashcards</div>
-                    <div className={styles.mockNav}>AI Decks</div>
+                    <div className={styles.mockNav}>Add material</div>
                     <div className={styles.mockNav}>Progress</div>
                     <div className={styles.mockNav}>Grades</div>
                   </aside>

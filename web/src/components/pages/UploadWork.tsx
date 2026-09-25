@@ -149,7 +149,7 @@ export function UploadWork({
         title={
           <span className="inline-flex items-center gap-2.5">
             <Sparkles className="h-6 w-6 text-brand-500" strokeWidth={2} aria-hidden />
-            AI Decks
+            Add material
           </span>
         }
         subtitle="Upload your materials, choose the subject and exam they belong to, and let Claude turn them into a study deck."

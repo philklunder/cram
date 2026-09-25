@@ -119,7 +119,8 @@ export function ReviewHubView({
             Review
           </h1>
           <p className="mt-1.5 text-sm text-ink-2">
-            Rate your recall, answer a few questions, and Cram works out how ready you really are.
+            Rate your recall, answer a few questions, and Cram works out how ready you really are. Reviews are
+            the only thing that moves your readiness score.
           </p>
         </div>
         <ReviewArt className="pointer-events-none absolute -top-3 right-0 hidden md:block" />

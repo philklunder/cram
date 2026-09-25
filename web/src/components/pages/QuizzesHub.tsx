@@ -59,7 +59,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
       <section>
         <PageHeader
           title="Quizzes"
-          subtitle="Choose what you want to practice. Select a subject, then pick the exam or quiz scope."
+          subtitle="Practice questions by subject or exam. Practice doesn't change your readiness score; a Review does."
         />
         <EmptyState
           title="No quizzes yet"
@@ -95,7 +95,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
     <section style={subjectVars(subject!.id)}>
       <PageHeader
         title="Quizzes"
-        subtitle="Choose what you want to practice. Select a subject, then pick the exam or quiz scope."
+        subtitle="Practice questions by subject or exam. Practice doesn't change your readiness score; a Review does."
       />
 
       <div className="space-y-6">
@@ -212,7 +212,7 @@ export function QuizzesHubView({ data }: { data: LibraryData }) {
 
           {!ready ? (
             <p className="mt-4 rounded-xl border border-dashed border-line-strong/80 bg-surface/50 px-4 py-5 text-center text-sm text-muted">
-              No quiz questions for this exam yet. Add material to it in AI Decks, or pick another exam.
+              No quiz questions for this exam yet. Add material to it, or pick another exam.
             </p>
           ) : null}
         </div>

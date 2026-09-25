@@ -16,7 +16,7 @@ import {
 // future command palette stay in sync. `href` is matched against the current pathname for the
 // active state (exact for /dashboard, prefix for the rest so nested routes stay highlighted).
 //
-// Ten flat items made Review, Quizzes, Flashcards and AI Decks read as four unranked doors into
+// Ten flat items made Review, Quizzes, Flashcards and Add material read as four unranked doors into
 // the same activity. Grouping them means the rail is scannable in one pass: what you *do*, what
 // you *own*, what you *learn from*. Dashboard and Settings sit outside any group — one is the
 // way in, the other the way out.
@@ -45,7 +45,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/flashcards", label: "Flashcards", icon: Layers, group: "study" },
 
   { href: "/subjects", label: "Subjects", icon: BookOpen, group: "library" },
-  { href: "/upload", label: "AI Decks", icon: Sparkles, group: "library" },
+  { href: "/upload", label: "Add material", icon: Sparkles, group: "library" },
 
   { href: "/calendar", label: "Calendar", icon: CalendarDays, group: "insights" },
   { href: "/progress", label: "Progress", icon: BarChart3, group: "insights" },
