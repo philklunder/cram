@@ -7,6 +7,38 @@ against real Claude output, not fixtures.
 
 from __future__ import annotations
 
+from typing import Literal, get_args
+
+# How much of the material a deck covers, chosen per upload (optional `density` form field on
+# /v1/generate; see meta/generation-density.md). "balanced" is the default and matches what the
+# prompt produced before the setting existed, so clients that don't send it see no change.
+Density = Literal["essentials", "balanced", "comprehensive"]
+DENSITIES: tuple[str, ...] = get_args(Density)
+DEFAULT_DENSITY: Density = "balanced"
+
+# Appended to the user turn. Relative instructions, not fixed counts: a one-page photo and a
+# 60-slide PDF need very different numbers, and "fewer, higher-quality items if the material is
+# thin" (system prompt) must still win at every level.
+DENSITY_GUIDANCE: dict[str, str] = {
+    "essentials": (
+        "Coverage: ESSENTIALS. Test only the core ideas a student must know for the exam — the "
+        "central concepts, key definitions and main results. Skip supporting detail, side notes, "
+        "examples and anything peripheral. Prefer a short, high-signal deck over completeness. "
+        "Keep the quiz to a handful of questions on the most important points."
+    ),
+    "balanced": (
+        "Coverage: BALANCED. Test the main ideas plus the supporting detail a student would "
+        "reasonably be examined on. Skip trivia and throwaway examples."
+    ),
+    "comprehensive": (
+        "Coverage: COMPREHENSIVE. Test everything in the material worth knowing — every "
+        "definition, fact, mechanism, formula, named example and distinction, including "
+        "secondary detail. Aim for thorough coverage of every section, not just the headline "
+        "ideas, while keeping each card atomic and never repeating the same fact twice. The quiz "
+        "should span every section too."
+    ),
+}
+
 SYSTEM_PROMPT = """\
 You are Cram's study-content generator. You turn a student's own course material \
 (lecture slides, textbook pages, handwritten notes — supplied as PDFs or photos) \
@@ -25,7 +57,8 @@ Produce:
    - `back`: a concise, correct answer — a sentence or two, not a paragraph.
    - `topic`: a short topic label grouping related cards (e.g. "Cell respiration").
    - `difficulty`: integer 1–5. 1 = foundational recall, 5 = synthesis/application.
-   Cover the breadth of the material; don't cluster everything on one topic.
+   Cover the breadth of the material; don't cluster everything on one topic. How much \
+   detail to test is set by the coverage level in the user message — follow it.
 
 2. QUIZ QUESTIONS (`questions`) — periodic self-tests, a smaller set than the cards:
    - `kind` is "multipleChoice" or "shortAnswer". Include a mix.
@@ -43,12 +76,18 @@ Tailor difficulty and framing to the subject. Output must match the required sch
 exactly."""
 
 
-def build_user_text(subject_name: str, title: str, kind: str) -> str:
-    """The text block that accompanies the uploaded file(s) in the user turn."""
+def build_user_text(
+    subject_name: str, title: str, kind: str, density: str = DEFAULT_DENSITY
+) -> str:
+    """The text block that accompanies the uploaded file(s) in the user turn.
+
+    ``density`` must already be validated (one of ``DENSITIES``) — it selects a fixed
+    server-side instruction, so no client text reaches the prompt through it."""
     return (
         f"Subject: {subject_name}\n"
         f"Material title: {title}\n"
         f"Material kind: {kind}\n\n"
+        f"{DENSITY_GUIDANCE[density]}\n\n"
         "Generate flashcards and quiz questions from the attached material, "
         "following your instructions and the required JSON schema."
     )

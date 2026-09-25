@@ -32,6 +32,7 @@ from .grading import grade_answer  # noqa: E402
 from .limits import enforce_rate_limit, enforce_spend_cap, record_usage  # noqa: E402
 from .models.internal import AiCallKind  # noqa: E402
 from .persist import persist_attempt, persist_generation  # noqa: E402
+from .prompt import DEFAULT_DENSITY, DENSITIES  # noqa: E402
 from .repository import OwnedRepository  # noqa: E402
 from .routers import get_repo, install_resource_routers  # noqa: E402
 from .schemas import GradeRequest  # noqa: E402
@@ -73,6 +74,15 @@ async def _run_ai_call(fn, *args):
     if _ai_limiter is None:
         _ai_limiter = anyio.CapacityLimiter(_AI_CONCURRENCY)
     return await anyio.to_thread.run_sync(lambda: fn(*args), limiter=_ai_limiter)
+
+
+def _meter_failed_call(repo: OwnedRepository, kind: AiCallKind, error: GenerationError) -> None:
+    """Meter a Claude call that was billed but still failed (refused, truncated, malformed).
+    Without this, a request built to fail after the response — e.g. material too long for its
+    coverage level — would spend tokens the spend cap never sees (ADR 0009)."""
+    if error.usage is not None:
+        record_usage(repo.session, repo.user_id, kind, error.usage)
+        repo.session.commit()
 
 
 @contextmanager
@@ -182,6 +192,7 @@ async def generate(
     title: str = Form(...),
     kind: str = Form(...),
     exam_id: str | None = Form(default=None),
+    density: str = Form(default=DEFAULT_DENSITY),
     files: list[UploadFile] = File(...),
     repo: OwnedRepository = Depends(get_repo),
     storage: Storage | None = Depends(storage_dependency),
@@ -201,6 +212,12 @@ async def generate(
             raise HTTPException(status_code=413, detail=f"Field '{name}' is too long.")
     if kind not in ("pdf", "photo"):
         raise HTTPException(status_code=422, detail="Field 'kind' must be 'pdf' or 'photo'.")
+    # Coverage level. Checked against the fixed set so only a server-side instruction ever
+    # reaches the prompt (and the per-density token ceiling lookup can't KeyError into a 500).
+    if density not in DENSITIES:
+        raise HTTPException(
+            status_code=422, detail=f"Field 'density' must be one of: {', '.join(DENSITIES)}."
+        )
 
     # Optional target exam. Parse here so a malformed id is a clean 422, not a 500 deep in
     # persistence; ownership of the exam is enforced by the repository parent check.
@@ -253,9 +270,10 @@ async def generate(
     try:
         with _one_ai_call_per_user(repo.user_id):
             deck, usage = await _run_ai_call(
-                generate_deck, settings, subject_name, title, kind, uploads
+                generate_deck, settings, subject_name, title, kind, uploads, density
             )
     except GenerationError as e:
+        _meter_failed_call(repo, AiCallKind.generate, e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
     # Meter the spend FIRST and commit it on its own: the call has already cost money, so the
@@ -316,6 +334,7 @@ async def grade(
                 grade_answer, settings, body.prompt, body.model_answer, body.response, body.topic
             )
     except GenerationError as e:
+        _meter_failed_call(repo, AiCallKind.grade, e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
     # Meter the spend FIRST and commit it on its own — the call already cost money, so the

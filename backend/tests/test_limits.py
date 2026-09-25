@@ -325,3 +325,59 @@ def test_dev_config_never_blocks():
             global_daily_token_cap=0,
         )
     )
+
+
+def _usage_tokens(user_id: uuid.UUID) -> int:
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
+
+    from app.db import get_engine
+    from app.models.internal import AiUsageEvent
+
+    with Session(get_engine()) as s:
+        return s.scalar(
+            select(func.coalesce(func.sum(AiUsageEvent.total_tokens), 0)).where(
+                AiUsageEvent.user_id == user_id
+            )
+        )
+
+
+@requires_db
+@pytest.mark.parametrize("route", ["generate", "grade"])
+def test_billed_call_that_fails_is_still_metered(client, current_user, monkeypatch, route):
+    """Regression (security review 2026-09-25): a Claude call that is billed and then fails
+    (truncated at max_tokens, refused, malformed) must still count against the spend cap —
+    otherwise a request built to fail spends tokens the cap never sees."""
+    import app.main as main
+    from app.generation import GenerationError, TokenUsage
+
+    def billed_then_failed(*a, **k):  # noqa: ANN002, ANN003
+        raise GenerationError("too long", TokenUsage(input_tokens=300, output_tokens=16000))
+
+    uid = current_user["user"].id
+    if route == "generate":
+        monkeypatch.setattr(main, "generate_deck", billed_then_failed)
+        r = client.post(
+            "/v1/generate",
+            data={"subject_name": "Bio", "title": "t", "kind": "pdf", "density": "comprehensive"},
+            files=[("files", ("n.pdf", b"%PDF-1.4", "application/pdf"))],
+        )
+    else:
+        monkeypatch.setattr(main, "grade_answer", billed_then_failed)
+        r = client.post("/v1/grade", json={"prompt": "p", "model_answer": "m", "response": "r"})
+    assert r.status_code == 502, r.text
+    assert _usage_tokens(uid) == 16300
+
+
+@requires_db
+def test_unbilled_failure_records_no_usage(client, current_user, monkeypatch):
+    import app.main as main
+    from app.generation import GenerationError
+
+    def unreachable(*a, **k):  # noqa: ANN002, ANN003
+        raise GenerationError("Could not reach the grading service.")
+
+    monkeypatch.setattr(main, "grade_answer", unreachable)
+    r = client.post("/v1/grade", json={"prompt": "p", "model_answer": "m", "response": "r"})
+    assert r.status_code == 502
+    assert _usage_tokens(current_user["user"].id) == 0

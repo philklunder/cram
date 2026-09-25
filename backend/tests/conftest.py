@@ -96,7 +96,10 @@ def client(_app_env, current_user, storage, monkeypatch):
     # (payload, TokenUsage) tuple the real functions now return (Phase 4 metering).
     from app.generation import TokenUsage
 
-    def fake_generate_deck(settings, subject_name, title, kind, files):
+    generate_calls: list[dict] = []
+
+    def fake_generate_deck(settings, subject_name, title, kind, files, density="balanced"):
+        generate_calls.append({"subject_name": subject_name, "density": density})
         return {
             "source_title": title,
             "cards": [
@@ -123,6 +126,7 @@ def client(_app_env, current_user, storage, monkeypatch):
     monkeypatch.setattr(main, "grade_answer", fake_grade_answer)
 
     with TestClient(main.app) as c:
+        c.generate_calls = generate_calls  # what reached the (stubbed) Claude call
         yield c
 
     main.app.dependency_overrides.clear()

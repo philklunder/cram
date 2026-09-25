@@ -15,12 +15,26 @@ from conftest import requires_db
 GENERATE_FILES = [("files", ("notes.pdf", b"%PDF-1.4 fake-bytes", "application/pdf"))]
 
 
-def _generate(client, subject_name="Biology", title="Cell notes"):
+def _generate(client, subject_name="Biology", title="Cell notes", **extra):
     return client.post(
         "/v1/generate",
-        data={"subject_name": subject_name, "title": title, "kind": "pdf"},
+        data={"subject_name": subject_name, "title": title, "kind": "pdf", **extra},
         files=GENERATE_FILES,
     )
+
+
+@requires_db
+def test_generate_density_defaults_to_balanced_and_passes_through(client):
+    assert _generate(client).status_code == 200
+    assert _generate(client, density="comprehensive").status_code == 200
+    assert [c["density"] for c in client.generate_calls] == ["balanced", "comprehensive"]
+
+
+@requires_db
+def test_generate_rejects_unknown_density_before_the_paid_call(client):
+    r = _generate(client, density="everything please")
+    assert r.status_code == 422
+    assert client.generate_calls == []
 
 
 @requires_db

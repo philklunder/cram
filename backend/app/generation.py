@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import anthropic
 
 from .config import Settings
-from .prompt import SYSTEM_PROMPT, build_user_text
+from .prompt import DEFAULT_DENSITY, SYSTEM_PROMPT, build_user_text
 from .schemas import DECK_JSON_SCHEMA, GeneratedDeck
 
 log = logging.getLogger("cram.generation")
@@ -26,6 +26,15 @@ IMAGE_MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 PDF_MEDIA_TYPE = "application/pdf"
 
 MAX_OUTPUT_TOKENS = 8000
+# A comprehensive deck on long material runs past 8k output tokens; a truncated response is
+# invalid JSON and wastes a paid call. Output tokens are metered against the spend cap like any
+# other, so the higher ceiling costs only what a caller actually generates. Kept well under the
+# SDK's ~21k non-streaming limit (it refuses larger max_tokens without streaming).
+MAX_OUTPUT_TOKENS_BY_DENSITY: dict[str, int] = {
+    "essentials": MAX_OUTPUT_TOKENS,
+    "balanced": MAX_OUTPUT_TOKENS,
+    "comprehensive": 16000,
+}
 
 # Reuse one SDK client across requests (cheaper than constructing per call).
 _client: anthropic.Anthropic | None = None
@@ -43,7 +52,15 @@ class GenerationError(Exception):
 
     Messages on this exception are client-safe by construction — we never put raw
     upstream error text (which can leak account/billing state) into them.
+
+    ``usage`` is set when the failure came *after* Claude answered (a refusal, a truncated or
+    malformed response): that call was billed, so the route must still meter it against the
+    spend cap before returning the error (ADR 0009). It is ``None`` when no call was billed.
     """
+
+    def __init__(self, message: str, usage: "TokenUsage | None" = None):
+        super().__init__(message)
+        self.usage = usage
 
 
 @dataclass
@@ -102,6 +119,7 @@ def generate_deck(
     title: str,
     kind: str,
     files: list[UploadedFile],
+    density: str = DEFAULT_DENSITY,
 ) -> tuple[dict, TokenUsage]:
     """Generate a deck and return ``(deck_dict, TokenUsage)`` — the caller meters the token
     usage against the spend cap (Phase 4) and persists the deck."""
@@ -110,7 +128,7 @@ def generate_deck(
 
     client = _get_client(settings.anthropic_api_key)
 
-    content: list[dict] = [{"type": "text", "text": build_user_text(subject_name, title, kind)}]
+    content: list[dict] = [{"type": "text", "text": build_user_text(subject_name, title, kind, density)}]
     content.extend(_content_block(f) for f in files)
 
     # Prompt caching (automatic): a single top-level cache_control places the breakpoint
@@ -122,7 +140,7 @@ def generate_deck(
     try:
         resp = client.messages.create(
             model=settings.model,
-            max_tokens=MAX_OUTPUT_TOKENS,
+            max_tokens=MAX_OUTPUT_TOKENS_BY_DENSITY[density],
             cache_control={"type": "ephemeral"},
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": content}],
@@ -142,6 +160,7 @@ def generate_deck(
         raise GenerationError("Could not reach the generation service.") from e
 
     u = resp.usage
+    usage = TokenUsage.from_usage(u)
     log.info(
         "generation ok: input=%s output=%s cache_write=%s cache_read=%s",
         u.input_tokens, u.output_tokens,
@@ -149,17 +168,25 @@ def generate_deck(
     )
 
     if resp.stop_reason == "refusal":
-        raise GenerationError("The model declined to generate from this material.")
+        raise GenerationError("The model declined to generate from this material.", usage)
+    if resp.stop_reason == "max_tokens":
+        # The JSON was cut off mid-deck, so there is nothing valid to save. Say what to change.
+        log.warning("deck truncated at max_tokens (density=%s)", density)
+        raise GenerationError(
+            "This material was too long to cover at this level in one go. "
+            "Try a lighter coverage level, or upload it in smaller parts.",
+            usage,
+        )
 
     text = next((b.text for b in resp.content if b.type == "text"), None)
     if not text:
-        raise GenerationError("The model returned no content.")
+        raise GenerationError("The model returned no content.", usage)
 
     try:
         data = json.loads(text)
         deck = GeneratedDeck.model_validate(data)
     except (json.JSONDecodeError, ValueError) as e:
         log.warning("malformed deck from model: %s", e)
-        raise GenerationError("The model returned malformed deck data.") from e
+        raise GenerationError("The model returned malformed deck data.", usage) from e
 
-    return deck.model_dump(), TokenUsage.from_usage(u)
+    return deck.model_dump(), usage

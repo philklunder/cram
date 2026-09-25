@@ -59,14 +59,15 @@ def grade_answer(
         raise GenerationError("Could not reach the grading service.") from e
 
     u = resp.usage
+    usage = TokenUsage.from_usage(u)
     log.info("grading ok: input=%s output=%s", u.input_tokens, u.output_tokens)
 
     if resp.stop_reason == "refusal":
-        raise GenerationError("The model declined to grade this answer.")
+        raise GenerationError("The model declined to grade this answer.", usage)
 
     text = next((b.text for b in resp.content if b.type == "text"), None)
     if not text:
-        raise GenerationError("The model returned no content.")
+        raise GenerationError("The model returned no content.", usage)
 
     try:
         data = json.loads(text)
@@ -77,8 +78,8 @@ def grade_answer(
         result = GradeResult.model_validate(data)
     except (json.JSONDecodeError, ValueError) as e:
         log.warning("malformed grade from model: %s", e)
-        raise GenerationError("The model returned malformed grade data.") from e
+        raise GenerationError("The model returned malformed grade data.", usage) from e
 
     # is_correct is a server-side decision, not the model's (ADR 0006).
     result.is_correct = result.score >= GRADE_PASS_THRESHOLD
-    return result.model_dump(), TokenUsage.from_usage(u)
+    return result.model_dump(), usage
